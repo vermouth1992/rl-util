@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(
-    name='rl-util',
+    name='rlutils',
     version='0.1',
     packages=['rlutils'],
     url='https://github.com/vermouth1992/rl-util',
