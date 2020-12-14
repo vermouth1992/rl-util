@@ -1,7 +1,8 @@
-import tensorflow as tf
-import reverb
 from collections import deque
-import numpy as np
+
+import reverb
+import tensorflow as tf
+
 from .base import BaseReplayBuffer
 
 

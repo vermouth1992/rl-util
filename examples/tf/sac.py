@@ -2,22 +2,19 @@
 Implement soft actor critic agent here
 """
 
-import pybullet_envs
-
 import os
 import time
 
-import gym
 import numpy as np
 import tensorflow as tf
 from tqdm.auto import tqdm
 
-from rlutils.utils import set_tf_allow_growth
-from rlutils import soft_update_tf, hard_update_tf
-from rlutils.distributions import make_independent_normal_from_params
-from rlutils.nn import build_mlp, LagrangeLayer
-from rlutils.runner import BaseRunner
+from rlutils.tf.distributions import make_independent_normal_from_params
 from rlutils.replay_buffers import ReverbTransitionReplayBuffer
+from rlutils.runner import BaseRunner
+from rlutils.tf import soft_update, hard_update
+from rlutils.tf.nn import build_mlp, LagrangeLayer
+from rlutils.utils import set_tf_allow_growth
 
 set_tf_allow_growth()
 
@@ -112,7 +109,7 @@ class SACAgent(tf.keras.Model):
             self.target_q_network = EnsembleQNet(obs_dim, act_dim, q_mlp_hidden)
         else:
             raise NotImplementedError
-        hard_update_tf(self.target_q_network, self.q_network)
+        hard_update(self.target_q_network, self.q_network)
 
         self.policy_optimizer = tf.keras.optimizers.Adam(lr=policy_lr)
         self.q_optimizer = tf.keras.optimizers.Adam(lr=q_lr)
@@ -137,7 +134,7 @@ class SACAgent(tf.keras.Model):
         self.logger.log_tabular('LossAlpha', average_only=True)
 
     def update_target(self):
-        soft_update_tf(self.target_q_network, self.q_network, self.tau)
+        soft_update(self.target_q_network, self.q_network, self.tau)
 
     @tf.function
     def _update_nets(self, obs, actions, next_obs, done, reward):

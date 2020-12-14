@@ -15,13 +15,15 @@ def build_mlp(input_dim, output_dim, mlp_hidden, num_ensembles=None, num_layers=
         model.add(tf.keras.layers.InputLayer(batch_input_shape=(num_ensembles, None, input_dim)))
     for _ in range(num_layers - 1):
         if num_ensembles is None:
-            model.add(tf.keras.layers.Dense(mlp_hidden, activation=activation, kernel_regularizer=regularizer))
+            model.add(tf.keras.layers.Dense(mlp_hidden, kernel_regularizer=regularizer))
             if batch_norm:
                 model.add(tf.keras.layers.BatchNormalization(axis=-1))
+            model.add(tf.keras.layers.Activation(activation=activation))
         else:
-            model.add(EnsembleDense(num_ensembles, mlp_hidden, activation=activation, kernel_regularizer=regularizer))
+            model.add(EnsembleDense(num_ensembles, mlp_hidden, kernel_regularizer=regularizer))
             if batch_norm:
                 model.add(tf.keras.layers.BatchNormalization(axis=[0, -1]))
+            model.add(tf.keras.layers.Activation(activation=activation))
         if dropout is not None:
             model.add(tf.keras.layers.Dropout(rate=dropout))
     if num_ensembles is None:

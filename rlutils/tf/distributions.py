@@ -1,5 +1,5 @@
-import tensorflow as tf
 import numpy as np
+import tensorflow as tf
 import tensorflow_probability as tfp
 
 tfd = tfp.distributions
@@ -15,7 +15,7 @@ def apply_squash_log_prob(raw_log_prob, x):
     log_det_jacobian = 2. * (np.log(2.) - x - tf.math.softplus(-2. * x))
     num_reduce_dim = tf.rank(x) - tf.rank(raw_log_prob)
     log_det_jacobian = tf.reduce_sum(log_det_jacobian, axis=tf.range(-num_reduce_dim, 0))
-    log_prob = raw_log_prob - tf.reduce_sum(log_det_jacobian, )
+    log_prob = raw_log_prob - log_det_jacobian
     return log_prob
 
 

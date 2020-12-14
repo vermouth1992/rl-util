@@ -6,16 +6,17 @@ Common in the runner:
 4. Run
 """
 
-from abc import abstractmethod, ABC
-from tqdm.auto import trange
-import gym
-from .run_utils import setup_logger_kwargs
-from rlutils.logx import EpochLogger
-import tensorflow as tf
-import numpy as np
 import random
+from abc import abstractmethod, ABC
 
+import gym
+import numpy as np
+import tensorflow as tf
 from gym.wrappers import FrameStack
+from tqdm.auto import trange
+
+from rlutils.logx import EpochLogger
+from .run_utils import setup_logger_kwargs
 
 
 class BaseRunner(ABC):

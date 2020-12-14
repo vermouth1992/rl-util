@@ -1,5 +1,6 @@
 import tensorflow as tf
-import numpy as np
+
+from rlutils.math import inverse_softplus
 
 
 class SqueezeLayer(tf.keras.layers.Layer):
@@ -68,7 +69,3 @@ class LagrangeLayer(tf.keras.Model):
 
     def assign(self, value):
         self.kernel.assign(value)
-
-
-def inverse_softplus(x, beta=1.):
-    return np.log(np.exp(x * beta) - 1.) / beta
