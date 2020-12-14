@@ -20,8 +20,7 @@ FORCE_DATESTAMP = False
 DEFAULT_SHORTHAND = False
 WAIT_BEFORE_LAUNCH = 2
 
-from .logx import colorize
-from .mpi_tools import mpi_fork
+from rlutils.logx import colorize
 from rlutils.utils.serialization_utils import convert_json
 
 DIV_LINE_WIDTH = 80
@@ -159,9 +158,6 @@ def call_experiment(exp_name, thunk, seed=0, num_cpu=1, data_dir=None,
             env_name = kwargs['env_name']
             kwargs['env_fn'] = lambda: gym.make(env_name)
             # del kwargs['env_name']
-
-        # Fork into multiple processes
-        mpi_fork(num_cpu)
 
         # Run thunk
         thunk(**kwargs)
