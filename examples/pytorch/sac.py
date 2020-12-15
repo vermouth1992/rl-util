@@ -41,7 +41,7 @@ class SACAgent(nn.Module):
         self.policy_optimizer = torch.optim.Adam(params=self.policy_net.parameters(), lr=policy_lr)
         self.q_optimizer = torch.optim.Adam(params=self.q_network.parameters(), lr=q_lr)
         self.alpha_optimizer = torch.optim.Adam(params=self.alpha_net.parameters(), lr=alpha_lr)
-        self.target_entropy = -ac_dim if target_entropy is None else target_entropy
+        self.target_entropy = -ac_dim // 2 if target_entropy is None else target_entropy
 
         self.tau = tau
         self.gamma = gamma
