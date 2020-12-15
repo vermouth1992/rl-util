@@ -7,6 +7,8 @@ import time
 
 import numpy as np
 import torch
+
+torch.backends.cudnn.benchmark = True
 from torch import nn
 from tqdm.auto import tqdm
 
@@ -41,7 +43,7 @@ class SACAgent(nn.Module):
         self.policy_optimizer = torch.optim.Adam(params=self.policy_net.parameters(), lr=policy_lr)
         self.q_optimizer = torch.optim.Adam(params=self.q_network.parameters(), lr=q_lr)
         self.alpha_optimizer = torch.optim.Adam(params=self.alpha_net.parameters(), lr=alpha_lr)
-        self.target_entropy = -ac_dim // 2 if target_entropy is None else target_entropy
+        self.target_entropy = -ac_dim / 2 if target_entropy is None else target_entropy
 
         self.tau = tau
         self.gamma = gamma
@@ -299,7 +301,7 @@ def sac(env_name,
     config = locals()
 
     runner = SACRunner(seed=seed, steps_per_epoch=steps_per_epoch // num_parallel_env, epochs=epochs,
-                       exp_name=f'{env_name}_sac_pytorch_test', logger_path='data')
+                       exp_name=f'{env_name}_sac_test', logger_path='data')
     runner.setup_env(env_name=env_name, num_parallel_env=num_parallel_env, frame_stack=None, wrappers=None,
                      asynchronous=False, num_test_episodes=num_test_episodes)
     runner.setup_seed(seed)

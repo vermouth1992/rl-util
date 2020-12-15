@@ -1,6 +1,9 @@
 from collections import deque
 
-import reverb
+try:
+    import reverb
+except:
+    print('Reverb is not installed.')
 import tensorflow as tf
 
 from .base import BaseReplayBuffer
