@@ -49,41 +49,52 @@ class PyUniformParallelEnvReplayBuffer(BaseReplayBuffer):
         assert capacity % num_parallel_env == 0
         assert batch_size % num_parallel_env == 0
         self.num_parallel_env = num_parallel_env
-        self.per_env_capacity = capacity // num_parallel_env
-        self.per_env_batch_size = batch_size // num_parallel_env
+        self.max_size = capacity
         self.obs_dim = obs_dim
         self.act_dim = act_dim
-        self.obs_buf = np.zeros(combined_shape(self.per_env_capacity, (num_parallel_env, obs_dim)), dtype=np.float32)
-        self.obs2_buf = np.zeros(combined_shape(self.per_env_capacity, (num_parallel_env, obs_dim)), dtype=np.float32)
-        self.act_buf = np.zeros(combined_shape(self.per_env_capacity, (num_parallel_env, act_dim)), dtype=np.float32)
-        self.rew_buf = np.zeros(shape=(self.per_env_capacity, num_parallel_env), dtype=np.float32)
-        self.done_buf = np.zeros(shape=(self.per_env_capacity, num_parallel_env), dtype=np.float32)
+        self.obs_buf = np.zeros(combined_shape(self.capacity, obs_dim), dtype=np.float32)
+        self.obs2_buf = np.zeros(combined_shape(self.capacity, obs_dim), dtype=np.float32)
+        self.act_buf = np.zeros(combined_shape(self.capacity, act_dim), dtype=np.float32)
+        self.rew_buf = np.zeros(shape=(self.capacity), dtype=np.float32)
+        self.done_buf = np.zeros(shape=(self.capacity), dtype=np.float32)
         self.batch_size = batch_size
-        self.ptr, self.per_env_size = 0, 0
+        self.ptr, self.size = 0, 0
 
     def __len__(self):
-        return self.per_env_size * self.num_parallel_env
+        return self.size
+
+    def __getitem__(self, item):
+        """ Make it compatible with Pytorch data loaders """
+        return dict(obs=self.obs_buf[item],
+                    next_obs=self.obs2_buf[item],
+                    act=self.act_buf[item],
+                    rew=self.rew_buf[item],
+                    done=self.done_buf[item])
 
     @property
     def capacity(self):
-        return self.per_env_capacity * self.num_parallel_env
+        return self.max_size
 
     def add(self, data, priority=None):
         assert priority is None, 'Uniform Replay Buffer'
-        obs, act, rew, next_obs, done = data
-        self.obs_buf[self.ptr, :] = obs
-        self.obs2_buf[self.ptr, :] = next_obs
-        self.act_buf[self.ptr, :] = act
-        self.rew_buf[self.ptr, :] = rew
-        self.done_buf[self.ptr, :] = done
-        self.ptr = (self.ptr + 1) % self.per_env_capacity
-        self.per_env_size = min(self.per_env_size + 1, self.per_env_capacity)
+        obs = data['obs']
+        act = data['act']
+        rew = data['rew']
+        next_obs = data['next_obs']
+        done = data['done']
+        self.obs_buf[self.ptr:self.ptr + self.num_parallel_env, :] = obs
+        self.obs2_buf[self.ptr:self.ptr + self.num_parallel_env, :] = next_obs
+        self.act_buf[self.ptr:self.ptr + self.num_parallel_env, :] = act
+        self.rew_buf[self.ptr:self.ptr + self.num_parallel_env] = rew
+        self.done_buf[self.ptr:self.ptr + self.num_parallel_env] = done
+        self.ptr = (self.ptr + self.num_parallel_env) % self.capacity
+        self.size = min(self.size + self.num_parallel_env, self.capacity)
 
     def sample(self):
-        idxs = np.random.randint(0, self.per_env_size, size=self.per_env_batch_size)
-        batch = dict(obs=self.obs_buf[idxs].reshape(-1, self.obs_dim),
-                     obs2=self.obs2_buf[idxs].reshape(-1, self.obs_dim),
-                     act=self.act_buf[idxs].reshape(-1, self.act_dim),
-                     rew=self.rew_buf[idxs].reshape(-1),
-                     done=self.done_buf[idxs].reshape(-1))
+        idxs = np.random.randint(0, self.size, size=self.batch_size)
+        batch = dict(obs=self.obs_buf[idxs],
+                     next_obs=self.obs2_buf[idxs],
+                     act=self.act_buf[idxs],
+                     rew=self.rew_buf[idxs],
+                     done=self.done_buf[idxs])
         return batch

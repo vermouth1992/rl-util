@@ -117,14 +117,14 @@ class SACAgent(nn.Module):
         )
         return info
 
-    def update(self, obs, act, obs2, done, rew, update_target=True):
+    def update(self, obs, act, next_obs, done, rew, update_target=True):
         obs = torch.as_tensor(obs, dtype=torch.float32, device=self.device)
         act = torch.as_tensor(act, dtype=torch.float32, device=self.device)
-        obs2 = torch.as_tensor(obs2, dtype=torch.float32, device=self.device)
+        next_obs = torch.as_tensor(next_obs, dtype=torch.float32, device=self.device)
         done = torch.as_tensor(done, dtype=torch.float32, device=self.device)
         rew = torch.as_tensor(rew, dtype=torch.float32, device=self.device)
 
-        info = self._update_nets(obs, act, obs2, done, rew)
+        info = self._update_nets(obs, act, next_obs, done, rew)
         for key, item in info.items():
             info[key] = item.detach().cpu().numpy()
         self.logger.store(**info)
@@ -230,7 +230,13 @@ class SACRunner(BaseRunner):
         true_d = np.logical_and(d, self.ep_len != self.max_ep_len)
 
         # Store experience to replay buffer
-        self.replay_buffer.add(data=(self.o, a, r, o2, true_d))
+        self.replay_buffer.add(data={
+            'obs': self.o,
+            'act': a,
+            'rew': r,
+            'next_obs': o2,
+            'done': true_d
+        })
 
         # Super critical, easy to overlook step: make sure to update
         # most recent observation!
@@ -270,7 +276,6 @@ class SACRunner(BaseRunner):
 
 
 def sac(env_name,
-        env_fn=None,
         max_ep_len=1000,
         steps_per_epoch=5000,
         epochs=200,
@@ -278,10 +283,9 @@ def sac(env_name,
         update_after=1000,
         update_every=50,
         update_per_step=1,
-        batch_size=200,
+        batch_size=256,
         num_parallel_env=1,
         num_test_episodes=20,
-        logger_kwargs=dict(),
         seed=1,
         # sac args
         nn_size=256,
@@ -322,7 +326,6 @@ def sac(env_name,
 
 if __name__ == '__main__':
     import argparse
-    from rlutils.runner.run_utils import setup_logger_kwargs
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--env_name', type=str, default='Hopper-v2')
@@ -338,7 +341,7 @@ if __name__ == '__main__':
     parser.add_argument('--start_steps', type=int, default=1000)
     parser.add_argument('--replay_size', type=int, default=1000000)
     parser.add_argument('--steps_per_epoch', type=int, default=5000)
-    parser.add_argument('--batch_size', type=int, default=200)
+    parser.add_argument('--batch_size', type=int, default=256)
     parser.add_argument('--num_test_episodes', type=int, default=20)
     parser.add_argument('--max_ep_len', type=int, default=1000)
     parser.add_argument('--update_after', type=int, default=1000)
@@ -346,8 +349,4 @@ if __name__ == '__main__':
     parser.add_argument('--update_per_step', type=int, default=1)
 
     args = vars(parser.parse_args())
-
-    logger_kwargs = setup_logger_kwargs(exp_name=args['env_name'] + '_sac_pytorch_test',
-                                        data_dir='data', seed=args['seed'])
-
-    sac(**args, logger_kwargs=logger_kwargs)
+    sac(**args)

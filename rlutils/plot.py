@@ -172,7 +172,7 @@ def main():
     parser.add_argument('logdir', nargs='*')
     parser.add_argument('--legend', '-l', nargs='*')
     parser.add_argument('--xaxis', '-x', default='Epoch')
-    parser.add_argument('--value', '-y', default='NormalizedTestEpRet', nargs='*')
+    parser.add_argument('--value', '-y', default='Performance', nargs='*')
     parser.add_argument('--count', action='store_true')
     parser.add_argument('--smooth', '-s', type=int, default=1)
     parser.add_argument('--select', nargs='*')
