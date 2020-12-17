@@ -6,8 +6,7 @@ import time
 
 import numpy as np
 import tensorflow as tf
-
-from rlutils.utils import set_tf_allow_growth
+from rlutils.utils.tf_utils import set_tf_allow_growth
 
 set_tf_allow_growth()
 
@@ -15,8 +14,7 @@ from tqdm.auto import tqdm
 
 from rlutils.replay_buffers import PyUniformParallelEnvReplayBuffer
 from rlutils.runner import BaseRunner
-from rlutils.tf import soft_update, hard_update
-from rlutils.tf.nn import LagrangeLayer, SquashedGaussianMLPActor, EnsembleMinQNet
+from rlutils.tf.nn import LagrangeLayer, SquashedGaussianMLPActor, EnsembleMinQNet, soft_update, hard_update
 
 
 class SACAgent(tf.keras.Model):
