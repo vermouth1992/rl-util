@@ -6,11 +6,14 @@ Common in the runner:
 4. Run
 """
 
+import os
 import random
 from abc import abstractmethod, ABC
 
 import gym
 import numpy as np
+import tensorflow as tf
+import torch
 from gym.wrappers import FrameStack
 from tqdm.auto import trange
 
@@ -118,3 +121,18 @@ class BaseRunner(ABC):
 
     def load_checkpoint(self, path=None):
         pass
+
+
+class TFRunner(BaseRunner):
+    def setup_seed(self, seed):
+        super(TFRunner, self).setup_seed(seed=seed)
+        tf.random.set_seed(seed)
+        os.environ['TF_DETERMINISTIC_OPS'] = '1'
+
+
+class PytorchRunner(BaseRunner):
+    def setup_seed(self, seed):
+        super(PytorchRunner, self).setup_seed(seed)
+        torch.random.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.benchmark = True

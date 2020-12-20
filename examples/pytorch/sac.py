@@ -7,15 +7,13 @@ import time
 
 import numpy as np
 import torch
-
-torch.backends.cudnn.benchmark = True
 from torch import nn
 from tqdm.auto import tqdm
 
 from rlutils.pytorch import soft_update
 from rlutils.pytorch.nn import LagrangeLayer, SquashedGaussianMLPActor, EnsembleMinQNet
 from rlutils.replay_buffers import PyUniformParallelEnvReplayBuffer
-from rlutils.runner import BaseRunner
+from rlutils.runner import PytorchRunner, run_func_as_main
 
 
 class SACAgent(nn.Module):
@@ -140,7 +138,7 @@ class SACAgent(nn.Module):
             return pi_final
 
 
-class SACRunner(BaseRunner):
+class SACRunner(PytorchRunner):
     def get_action_batch(self, o, deterministic=False):
         return self.agent.act_batch(torch.as_tensor(o, dtype=torch.float32, device=self.agent.device),
                                     deterministic).cpu().numpy()
@@ -159,11 +157,6 @@ class SACRunner(BaseRunner):
         t.update(1)
         t.close()
         self.logger.store(TestEpRet=ep_ret, TestEpLen=ep_len)
-
-    def setup_seed(self, seed):
-        super(SACRunner, self).setup_seed(seed=seed)
-        torch.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed)
 
     def setup_replay_buffer(self,
                             replay_size,
@@ -327,28 +320,4 @@ def sac(env_name,
 
 
 if __name__ == '__main__':
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--env_name', type=str, default='Hopper-v2')
-    parser.add_argument('--seed', type=int, default=1)
-    # agent arguments
-    parser.add_argument('--learning_rate', type=float, default=3e-4)
-    parser.add_argument('--alpha', type=float, default=0.2)
-    parser.add_argument('--tau', type=float, default=5e-3)
-    parser.add_argument('--gamma', type=float, default=0.99)
-    parser.add_argument('--nn_size', '-s', type=int, default=256)
-    # training arguments
-    parser.add_argument('--epochs', type=int, default=200)
-    parser.add_argument('--start_steps', type=int, default=1000)
-    parser.add_argument('--replay_size', type=int, default=1000000)
-    parser.add_argument('--steps_per_epoch', type=int, default=5000)
-    parser.add_argument('--batch_size', type=int, default=256)
-    parser.add_argument('--num_test_episodes', type=int, default=20)
-    parser.add_argument('--max_ep_len', type=int, default=1000)
-    parser.add_argument('--update_after', type=int, default=1000)
-    parser.add_argument('--update_every', type=int, default=50)
-    parser.add_argument('--update_per_step', type=int, default=1)
-
-    args = vars(parser.parse_args())
-    sac(**args)
+    run_func_as_main(sac)
