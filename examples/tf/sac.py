@@ -174,7 +174,10 @@ class SACRunner(TFRunner):
                             batch_size):
         obs_dim = self.env.single_observation_space.shape[0]
         act_dim = self.env.single_action_space.shape[0]
-        self.replay_buffer = PyUniformParallelEnvReplayBuffer(obs_dim=obs_dim, act_dim=act_dim, capacity=replay_size,
+        self.replay_buffer = PyUniformParallelEnvReplayBuffer(obs_dim=obs_dim,
+                                                              act_dim=act_dim,
+                                                              act_dtype=np.float32,
+                                                              capacity=replay_size,
                                                               batch_size=batch_size,
                                                               num_parallel_env=self.num_parallel_env)
 

@@ -38,7 +38,7 @@ class SquashedGaussianMLPActor(tf.keras.Model):
 class AtariQNetworkDeepMind(tf.keras.layers.Layer):
     def __init__(self, act_dim, frame_stack=4, dueling=False, data_format='channels_first', scale_input=True):
         super(AtariQNetworkDeepMind, self).__init__()
-        if data_format == 'channel_first':
+        if data_format == 'channels_first':
             self.batch_input_shape = (None, frame_stack, 84, 84)
         else:
             self.batch_input_shape = (None, 84, 84, frame_stack)

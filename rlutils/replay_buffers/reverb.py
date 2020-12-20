@@ -51,9 +51,15 @@ class ReverbReplayBuffer(BaseReplayBuffer):
         self.writer = self.client.writer(max_sequence_length=self.total_horizon)
         self.dataset = self.replay_dataset.batch(self.total_horizon).batch(batch_size).__iter__()
         self._num_items = 0
+        self.replay_capacity = replay_capacity
+
+    @property
+    def capacity(self):
+        return self.replay_capacity
 
     def __del__(self):
-        self.writer.close()
+        if hasattr(self, 'writer') and self.writer is not None:
+            self.writer.close()
 
     def get_table_info(self):
         return self.client.server_info()[self.table_name]
@@ -83,7 +89,6 @@ class ReverbTransitionReplayBuffer(ReverbReplayBuffer):
                  update_horizon=1,
                  frame_stack=1,
                  ):
-        assert frame_stack == 1, 'Only support frame_stack=1 for now.'
         assert replay_capacity % num_parallel_env == 0, 'replay_capacity must be divisible by num_parallel_env'
         assert batch_size % num_parallel_env == 0, 'batch_size must be divisible by num_parallel_env'
 

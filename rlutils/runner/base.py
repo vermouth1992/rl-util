@@ -33,7 +33,8 @@ def _add_frame_stack(wrappers, frame_stack):
             wrappers = [wrappers]
         if frame_stack is not None:
             frame_stack_wrapper = lambda env: FrameStack(env, num_stack=frame_stack)
-            return wrappers.append(frame_stack_wrapper)
+            wrappers.append(frame_stack_wrapper)
+            return wrappers
         else:
             return wrappers
 
