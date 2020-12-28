@@ -8,5 +8,10 @@ setup(
     license='Apache 2.0',
     author='Chi Zhang',
     author_email='czhangseu@gmail.com',
-    description='Reinforcement Learning Utilities'
+    description='Reinforcement Learning Utilities',
+    entry_points={
+        'console_scripts': [
+            'rlplot=rlutils.plot:main'
+        ]
+    }
 )

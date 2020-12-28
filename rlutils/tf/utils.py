@@ -1,10 +1,11 @@
-import tensorflow as tf
 import numpy as np
+import tensorflow as tf
 
 ALLOW_GROWTH = False
 
 
 def set_tf_allow_growth(enable=True):
+    print(f'Setting Tensorflow GPU memory allow_growth={enable}')
     global ALLOW_GROWTH
     if enable != ALLOW_GROWTH:
         physical_devices = tf.config.list_physical_devices('GPU')

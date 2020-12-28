@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 from rlutils.pytorch.distributions import make_independent_normal_from_params, apply_squash_log_prob
-from .utils import build_mlp
+from rlutils.pytorch.functional import build_mlp
 
 
 class SquashedGaussianMLPActor(nn.Module):

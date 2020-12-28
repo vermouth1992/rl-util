@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from .utils import build_mlp
+from rlutils.pytorch.functional import build_mlp
 
 
 class EnsembleMinQNet(nn.Module):

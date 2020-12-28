@@ -7,12 +7,12 @@ import time
 import numpy as np
 import tensorflow as tf
 
-from rlutils.utils.tf_utils import set_tf_allow_growth
+from rlutils.tf.utils import set_tf_allow_growth
 
 set_tf_allow_growth()
 
 from rlutils.runner import TFRunner
-from rlutils.tf.nn import hard_update, build_mlp
+from rlutils.tf.nn.functional import hard_update, build_mlp
 from rlutils.replay_buffers import PyUniformParallelEnvReplayBuffer, ReverbTransitionReplayBuffer
 from rlutils.runner import run_func_as_main
 from rlutils.schedulers import PiecewiseSchedule

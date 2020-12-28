@@ -1,6 +1,6 @@
 import torch.nn as nn
 
-from .layers import EnsembleDense, SqueezeLayer
+from rlutils.pytorch.nn.layers import EnsembleDense, SqueezeLayer
 
 str_to_activation = {
     'relu': nn.ReLU,
@@ -69,6 +69,16 @@ def build_mlp(input_dim, output_dim, mlp_hidden, num_ensembles=None, num_layers=
     return model
 
 
+def soft_update(target: nn.Module, source: nn.Module, tau):
+    for target_param, param in zip(target.parameters(), source.parameters()):
+        target_param.data.copy_(target_param.data * (1.0 - tau) + param.data * tau)
+
+
+def hard_update(target: nn.Module, source: nn.Module):
+    for target_param, param in zip(target.parameters(), source.parameters()):
+        target_param.data.copy_(param.data)
+
+
 if __name__ == '__main__':
     model = build_mlp(input_dim=10, output_dim=2, mlp_hidden=64, num_layers=1)
     print(model)
@@ -76,4 +86,3 @@ if __name__ == '__main__':
     print(model)
     model = build_mlp(input_dim=10, output_dim=2, mlp_hidden=64, num_layers=3, out_activation='tanh')
     print(model)
-

@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-from .utils import build_mlp
+from rlutils.tf.nn.functional import build_mlp
 
 
 class EnsembleMinQNet(tf.keras.Model):

@@ -2,7 +2,7 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 
 from rlutils.tf.distributions import make_independent_normal_from_params, apply_squash_log_prob
-from .utils import build_mlp
+from .functional import build_mlp
 
 LOG_STD_RANGE = (-20., 5.)
 

@@ -55,7 +55,7 @@ class BaseRunner(ABC):
 
     def setup_seed(self, seed):
         np.random.seed(seed)
-        random.seed(seed)
+        random.seed(seed + 1)
 
     def setup_extra(self, **kwargs):
         pass
@@ -99,11 +99,13 @@ class BaseRunner(ABC):
 
         self.env = gym.vector.make(self.env_name, wrappers=self.wrappers, num_envs=self.num_parallel_env,
                                    asynchronous=self.asynchronous)
-        self.env.seed(self.seed)
+        self.env.seed(self.seed + 3)
+        self.env.action_space.seed(self.seed + 4)
         if self.num_test_episodes is not None:
             self.test_env = gym.vector.make(self.env_name, wrappers=self.wrappers, num_envs=self.num_test_episodes,
                                             asynchronous=self.asynchronous)
-            self.test_env.seed(self.seed + 10)
+            self.test_env.seed(self.seed + 5)
+            self.test_env.seed(self.seed + 6)
         else:
             self.test_env = None
 
@@ -127,13 +129,13 @@ class BaseRunner(ABC):
 class TFRunner(BaseRunner):
     def setup_seed(self, seed):
         super(TFRunner, self).setup_seed(seed=seed)
-        tf.random.set_seed(seed)
+        tf.random.set_seed(seed + 2)
         os.environ['TF_DETERMINISTIC_OPS'] = '1'
 
 
 class PytorchRunner(BaseRunner):
     def setup_seed(self, seed):
         super(PytorchRunner, self).setup_seed(seed)
-        torch.random.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed)
+        torch.random.manual_seed(seed + 2)
+        torch.cuda.manual_seed_all(seed + 3)
         torch.backends.cudnn.benchmark = True
