@@ -1,5 +1,6 @@
 import numpy as np
 
+from rlutils.math import flatten_leading_dims
 from .base import BaseReplayBuffer
 
 
@@ -106,13 +107,13 @@ class PyUniformParallelEnvReplayBufferFrame(BaseReplayBuffer):
             Number of memories to be retried for each observation.
         """
         assert update_horizon == 1, f'only support update_horizon=1, Got {update_horizon}'
+        self.size = replay_capacity
 
         self.obs = np.empty([self.size, num_parallel_env] + list(obs_spec.shape), dtype=np.uint8)
         self.action = np.empty([self.size, num_parallel_env] + list(act_spec.shape), dtype=np.int32)
         self.reward = np.empty([self.size, num_parallel_env], dtype=np.float32)
         self.done = np.empty([self.size, num_parallel_env], dtype=np.bool)
 
-        self.size = replay_capacity
         self.frame_history_len = frame_stack
         self.batch_size = batch_size
         self.gamma = gamma
@@ -121,30 +122,37 @@ class PyUniformParallelEnvReplayBufferFrame(BaseReplayBuffer):
         self.next_idx = 0
         self.num_in_buffer = 0
 
-        self.obs = None
-        self.action = None
-        self.reward = None
-        self.done = None
+    def __len__(self):
+        return self.num_in_buffer
+
+    @property
+    def capacity(self):
+        return self.size
 
     def can_sample(self, batch_size):
         """Returns true if `batch_size` different transitions can be sampled from the buffer."""
         return batch_size + 1 <= self.num_in_buffer
 
     def _encode_sample(self, idxes):
-        all_obs_batch = np.stack([self._encode_observation(idx + 1, self.frame_history_len + 1) for idx in idxes], 0)
-        obs_batch = all_obs_batch[:, :, :, 0:self.frame_history_len]
+        all_obs_batch = np.stack([self._encode_observation(idx + 1, self.frame_history_len + 1) for idx in idxes],
+                                 axis=0)  # (None, num_envs, 5, 84, 84)
+        obs_batch = all_obs_batch[:, :, 0:self.frame_history_len, :, :]
         act_batch = self.action[idxes]
         rew_batch = self.reward[idxes]
-        next_obs_batch = all_obs_batch[:, :, :, 1:self.frame_history_len + 1]
+        next_obs_batch = all_obs_batch[:, :, 1:self.frame_history_len + 1, :, :]
         done_mask = self.done[idxes].astype(np.float32)
 
-        return dict(
+        data = dict(
             obs=obs_batch,
             act=act_batch,
-            obs2=next_obs_batch,
+            next_obs=next_obs_batch,
             done=done_mask,
             rew=rew_batch,
         )
+        for k, v in data.items():
+            data[k] = flatten_leading_dims(v, n_dims=2)
+
+        return data
 
     def sample(self):
         """Sample `batch_size` different transitions.
@@ -195,11 +203,10 @@ class PyUniformParallelEnvReplayBufferFrame(BaseReplayBuffer):
             frames = [np.zeros_like(self.obs[0]) for _ in range(missing_context)]
             for idx in range(start_idx, end_idx):
                 frames.append(self.obs[idx % self.size])
-            return np.concatenate(frames, 2)
+            return np.stack(frames, axis=1)  # (num_envs, num_frames, 84, 84)
         else:
             # this optimization has potential to saves about 30% compute time \o/
-            img_h, img_w = self.obs.shape[1], self.obs.shape[2]
-            return self.obs[start_idx:end_idx].transpose(1, 2, 0, 3).reshape(img_h, img_w, -1)
+            return self.obs[start_idx:end_idx].transpose(1, 0, 2, 3)  # (num_envs, num_frames, 84, 84)
 
     def add(self, data, priority=1.0):
         obs = data['obs']
