@@ -17,8 +17,9 @@ import torch
 from gym.wrappers import FrameStack
 from tqdm.auto import trange
 
+import rlutils.gym
 from rlutils.logx import EpochLogger
-from .run_utils import setup_logger_kwargs
+from rlutils.runner.run_utils import setup_logger_kwargs
 
 
 def _add_frame_stack(wrappers, frame_stack):
@@ -97,8 +98,8 @@ class BaseRunner(ABC):
         self.env_name = env_name
         self.wrappers = _add_frame_stack(wrappers, frame_stack)
 
-        self.env = gym.vector.make(self.env_name, wrappers=self.wrappers, num_envs=self.num_parallel_env,
-                                   asynchronous=self.asynchronous)
+        self.env = rlutils.gym.vector.make(self.env_name, wrappers=self.wrappers, num_envs=self.num_parallel_env,
+                                           asynchronous=self.asynchronous)
         self.env.seed(self.seed + 3)
         self.env.action_space.seed(self.seed + 4)
         if self.num_test_episodes is not None:

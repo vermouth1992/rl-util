@@ -28,6 +28,7 @@ class TD3Agent(tf.keras.Model):
         self.obs_spec = obs_spec
         self.act_spec = act_spec
         self.act_dim = self.act_spec.shape[0]
+        self.act_lim = 1.
         if len(self.obs_spec.shape) == 1:  # 1D observation
             obs_dim = self.obs_spec.shape[0]
         else:
@@ -37,12 +38,9 @@ class TD3Agent(tf.keras.Model):
         self.noise_clip = noise_clip
         self.policy_net = build_mlp(obs_dim, self.act_dim, mlp_hidden=policy_mlp_hidden, num_layers=3,
                                     out_activation='tanh')
-        self.target_policy_net = build_mlp(obs_dim, self.act_dim, mlp_hidden=policy_mlp_hidden, num_layers=3,
-                                           out_activation='tanh')
         self.q_network = EnsembleMinQNet(obs_dim, self.act_dim, q_mlp_hidden)
         self.target_q_network = EnsembleMinQNet(obs_dim, self.act_dim, q_mlp_hidden)
         hard_update(self.target_q_network, self.q_network)
-        hard_update(self.target_policy_net, self.policy_net)
         self.policy_optimizer = tf.keras.optimizers.Adam(lr=policy_lr)
         self.q_optimizer = tf.keras.optimizers.Adam(lr=q_lr)
         self.tau = tau
@@ -59,18 +57,17 @@ class TD3Agent(tf.keras.Model):
 
     def update_target(self):
         soft_update(self.target_q_network, self.q_network, self.tau)
-        soft_update(self.target_policy_net, self.policy_net, self.tau)
 
     @tf.function
     def _update_nets(self, obs, actions, next_obs, done, reward):
         print(f'Tracing _update_nets with obs={obs}, actions={actions}')
         # compute target q
-        next_action = self.target_policy_net(next_obs)
+        next_action = self.policy_net(next_obs)
         # Target policy smoothing
         epsilon = tf.random.normal(shape=tf.shape(next_action)) * self.target_noise
         epsilon = tf.clip_by_value(epsilon, -self.noise_clip, self.noise_clip)
         next_action = next_action + epsilon
-        next_action = tf.clip_by_value(next_action, -1., 1.)
+        next_action = tf.clip_by_value(next_action, -self.act_lim, self.act_lim)
         target_q_values = self.target_q_network((next_obs, next_action), training=False)
         q_target = reward + self.gamma * (1.0 - done) * target_q_values
         # q loss
@@ -133,7 +130,7 @@ class TD3Agent(tf.keras.Model):
         else:
             noise = tf.random.normal(shape=[tf.shape(obs)[0], self.act_dim], dtype=tf.float32) * self.actor_noise
             pi_final = pi_final + noise
-            pi_final = tf.clip_by_value(pi_final, -1., 1.)
+            pi_final = tf.clip_by_value(pi_final, -self.act_lim, self.act_lim)
             return pi_final
 
 
@@ -241,6 +238,7 @@ class TD3Runner(TFRunner):
             self.logger.store(EpRet=self.ep_ret[d], EpLen=self.ep_len[d])
             self.ep_ret[d] = 0
             self.ep_len[d] = 0
+            self.o = self.env.reset_done()
 
         # Update handling
         if global_env_steps >= self.update_after and global_env_steps % self.update_every == 0:

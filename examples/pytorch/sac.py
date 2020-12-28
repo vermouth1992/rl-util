@@ -245,6 +245,7 @@ class SACRunner(PytorchRunner):
             self.logger.store(EpRet=self.ep_ret[d], EpLen=self.ep_len[d])
             self.ep_ret[d] = 0
             self.ep_len[d] = 0
+            self.o = self.env.reset_done()
 
         # Update handling
         if global_env_steps >= self.update_after and global_env_steps % self.update_every == 0:
