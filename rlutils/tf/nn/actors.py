@@ -1,13 +1,46 @@
+import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
 
-from rlutils.tf.distributions import make_independent_normal_from_params, apply_squash_log_prob
+from rlutils.tf.distributions import make_independent_normal_from_params, apply_squash_log_prob, \
+    make_independent_beta_from_params
 from .functional import build_mlp
 
 LOG_STD_RANGE = (-20., 5.)
+EPS = 1e-5
 
 
-class SquashedGaussianMLPActor(tf.keras.Model):
+class CenteredBetaMLPActor(tf.keras.layers.Layer):
+    """ Note that Beta distribution is 2x slower than SquashedGaussian"""
+
+    def __init__(self, ob_dim, ac_dim, mlp_hidden):
+        super(CenteredBetaMLPActor, self).__init__()
+        self.net = build_mlp(ob_dim, ac_dim * 2, mlp_hidden)
+        self.ac_dim = ac_dim
+        self.pi_dist_layer = tfp.layers.DistributionLambda(
+            make_distribution_fn=lambda t: make_independent_beta_from_params(t))
+        self.build(input_shape=[(None, ob_dim), (None,)])
+
+    def call(self, inputs):
+        inputs, deterministic = inputs
+        # print(f'Tracing call with inputs={inputs}, deterministic={deterministic}')
+        params = self.net(inputs)
+        pi_distribution = self.pi_dist_layer(params)
+        pi_action = self.get_pi_action(deterministic, pi_distribution)
+        pi_action = tf.clip_by_value(pi_action, -1 + EPS, 1. - EPS)
+        logp_pi = pi_distribution.log_prob(pi_action)
+        pi_action_final = (pi_action - 0.5) * 2.
+        logp_pi = logp_pi - np.log(2.)
+        return pi_action_final, logp_pi, pi_action, pi_distribution
+
+    @tf.function
+    def get_pi_action(self, deterministic, pi_distribution):
+        print(f'Tracing get_pi_action with deterministic={deterministic}')
+        return tf.cond(pred=deterministic, true_fn=lambda: pi_distribution.mean(),
+                       false_fn=lambda: pi_distribution.sample())
+
+
+class SquashedGaussianMLPActor(tf.keras.layers.Layer):
     def __init__(self, ob_dim, ac_dim, mlp_hidden):
         super(SquashedGaussianMLPActor, self).__init__()
         self.net = build_mlp(ob_dim, ac_dim * 2, mlp_hidden)

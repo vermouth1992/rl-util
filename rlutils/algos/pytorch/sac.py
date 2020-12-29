@@ -2,22 +2,24 @@
 Implement soft actor critic agent here
 """
 
+import copy
 import time
 
 import numpy as np
-import tensorflow as tf
+import torch
+from torch import nn
 from tqdm.auto import tqdm
 
+from rlutils.pytorch import soft_update
+from rlutils.pytorch.nn import LagrangeLayer, SquashedGaussianMLPActor, EnsembleMinQNet
 from rlutils.replay_buffers import PyUniformParallelEnvReplayBuffer
-from rlutils.runner import TFRunner, run_func_as_main
-from rlutils.tf.nn.functional import soft_update, hard_update
-from rlutils.tf.nn import LagrangeLayer, SquashedGaussianMLPActor, EnsembleMinQNet
+from rlutils.runner import PytorchRunner, run_func_as_main
 
 
-class SACAgent(tf.keras.Model):
+class SACAgent(nn.Module):
     def __init__(self,
-                 obs_spec,
-                 act_spec,
+                 ob_dim,
+                 ac_dim,
                  policy_mlp_hidden=128,
                  policy_lr=3e-4,
                  q_mlp_hidden=256,
@@ -29,24 +31,17 @@ class SACAgent(tf.keras.Model):
                  target_entropy=None,
                  ):
         super(SACAgent, self).__init__()
-        self.obs_spec = obs_spec
-        self.act_spec = act_spec
-        act_dim = self.act_spec.shape[0]
-        if len(self.obs_spec.shape) == 1:  # 1D observation
-            obs_dim = self.obs_spec.shape[0]
-            self.policy_net = SquashedGaussianMLPActor(obs_dim, act_dim, policy_mlp_hidden)
-            self.q_network = EnsembleMinQNet(obs_dim, act_dim, q_mlp_hidden)
-            self.target_q_network = EnsembleMinQNet(obs_dim, act_dim, q_mlp_hidden)
-        else:
-            raise NotImplementedError
-        hard_update(self.target_q_network, self.q_network)
+        self.ob_dim = ob_dim
+        self.ac_dim = ac_dim
+        self.policy_net = SquashedGaussianMLPActor(ob_dim, ac_dim, policy_mlp_hidden)
+        self.q_network = EnsembleMinQNet(ob_dim, ac_dim, q_mlp_hidden)
+        self.target_q_network = copy.deepcopy(self.q_network)
+        self.alpha_net = LagrangeLayer(initial_value=alpha)
 
-        self.policy_optimizer = tf.keras.optimizers.Adam(lr=policy_lr)
-        self.q_optimizer = tf.keras.optimizers.Adam(lr=q_lr)
-
-        self.log_alpha = LagrangeLayer(initial_value=alpha)
-        self.alpha_optimizer = tf.keras.optimizers.Adam(lr=alpha_lr)
-        self.target_entropy = -act_dim / 2 if target_entropy is None else target_entropy
+        self.policy_optimizer = torch.optim.Adam(params=self.policy_net.parameters(), lr=policy_lr)
+        self.q_optimizer = torch.optim.Adam(params=self.q_network.parameters(), lr=q_lr)
+        self.alpha_optimizer = torch.optim.Adam(params=self.alpha_net.parameters(), lr=alpha_lr)
+        self.target_entropy = -ac_dim / 2 if target_entropy is None else target_entropy
 
         self.tau = tau
         self.gamma = gamma
@@ -66,7 +61,6 @@ class SACAgent(tf.keras.Model):
     def update_target(self):
         soft_update(self.target_q_network, self.q_network, self.tau)
 
-    @tf.function
     def _update_nets(self, obs, actions, next_obs, done, reward):
         """ Sample a mini-batch from replay buffer and update the network
 
@@ -80,36 +74,37 @@ class SACAgent(tf.keras.Model):
         Returns: None
 
         """
-        alpha = self.log_alpha()
-
-        next_action, next_action_log_prob, _, _ = self.policy_net((next_obs, False))
-        target_q_values = self.target_q_network((next_obs, next_action), training=False) - alpha * next_action_log_prob
-        q_target = reward + self.gamma * (1.0 - done) * target_q_values
+        with torch.no_grad():
+            alpha = self.alpha_net()
+            next_action, next_action_log_prob, _, _ = self.policy_net((next_obs, False))
+            target_q_values = self.target_q_network((next_obs, next_action),
+                                                    training=False) - alpha * next_action_log_prob
+            q_target = reward + self.gamma * (1.0 - done) * target_q_values
 
         # q loss
-        with tf.GradientTape() as q_tape:
-            q_values = self.q_network((obs, actions), training=True)  # (num_ensembles, None)
-            q_values_loss = 0.5 * tf.square(tf.expand_dims(q_target, axis=0) - q_values)
-            # (num_ensembles, None)
-            q_values_loss = tf.reduce_sum(q_values_loss, axis=0)  # (None,)
-            # apply importance weights
-            q_values_loss = tf.reduce_mean(q_values_loss)
-        q_gradients = q_tape.gradient(q_values_loss, self.q_network.trainable_variables)
-        self.q_optimizer.apply_gradients(zip(q_gradients, self.q_network.trainable_variables))
+        q_values = self.q_network((obs, actions), training=True)  # (num_ensembles, None)
+        q_values_loss = 0.5 * torch.square(torch.unsqueeze(q_target, dim=0) - q_values)
+        # (num_ensembles, None)
+        q_values_loss = torch.sum(q_values_loss, dim=0)  # (None,)
+        # apply importance weights
+        q_values_loss = torch.mean(q_values_loss)
+        self.q_optimizer.zero_grad()
+        q_values_loss.backward()
+        self.q_optimizer.step()
 
         # policy loss
-        with tf.GradientTape() as policy_tape:
-            action, log_prob, _, _ = self.policy_net((obs, False))
-            q_values_pi_min = self.q_network((obs, action), training=False)
-            policy_loss = tf.reduce_mean(log_prob * alpha - q_values_pi_min)
-        policy_gradients = policy_tape.gradient(policy_loss, self.policy_net.trainable_variables)
-        self.policy_optimizer.apply_gradients(zip(policy_gradients, self.policy_net.trainable_variables))
+        action, log_prob, _, _ = self.policy_net((obs, False))
+        q_values_pi_min = self.q_network((obs, action), training=False)
+        policy_loss = torch.mean(log_prob * alpha - q_values_pi_min)
+        self.policy_optimizer.zero_grad()
+        policy_loss.backward()
+        self.policy_optimizer.step()
 
-        with tf.GradientTape() as alpha_tape:
-            alpha = self.log_alpha()
-            alpha_loss = -tf.reduce_mean(alpha * (log_prob + self.target_entropy))
-        alpha_gradient = alpha_tape.gradient(alpha_loss, self.log_alpha.trainable_variables)
-        self.alpha_optimizer.apply_gradients(zip(alpha_gradient, self.log_alpha.trainable_variables))
+        alpha = self.alpha_net()
+        alpha_loss = -torch.mean(alpha * (log_prob.detach() + self.target_entropy))
+        self.alpha_optimizer.zero_grad()
+        alpha_loss.backward()
+        self.alpha_optimizer.step()
 
         info = dict(
             Q1Vals=q_values[0],
@@ -123,31 +118,30 @@ class SACAgent(tf.keras.Model):
         return info
 
     def update(self, obs, act, next_obs, done, rew, update_target=True):
-        obs = tf.convert_to_tensor(obs, dtype=tf.float32)
-        act = tf.convert_to_tensor(act, dtype=tf.float32)
-        next_obs = tf.convert_to_tensor(next_obs, dtype=tf.float32)
-        done = tf.convert_to_tensor(done, dtype=tf.float32)
-        rew = tf.convert_to_tensor(rew, dtype=tf.float32)
+        obs = torch.as_tensor(obs, dtype=torch.float32, device=self.device)
+        act = torch.as_tensor(act, dtype=torch.float32, device=self.device)
+        next_obs = torch.as_tensor(next_obs, dtype=torch.float32, device=self.device)
+        done = torch.as_tensor(done, dtype=torch.float32, device=self.device)
+        rew = torch.as_tensor(rew, dtype=torch.float32, device=self.device)
 
         info = self._update_nets(obs, act, next_obs, done, rew)
         for key, item in info.items():
-            info[key] = item.numpy()
+            info[key] = item.detach().cpu().numpy()
         self.logger.store(**info)
 
         if update_target:
             self.update_target()
 
-    @tf.function
     def act_batch(self, obs, deterministic):
-        print(f'Tracing sac act_batch with obs {obs}')
-        pi_final = self.policy_net((obs, deterministic))[0]
-        return pi_final
+        with torch.no_grad():
+            pi_final = self.policy_net.select_action((obs, deterministic))
+            return pi_final
 
 
-class SACRunner(TFRunner):
+class SACRunner(PytorchRunner):
     def get_action_batch(self, o, deterministic=False):
-        return self.agent.act_batch(tf.convert_to_tensor(o, dtype=tf.float32),
-                                    deterministic).numpy()
+        return self.agent.act_batch(torch.as_tensor(o, dtype=torch.float32, device=self.agent.device),
+                                    deterministic).cpu().numpy()
 
     def test_agent(self):
         o, d, ep_ret, ep_len = self.test_env.reset(), np.zeros(shape=self.num_test_episodes, dtype=np.bool), \
@@ -187,11 +181,9 @@ class SACRunner(TFRunner):
                     gamma=0.99,
                     target_entropy=None,
                     ):
-        obs_spec = tf.TensorSpec(shape=self.env.single_observation_space.shape,
-                                 dtype=tf.float32)
-        act_spec = tf.TensorSpec(shape=self.env.single_action_space.shape,
-                                 dtype=tf.float32)
-        self.agent = SACAgent(obs_spec=obs_spec, act_spec=act_spec,
+        obs_dim = self.env.single_observation_space.shape[0]
+        act_dim = self.env.single_action_space.shape[0]
+        self.agent = SACAgent(ob_dim=obs_dim, ac_dim=act_dim,
                               policy_mlp_hidden=policy_mlp_hidden,
                               policy_lr=policy_lr,
                               q_mlp_hidden=q_mlp_hidden,
@@ -202,6 +194,8 @@ class SACRunner(TFRunner):
                               gamma=gamma,
                               target_entropy=target_entropy,
                               )
+        self.agent.device = torch.device("cuda")
+        self.agent.to(self.agent.device)
         self.agent.set_logger(self.logger)
 
     def setup_extra(self,
@@ -286,7 +280,7 @@ def sac(env_name,
         epochs=200,
         start_steps=10000,
         update_after=1000,
-        update_every=50,
+        update_every=1,
         update_per_step=1,
         batch_size=256,
         num_parallel_env=1,

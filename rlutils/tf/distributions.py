@@ -3,6 +3,7 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 
 tfd = tfp.distributions
+tfb = tfp.bijectors
 
 
 def apply_squash_log_prob(raw_log_prob, x):
@@ -32,5 +33,19 @@ def make_independent_normal_from_params(params, min_log_scale=None, max_log_scal
 
 def make_independent_normal(loc, scale, ndims=1):
     distribution = tfd.Independent(distribution=tfd.Normal(loc=loc, scale=scale),
+                                   reinterpreted_batch_ndims=ndims)
+    return distribution
+
+
+def make_independent_beta_from_params(params):
+    params = tf.math.softplus(params) + 1.
+    c1, c2 = tf.split(params, 2, axis=-1)
+    distribution = make_independent_beta(c1, c2, ndims=1)
+    return distribution
+
+
+def make_independent_beta(c1, c2, ndims=1):
+    beta_distribution = tfd.Beta(concentration1=c1, concentration0=c2, validate_args=True)
+    distribution = tfd.Independent(beta_distribution,
                                    reinterpreted_batch_ndims=ndims)
     return distribution

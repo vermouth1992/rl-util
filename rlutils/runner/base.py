@@ -49,6 +49,7 @@ class BaseRunner(ABC):
         self.seed = seed
         self.global_step = 0
         self.max_seed = sys.maxsize
+        self.setup_seed(seed)
 
     def setup_logger(self, config):
         logger_kwargs = setup_logger_kwargs(exp_name=self.exp_name, data_dir=self.logger_path, seed=self.seed)

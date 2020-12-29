@@ -1,50 +1,59 @@
+"""
+Implement soft actor critic agent here
+"""
+
 import time
 
 import numpy as np
 import tensorflow as tf
-from rlutils.replay_buffers import PyUniformParallelEnvReplayBuffer
-from rlutils.runner import TFRunner, run_func_as_main
-from rlutils.tf.nn import EnsembleMinQNet
-from rlutils.tf.nn.functional import soft_update, hard_update, build_mlp
 from tqdm.auto import tqdm
 
+from rlutils.replay_buffers import PyUniformParallelEnvReplayBuffer
+from rlutils.runner import TFRunner, run_func_as_main
+from rlutils.tf.nn import LagrangeLayer, SquashedGaussianMLPActor, EnsembleMinQNet, CenteredBetaMLPActor
+from rlutils.tf.nn.functional import soft_update, hard_update
 
-class TD3Agent(tf.keras.Model):
+
+class SACAgent(tf.keras.Model):
     def __init__(self,
                  obs_spec,
                  act_spec,
+                 policy_type='gaussian',
                  policy_mlp_hidden=128,
                  policy_lr=3e-4,
                  q_mlp_hidden=256,
                  q_lr=3e-4,
+                 alpha=1.0,
+                 alpha_lr=1e-3,
                  tau=5e-3,
                  gamma=0.99,
-                 actor_noise=0.1,
-                 target_noise=0.2,
-                 noise_clip=0.5
+                 target_entropy=None,
                  ):
-        super(TD3Agent, self).__init__()
+        super(SACAgent, self).__init__()
         self.obs_spec = obs_spec
         self.act_spec = act_spec
-        self.act_dim = self.act_spec.shape[0]
-        self.act_lim = 1.
+        act_dim = self.act_spec.shape[0]
         if len(self.obs_spec.shape) == 1:  # 1D observation
             obs_dim = self.obs_spec.shape[0]
+            if policy_type == 'gaussian':
+                self.policy_net = SquashedGaussianMLPActor(obs_dim, act_dim, policy_mlp_hidden)
+            elif policy_type == 'beta':
+                self.policy_net = CenteredBetaMLPActor(obs_dim, act_dim, policy_mlp_hidden)
+            else:
+                raise NotImplementedError
+            self.q_network = EnsembleMinQNet(obs_dim, act_dim, q_mlp_hidden)
+            self.target_q_network = EnsembleMinQNet(obs_dim, act_dim, q_mlp_hidden)
         else:
             raise NotImplementedError
-        self.actor_noise = actor_noise
-        self.target_noise = target_noise
-        self.noise_clip = noise_clip
-        self.policy_net = build_mlp(obs_dim, self.act_dim, mlp_hidden=policy_mlp_hidden, num_layers=3,
-                                    out_activation='tanh')
-        self.target_policy_net = build_mlp(obs_dim, self.act_dim, mlp_hidden=policy_mlp_hidden, num_layers=3,
-                                           out_activation='tanh')
-        self.q_network = EnsembleMinQNet(obs_dim, self.act_dim, q_mlp_hidden)
-        self.target_q_network = EnsembleMinQNet(obs_dim, self.act_dim, q_mlp_hidden)
         hard_update(self.target_q_network, self.q_network)
-        hard_update(self.target_policy_net, self.policy_net)
+
         self.policy_optimizer = tf.keras.optimizers.Adam(lr=policy_lr)
         self.q_optimizer = tf.keras.optimizers.Adam(lr=q_lr)
+
+        self.log_alpha = LagrangeLayer(initial_value=alpha)
+        self.alpha_optimizer = tf.keras.optimizers.Adam(lr=alpha_lr)
+        self.target_entropy = -act_dim if target_entropy is None else target_entropy
+
         self.tau = tau
         self.gamma = gamma
 
@@ -54,26 +63,35 @@ class TD3Agent(tf.keras.Model):
     def log_tabular(self):
         self.logger.log_tabular('Q1Vals', with_min_and_max=False)
         self.logger.log_tabular('Q2Vals', with_min_and_max=False)
+        self.logger.log_tabular('LogPi', average_only=True)
         self.logger.log_tabular('LossPi', average_only=True)
         self.logger.log_tabular('LossQ', average_only=True)
+        self.logger.log_tabular('Alpha', average_only=True)
+        self.logger.log_tabular('LossAlpha', average_only=True)
 
-    @tf.function
     def update_target(self):
         soft_update(self.target_q_network, self.q_network, self.tau)
-        soft_update(self.target_policy_net, self.policy_net, self.tau)
 
     @tf.function
     def _update_nets(self, obs, actions, next_obs, done, reward):
-        print(f'Tracing _update_nets with obs={obs}, actions={actions}')
-        # compute target q
-        next_action = self.target_policy_net(next_obs)
-        # Target policy smoothing
-        epsilon = tf.random.normal(shape=[tf.shape(obs)[0], self.ac_dim]) * self.target_noise
-        epsilon = tf.clip_by_value(epsilon, -self.noise_clip, self.noise_clip)
-        next_action = next_action + epsilon
-        next_action = tf.clip_by_value(next_action, -self.act_lim, self.act_lim)
-        target_q_values = self.target_q_network((next_obs, next_action), training=False)
+        """ Sample a mini-batch from replay buffer and update the network
+
+        Args:
+            obs: (batch_size, ob_dim)
+            actions: (batch_size, action_dim)
+            next_obs: (batch_size, ob_dim)
+            done: (batch_size,)
+            reward: (batch_size,)
+
+        Returns: None
+
+        """
+        alpha = self.log_alpha()
+
+        next_action, next_action_log_prob, _, _ = self.policy_net((next_obs, False))
+        target_q_values = self.target_q_network((next_obs, next_action), training=False) - alpha * next_action_log_prob
         q_target = reward + self.gamma * (1.0 - done) * target_q_values
+
         # q loss
         with tf.GradientTape() as q_tape:
             q_values = self.q_network((obs, actions), training=True)  # (num_ensembles, None)
@@ -85,24 +103,27 @@ class TD3Agent(tf.keras.Model):
         q_gradients = q_tape.gradient(q_values_loss, self.q_network.trainable_variables)
         self.q_optimizer.apply_gradients(zip(q_gradients, self.q_network.trainable_variables))
 
+        # policy loss
+        with tf.GradientTape() as policy_tape:
+            action, log_prob, _, _ = self.policy_net((obs, False))
+            q_values_pi_min = self.q_network((obs, action), training=False)
+            policy_loss = tf.reduce_mean(log_prob * alpha - q_values_pi_min)
+        policy_gradients = policy_tape.gradient(policy_loss, self.policy_net.trainable_variables)
+        self.policy_optimizer.apply_gradients(zip(policy_gradients, self.policy_net.trainable_variables))
+
+        with tf.GradientTape() as alpha_tape:
+            alpha = self.log_alpha()
+            alpha_loss = -tf.reduce_mean(alpha * (log_prob + self.target_entropy))
+        alpha_gradient = alpha_tape.gradient(alpha_loss, self.log_alpha.trainable_variables)
+        self.alpha_optimizer.apply_gradients(zip(alpha_gradient, self.log_alpha.trainable_variables))
+
         info = dict(
             Q1Vals=q_values[0],
             Q2Vals=q_values[1],
+            LogPi=log_prob,
+            Alpha=alpha,
             LossQ=q_values_loss,
-        )
-        return info
-
-    @tf.function
-    def _update_actor(self, obs):
-        print(f'Tracing _update_actor with obs={obs}')
-        # policy loss
-        with tf.GradientTape() as policy_tape:
-            a = self.policy_net(obs)
-            q = self.q_network((obs, a))
-            policy_loss = -tf.reduce_mean(q, axis=0)
-        policy_gradients = policy_tape.gradient(policy_loss, self.policy_net.trainable_variables)
-        self.policy_optimizer.apply_gradients(zip(policy_gradients, self.policy_net.trainable_variables))
-        info = dict(
+            LossAlpha=alpha_loss,
             LossPi=policy_loss,
         )
         return info
@@ -115,30 +136,21 @@ class TD3Agent(tf.keras.Model):
         rew = tf.convert_to_tensor(rew, dtype=tf.float32)
 
         info = self._update_nets(obs, act, next_obs, done, rew)
-
-        if update_target:
-            actor_info = self._update_actor(obs)
-            info.update(actor_info)
-            self.update_target()
-
         for key, item in info.items():
             info[key] = item.numpy()
         self.logger.store(**info)
 
+        if update_target:
+            self.update_target()
+
     @tf.function
     def act_batch(self, obs, deterministic):
-        print(f'Tracing td3 act_batch with obs {obs}')
-        pi_final = self.policy_net(obs)
-        if deterministic:
-            return pi_final
-        else:
-            noise = tf.random.normal(shape=[tf.shape(obs)[0], self.act_dim], dtype=tf.float32) * self.actor_noise
-            pi_final = pi_final + noise
-            pi_final = tf.clip_by_value(pi_final, -self.act_lim, self.act_lim)
-            return pi_final
+        print(f'Tracing sac act_batch with obs {obs}')
+        pi_final = self.policy_net((obs, deterministic))[0]
+        return pi_final
 
 
-class TD3Runner(TFRunner):
+class SACRunner(TFRunner):
     def get_action_batch(self, o, deterministic=False):
         return self.agent.act_batch(tf.convert_to_tensor(o, dtype=tf.float32),
                                     deterministic).numpy()
@@ -175,22 +187,27 @@ class TD3Runner(TFRunner):
                     policy_lr=3e-4,
                     q_mlp_hidden=256,
                     q_lr=3e-4,
+                    alpha=1.0,
+                    alpha_lr=1e-3,
                     tau=5e-3,
                     gamma=0.99,
-                    actor_noise=0.1,
-                    target_noise=0.2,
-                    noise_clip=0.5
+                    target_entropy=None,
                     ):
         obs_spec = tf.TensorSpec(shape=self.env.single_observation_space.shape,
                                  dtype=tf.float32)
         act_spec = tf.TensorSpec(shape=self.env.single_action_space.shape,
                                  dtype=tf.float32)
-        self.agent = TD3Agent(obs_spec=obs_spec, act_spec=act_spec,
+        self.agent = SACAgent(obs_spec=obs_spec, act_spec=act_spec,
                               policy_mlp_hidden=policy_mlp_hidden,
-                              policy_lr=policy_lr, q_mlp_hidden=q_mlp_hidden,
-                              q_lr=q_lr, tau=tau, gamma=gamma,
-                              actor_noise=actor_noise, target_noise=target_noise,
-                              noise_clip=noise_clip)
+                              policy_lr=policy_lr,
+                              q_mlp_hidden=q_mlp_hidden,
+                              q_lr=q_lr,
+                              alpha=alpha,
+                              alpha_lr=alpha_lr,
+                              tau=tau,
+                              gamma=gamma,
+                              target_entropy=target_entropy,
+                              )
         self.agent.set_logger(self.logger)
 
     def setup_extra(self,
@@ -198,19 +215,18 @@ class TD3Runner(TFRunner):
                     max_ep_len,
                     update_after,
                     update_every,
-                    update_per_step,
-                    policy_delay):
+                    update_per_step):
         self.start_steps = start_steps
         self.max_ep_len = max_ep_len
         self.update_after = update_after
         self.update_every = update_every
         self.update_per_step = update_per_step
-        self.policy_delay = policy_delay
 
     def run_one_step(self):
         global_env_steps = self.global_step * self.num_parallel_env
         if global_env_steps >= self.start_steps:
             a = self.get_action_batch(self.o, deterministic=False)
+            assert not np.any(np.isnan(a)), f'NAN action: {a}'
         else:
             a = self.env.action_space.sample()
 
@@ -248,7 +264,7 @@ class TD3Runner(TFRunner):
         if global_env_steps >= self.update_after and global_env_steps % self.update_every == 0:
             for j in range(self.update_every * self.update_per_step):
                 batch = self.replay_buffer.sample()
-                self.agent.update(**batch, update_target=j % self.policy_delay == 0)
+                self.agent.update(**batch, update_target=True)
 
     def on_epoch_end(self, epoch):
         self.test_agent()
@@ -271,25 +287,22 @@ class TD3Runner(TFRunner):
         self.ep_len = np.zeros(shape=self.num_parallel_env, dtype=np.int64)
 
 
-def td3(env_name,
+def sac(env_name,
         max_ep_len=1000,
         steps_per_epoch=5000,
         epochs=200,
         start_steps=10000,
         update_after=1000,
-        update_every=50,
+        update_every=1,
         update_per_step=1,
-        policy_delay=2,
         batch_size=256,
         num_parallel_env=1,
         num_test_episodes=20,
         seed=1,
         # sac args
         nn_size=256,
-        learning_rate=1e-3,
-        actor_noise=0.1,
-        target_noise=0.2,
-        noise_clip=0.5,
+        learning_rate=3e-4,
+        alpha=0.2,
         tau=5e-3,
         gamma=0.99,
         # replay
@@ -297,27 +310,25 @@ def td3(env_name,
         ):
     config = locals()
 
-    runner = TD3Runner(seed=seed, steps_per_epoch=steps_per_epoch // num_parallel_env, epochs=epochs,
-                       exp_name=f'{env_name}_td3_test', logger_path='data')
+    runner = SACRunner(seed=seed, steps_per_epoch=steps_per_epoch // num_parallel_env, epochs=epochs,
+                       exp_name=f'{env_name}_sac_test', logger_path='data')
     runner.setup_env(env_name=env_name, num_parallel_env=num_parallel_env, frame_stack=None, wrappers=None,
                      asynchronous=False, num_test_episodes=num_test_episodes)
-    runner.setup_seed(seed)
     runner.setup_logger(config=config)
     runner.setup_agent(policy_mlp_hidden=nn_size,
                        policy_lr=learning_rate,
                        q_mlp_hidden=nn_size,
                        q_lr=learning_rate,
+                       alpha=alpha,
+                       alpha_lr=learning_rate,
                        tau=tau,
                        gamma=gamma,
-                       actor_noise=actor_noise,
-                       target_noise=target_noise,
-                       noise_clip=noise_clip)
+                       target_entropy=None)
     runner.setup_extra(start_steps=start_steps,
                        max_ep_len=max_ep_len,
                        update_after=update_after,
                        update_every=update_every,
-                       update_per_step=update_per_step,
-                       policy_delay=policy_delay)
+                       update_per_step=update_per_step)
     runner.setup_replay_buffer(replay_size=replay_size,
                                batch_size=batch_size)
 
@@ -325,4 +336,4 @@ def td3(env_name,
 
 
 if __name__ == '__main__':
-    run_func_as_main(td3)
+    run_func_as_main(sac)

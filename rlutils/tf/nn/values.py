@@ -3,7 +3,7 @@ import tensorflow as tf
 from rlutils.tf.nn.functional import build_mlp
 
 
-class EnsembleMinQNet(tf.keras.Model):
+class EnsembleMinQNet(tf.keras.layers.Layer):
     def __init__(self, ob_dim, ac_dim, mlp_hidden, num_ensembles=2, num_layers=3):
         super(EnsembleMinQNet, self).__init__()
         self.ob_dim = ob_dim
