@@ -1,18 +1,27 @@
+"""
+Twin Delayed DDPG. https://arxiv.org/abs/1802.09477.
+To obtain DDPG, set target smooth to zero and Q network ensembles to 1.
+"""
+
 import time
 
 import numpy as np
 import tensorflow as tf
+from tqdm.auto import tqdm
+
 from rlutils.replay_buffers import PyUniformParallelEnvReplayBuffer
 from rlutils.runner import TFRunner, run_func_as_main
+from rlutils.tf.functional import soft_update, hard_update, compute_target_value, to_numpy_or_python_type
 from rlutils.tf.nn import EnsembleMinQNet
-from rlutils.tf.nn.functional import soft_update, hard_update, build_mlp
-from tqdm.auto import tqdm
+from rlutils.tf.nn.functional import build_mlp
 
 
 class TD3Agent(tf.keras.Model):
     def __init__(self,
                  obs_spec,
                  act_spec,
+                 use_target_policy=False,
+                 num_q_ensembles=2,
                  policy_mlp_hidden=128,
                  policy_lr=3e-4,
                  q_mlp_hidden=256,
@@ -35,14 +44,18 @@ class TD3Agent(tf.keras.Model):
         self.actor_noise = actor_noise
         self.target_noise = target_noise
         self.noise_clip = noise_clip
+        self.use_target_policy = use_target_policy
         self.policy_net = build_mlp(obs_dim, self.act_dim, mlp_hidden=policy_mlp_hidden, num_layers=3,
                                     out_activation='tanh')
-        self.target_policy_net = build_mlp(obs_dim, self.act_dim, mlp_hidden=policy_mlp_hidden, num_layers=3,
-                                           out_activation='tanh')
-        self.q_network = EnsembleMinQNet(obs_dim, self.act_dim, q_mlp_hidden)
-        self.target_q_network = EnsembleMinQNet(obs_dim, self.act_dim, q_mlp_hidden)
+        if self.use_target_policy:
+            self.target_policy_net = build_mlp(obs_dim, self.act_dim, mlp_hidden=policy_mlp_hidden, num_layers=3,
+                                               out_activation='tanh')
+            hard_update(self.target_policy_net, self.policy_net)
+        else:
+            self.target_policy_net = None
+        self.q_network = EnsembleMinQNet(obs_dim, self.act_dim, q_mlp_hidden, num_ensembles=num_q_ensembles)
+        self.target_q_network = EnsembleMinQNet(obs_dim, self.act_dim, q_mlp_hidden, num_ensembles=num_q_ensembles)
         hard_update(self.target_q_network, self.q_network)
-        hard_update(self.target_policy_net, self.policy_net)
         self.policy_optimizer = tf.keras.optimizers.Adam(lr=policy_lr)
         self.q_optimizer = tf.keras.optimizers.Adam(lr=q_lr)
         self.tau = tau
@@ -60,20 +73,28 @@ class TD3Agent(tf.keras.Model):
     @tf.function
     def update_target(self):
         soft_update(self.target_q_network, self.q_network, self.tau)
-        soft_update(self.target_policy_net, self.policy_net, self.tau)
+        if self.use_target_policy:
+            soft_update(self.target_policy_net, self.policy_net, self.tau)
+
+    def _compute_next_obs_q(self, next_obs):
+        if self.use_target_policy:
+            next_action = self.target_policy_net(next_obs)
+        else:
+            next_action = self.policy_net(next_obs)
+        # Target policy smoothing
+        epsilon = tf.random.normal(shape=[tf.shape(next_obs)[0], self.act_dim]) * self.target_noise
+        epsilon = tf.clip_by_value(epsilon, -self.noise_clip, self.noise_clip)
+        next_action = next_action + epsilon
+        next_action = tf.clip_by_value(next_action, -self.act_lim, self.act_lim)
+        next_q_value = self.target_q_network((next_obs, next_action), training=False)
+        return next_q_value
 
     @tf.function
     def _update_nets(self, obs, actions, next_obs, done, reward):
         print(f'Tracing _update_nets with obs={obs}, actions={actions}')
         # compute target q
-        next_action = self.target_policy_net(next_obs)
-        # Target policy smoothing
-        epsilon = tf.random.normal(shape=[tf.shape(obs)[0], self.ac_dim]) * self.target_noise
-        epsilon = tf.clip_by_value(epsilon, -self.noise_clip, self.noise_clip)
-        next_action = next_action + epsilon
-        next_action = tf.clip_by_value(next_action, -self.act_lim, self.act_lim)
-        target_q_values = self.target_q_network((next_obs, next_action), training=False)
-        q_target = reward + self.gamma * (1.0 - done) * target_q_values
+        next_q_value = self._compute_next_obs_q(next_obs)
+        q_target = compute_target_value(reward, self.gamma, done, next_q_value)
         # q loss
         with tf.GradientTape() as q_tape:
             q_values = self.q_network((obs, actions), training=True)  # (num_ensembles, None)
@@ -121,9 +142,7 @@ class TD3Agent(tf.keras.Model):
             info.update(actor_info)
             self.update_target()
 
-        for key, item in info.items():
-            info[key] = item.numpy()
-        self.logger.store(**info)
+        self.logger.store(**to_numpy_or_python_type(info))
 
     @tf.function
     def act_batch(self, obs, deterministic):

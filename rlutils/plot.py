@@ -94,7 +94,14 @@ def get_datasets(logdir, condition=None):
             except:
                 print('Could not read from %s' % os.path.join(root, 'progress.txt'))
                 continue
-            performance = 'AverageTestEpRet' if 'AverageTestEpRet' in exp_data else 'AverageEpRet'
+            if 'NormalizedTestEpRet' in exp_data:
+                performance = 'NormalizedTestEpRet'
+            elif 'AverageTestEpRet' in exp_data:
+                performance = 'AverageTestEpRet'
+            elif 'AverageEpRet' in exp_data:
+                performance = 'AverageEpRet'
+            else:
+                raise ValueError('Unable to interpret Performance')
             exp_data.insert(len(exp_data.columns), 'Unit', unit)
             exp_data.insert(len(exp_data.columns), 'Condition1', condition1)
             exp_data.insert(len(exp_data.columns), 'Condition2', condition2)

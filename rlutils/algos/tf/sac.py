@@ -10,8 +10,8 @@ from tqdm.auto import tqdm
 
 from rlutils.replay_buffers import PyUniformParallelEnvReplayBuffer
 from rlutils.runner import TFRunner, run_func_as_main
+from rlutils.tf.functional import soft_update, hard_update, compute_target_value, to_numpy_or_python_type
 from rlutils.tf.nn import LagrangeLayer, SquashedGaussianMLPActor, EnsembleMinQNet, CenteredBetaMLPActor
-from rlutils.tf.nn.functional import soft_update, hard_update
 
 
 class SACAgent(tf.keras.Model):
@@ -72,6 +72,12 @@ class SACAgent(tf.keras.Model):
     def update_target(self):
         soft_update(self.target_q_network, self.q_network, self.tau)
 
+    def _compute_next_obs_q(self, next_obs):
+        alpha = self.log_alpha()
+        next_action, next_action_log_prob, _, _ = self.policy_net((next_obs, False))
+        next_q_values = self.target_q_network((next_obs, next_action), training=False) - alpha * next_action_log_prob
+        return next_q_values
+
     @tf.function
     def _update_nets(self, obs, actions, next_obs, done, reward):
         """ Sample a mini-batch from replay buffer and update the network
@@ -88,9 +94,9 @@ class SACAgent(tf.keras.Model):
         """
         alpha = self.log_alpha()
 
-        next_action, next_action_log_prob, _, _ = self.policy_net((next_obs, False))
-        target_q_values = self.target_q_network((next_obs, next_action), training=False) - alpha * next_action_log_prob
-        q_target = reward + self.gamma * (1.0 - done) * target_q_values
+        # compute target Q values
+        next_q_values = self._compute_next_obs_q(next_obs)
+        q_target = compute_target_value(reward, self.gamma, done, next_q_values)
 
         # q loss
         with tf.GradientTape() as q_tape:
@@ -136,9 +142,7 @@ class SACAgent(tf.keras.Model):
         rew = tf.convert_to_tensor(rew, dtype=tf.float32)
 
         info = self._update_nets(obs, act, next_obs, done, rew)
-        for key, item in info.items():
-            info[key] = item.numpy()
-        self.logger.store(**info)
+        self.logger.store(**to_numpy_or_python_type(info))
 
         if update_target:
             self.update_target()
