@@ -8,18 +8,18 @@ Common in the runner:
 
 import os
 import random
+import sys
 from abc import abstractmethod, ABC
 
 import gym
 import numpy as np
+import rlutils.gym
 import tensorflow as tf
 import torch
 from gym.wrappers import FrameStack
-from tqdm.auto import trange
-
-import rlutils.gym
 from rlutils.logx import EpochLogger
 from rlutils.runner.run_utils import setup_logger_kwargs
+from tqdm.auto import trange
 
 
 def _add_frame_stack(wrappers, frame_stack):
@@ -48,6 +48,7 @@ class BaseRunner(ABC):
         self.epochs = epochs
         self.seed = seed
         self.global_step = 0
+        self.max_seed = sys.maxsize
 
     def setup_logger(self, config):
         logger_kwargs = setup_logger_kwargs(exp_name=self.exp_name, data_dir=self.logger_path, seed=self.seed)
@@ -55,8 +56,12 @@ class BaseRunner(ABC):
         self.logger.save_config(config)
 
     def setup_seed(self, seed):
+        # we set numpy seed first and use it to generate other seeds
         np.random.seed(seed)
-        random.seed(seed + 1)
+        random.seed(self.generate_seed())
+
+    def generate_seed(self):
+        return np.random.randint(self.max_seed)
 
     def setup_extra(self, **kwargs):
         pass
@@ -100,13 +105,13 @@ class BaseRunner(ABC):
 
         self.env = rlutils.gym.vector.make(self.env_name, wrappers=self.wrappers, num_envs=self.num_parallel_env,
                                            asynchronous=self.asynchronous)
-        self.env.seed(self.seed + 3)
-        self.env.action_space.seed(self.seed + 4)
+        self.env.seed(self.generate_seed())
+        self.env.action_space.seed(self.generate_seed())
         if self.num_test_episodes is not None:
             self.test_env = gym.vector.make(self.env_name, wrappers=self.wrappers, num_envs=self.num_test_episodes,
                                             asynchronous=self.asynchronous)
-            self.test_env.seed(self.seed + 5)
-            self.test_env.seed(self.seed + 6)
+            self.test_env.seed(self.generate_seed())
+            self.test_env.action_space.seed(self.generate_seed())
         else:
             self.test_env = None
 
@@ -130,13 +135,13 @@ class BaseRunner(ABC):
 class TFRunner(BaseRunner):
     def setup_seed(self, seed):
         super(TFRunner, self).setup_seed(seed=seed)
-        tf.random.set_seed(seed + 2)
+        tf.random.set_seed(self.generate_seed())
         os.environ['TF_DETERMINISTIC_OPS'] = '1'
 
 
 class PytorchRunner(BaseRunner):
     def setup_seed(self, seed):
         super(PytorchRunner, self).setup_seed(seed)
-        torch.random.manual_seed(seed + 2)
-        torch.cuda.manual_seed_all(seed + 3)
+        torch.random.manual_seed(self.generate_seed())
+        torch.cuda.manual_seed_all(self.generate_seed())
         torch.backends.cudnn.benchmark = True

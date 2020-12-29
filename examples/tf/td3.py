@@ -2,12 +2,11 @@ import time
 
 import numpy as np
 import tensorflow as tf
-from tqdm.auto import tqdm
-
 from rlutils.replay_buffers import PyUniformParallelEnvReplayBuffer
 from rlutils.runner import TFRunner, run_func_as_main
 from rlutils.tf.nn import EnsembleMinQNet
 from rlutils.tf.nn.functional import soft_update, hard_update, build_mlp
+from tqdm.auto import tqdm
 
 
 class TD3Agent(tf.keras.Model):
@@ -38,9 +37,12 @@ class TD3Agent(tf.keras.Model):
         self.noise_clip = noise_clip
         self.policy_net = build_mlp(obs_dim, self.act_dim, mlp_hidden=policy_mlp_hidden, num_layers=3,
                                     out_activation='tanh')
+        self.target_policy_net = build_mlp(obs_dim, self.act_dim, mlp_hidden=policy_mlp_hidden, num_layers=3,
+                                           out_activation='tanh')
         self.q_network = EnsembleMinQNet(obs_dim, self.act_dim, q_mlp_hidden)
         self.target_q_network = EnsembleMinQNet(obs_dim, self.act_dim, q_mlp_hidden)
         hard_update(self.target_q_network, self.q_network)
+        hard_update(self.target_policy_net, self.policy_net)
         self.policy_optimizer = tf.keras.optimizers.Adam(lr=policy_lr)
         self.q_optimizer = tf.keras.optimizers.Adam(lr=q_lr)
         self.tau = tau
@@ -55,16 +57,18 @@ class TD3Agent(tf.keras.Model):
         self.logger.log_tabular('LossPi', average_only=True)
         self.logger.log_tabular('LossQ', average_only=True)
 
+    @tf.function
     def update_target(self):
         soft_update(self.target_q_network, self.q_network, self.tau)
+        soft_update(self.target_policy_net, self.policy_net, self.tau)
 
     @tf.function
     def _update_nets(self, obs, actions, next_obs, done, reward):
         print(f'Tracing _update_nets with obs={obs}, actions={actions}')
         # compute target q
-        next_action = self.policy_net(next_obs)
+        next_action = self.target_policy_net(next_obs)
         # Target policy smoothing
-        epsilon = tf.random.normal(shape=tf.shape(next_action)) * self.target_noise
+        epsilon = tf.random.normal(shape=[tf.shape(obs)[0], self.ac_dim]) * self.target_noise
         epsilon = tf.clip_by_value(epsilon, -self.noise_clip, self.noise_clip)
         next_action = next_action + epsilon
         next_action = tf.clip_by_value(next_action, -self.act_lim, self.act_lim)
