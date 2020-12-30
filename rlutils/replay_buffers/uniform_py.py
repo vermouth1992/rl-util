@@ -1,13 +1,8 @@
 import numpy as np
-
 from rlutils.math import flatten_leading_dims
+
 from .base import BaseReplayBuffer
-
-
-def combined_shape(length, shape=None):
-    if shape is None:
-        return (length,)
-    return (length, shape) if np.isscalar(shape) else (length, *shape)
+from .utils import combined_shape
 
 
 class PyUniformParallelEnvReplayBuffer(BaseReplayBuffer):

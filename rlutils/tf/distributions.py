@@ -37,6 +37,13 @@ def make_independent_normal(loc, scale, ndims=1):
     return distribution
 
 
+def make_independent_truncated_normal(loc_params, scale_params, ndims=1):
+    pi_distribution = tfd.Independent(distribution=tfd.TruncatedNormal(loc=loc_params, scale=scale_params,
+                                                                       low=-1., high=1.),
+                                      reinterpreted_batch_ndims=ndims)
+    return pi_distribution
+
+
 def make_independent_beta_from_params(params):
     params = tf.math.softplus(params) + 1.
     c1, c2 = tf.split(params, 2, axis=-1)

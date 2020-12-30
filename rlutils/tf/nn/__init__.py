@@ -1,3 +1,4 @@
-from .actors import SquashedGaussianMLPActor, AtariQNetworkDeepMind, CenteredBetaMLPActor
+from .actors import SquashedGaussianMLPActor, CenteredBetaMLPActor, NormalActor, \
+    TruncatedNormalActor, CategoricalActor
 from .layers import SqueezeLayer, EnsembleDense, LagrangeLayer
-from .values import EnsembleMinQNet
+from .values import EnsembleMinQNet, AtariQNetworkDeepMind

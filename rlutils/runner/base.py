@@ -75,7 +75,7 @@ class BaseRunner(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def run_one_step(self):
+    def run_one_step(self, t):
         raise NotImplementedError
 
     def on_epoch_begin(self, epoch):
@@ -106,6 +106,7 @@ class BaseRunner(ABC):
 
         self.env = rlutils.gym.vector.make(self.env_name, wrappers=self.wrappers, num_envs=self.num_parallel_env,
                                            asynchronous=self.asynchronous)
+        self.is_discrete_env = isinstance(self.env.single_action_space, gym.spaces.Discrete)
         self.env.seed(self.generate_seed())
         self.env.action_space.seed(self.generate_seed())
         if self.num_test_episodes is not None:
@@ -120,8 +121,8 @@ class BaseRunner(ABC):
         self.on_train_begin()
         for i in range(1, self.epochs + 1):
             self.on_epoch_begin(i)
-            for _ in trange(self.steps_per_epoch, desc=f'Epoch {i}/{self.epochs}'):
-                self.run_one_step()
+            for t in trange(self.steps_per_epoch, desc=f'Epoch {i}/{self.epochs}'):
+                self.run_one_step(t)
                 self.global_step += 1
             self.on_epoch_end(i)
         self.on_train_end()

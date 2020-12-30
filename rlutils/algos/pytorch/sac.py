@@ -210,7 +210,7 @@ class SACRunner(PytorchRunner):
         self.update_every = update_every
         self.update_per_step = update_per_step
 
-    def run_one_step(self):
+    def run_one_step(self, t):
         global_env_steps = self.global_step * self.num_parallel_env
         if global_env_steps >= self.start_steps:
             a = self.get_action_batch(self.o, deterministic=False)

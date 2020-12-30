@@ -1,13 +1,84 @@
 import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
-
 from rlutils.tf.distributions import make_independent_normal_from_params, apply_squash_log_prob, \
-    make_independent_beta_from_params
+    make_independent_beta_from_params, make_independent_truncated_normal, make_independent_normal
+
 from .functional import build_mlp
 
+tfd = tfp.distributions
 LOG_STD_RANGE = (-20., 5.)
 EPS = 1e-5
+
+
+@tf.function
+def get_pi_action(deterministic, pi_distribution):
+    print(f'Tracing get_pi_action with deterministic={deterministic}')
+    return tf.cond(pred=deterministic, true_fn=lambda: pi_distribution.mean(),
+                   false_fn=lambda: pi_distribution.sample())
+
+
+@tf.function
+def get_pi_action_categorical(deterministic, pi_distribution):
+    print(f'Tracing get_pi_action with deterministic={deterministic}')
+    return tf.cond(pred=deterministic,
+                   true_fn=lambda: tf.argmax(pi_distribution.probs_parameter(), axis=-1, output_type=tf.int32),
+                   false_fn=lambda: pi_distribution.sample())
+
+
+class CategoricalActor(tf.keras.layers.Layer):
+    def __init__(self, obs_dim, act_dim, mlp_hidden):
+        super(CategoricalActor, self).__init__()
+        self.net = build_mlp(input_dim=obs_dim, output_dim=act_dim, mlp_hidden=mlp_hidden)
+        self.pi_dist_layer = tfp.layers.DistributionLambda(
+            make_distribution_fn=lambda t: tfd.Categorical(logits=t)
+        )
+
+    def call(self, inputs, **kwargs):
+        inputs, deterministic = inputs
+        params = self.net(inputs)
+        pi_distribution = self.pi_dist_layer(params)
+        pi_action = get_pi_action_categorical(deterministic, pi_distribution)
+        logp_pi = pi_distribution.log_prob(pi_action)
+        pi_action_final = pi_action
+        return pi_action_final, logp_pi, pi_action, pi_distribution
+
+
+class NormalActor(tf.keras.layers.Layer):
+    def __init__(self, obs_dim, act_dim, mlp_hidden, global_std=True):
+        super(NormalActor, self).__init__()
+        self.global_std = global_std
+        if self.global_std:
+            self.net = build_mlp(input_dim=obs_dim, output_dim=act_dim, mlp_hidden=mlp_hidden)
+            self.log_std = tf.Variable(initial_value=-0.5 * tf.ones(act_dim))
+        else:
+            self.net = build_mlp(input_dim=obs_dim, output_dim=act_dim * 2, mlp_hidden=mlp_hidden)
+            self.log_std = None
+        self.pi_dist_layer = self._get_pi_dist_layer()
+
+    def _get_pi_dist_layer(self):
+        return tfp.layers.DistributionLambda(
+            make_distribution_fn=lambda t: make_independent_normal(t[0], t[1]))
+
+    def call(self, inputs, **kwargs):
+        inputs, deterministic = inputs
+        params = self.net(inputs)
+        if self.global_std:
+            pi_distribution = self.pi_dist_layer((params, tf.math.softplus(self.log_std)))
+        else:
+            mean, log_std = tf.split(params, 2, axis=-1)
+            pi_distribution = self.pi_dist_layer((tf.tanh(mean), tf.math.softplus(log_std)))
+
+        pi_action = get_pi_action(deterministic, pi_distribution)
+        logp_pi = pi_distribution.log_prob(pi_action)
+        pi_action_final = pi_action
+        return pi_action_final, logp_pi, pi_action, pi_distribution
+
+
+class TruncatedNormalActor(NormalActor):
+    def _get_pi_dist_layer(self):
+        return tfp.layers.DistributionLambda(
+            make_distribution_fn=lambda t: make_independent_truncated_normal(t[0], t[1]))
 
 
 class CenteredBetaMLPActor(tf.keras.layers.Layer):
@@ -15,29 +86,24 @@ class CenteredBetaMLPActor(tf.keras.layers.Layer):
 
     def __init__(self, ob_dim, ac_dim, mlp_hidden):
         super(CenteredBetaMLPActor, self).__init__()
+        print('Warning! This actor is not tested')
         self.net = build_mlp(ob_dim, ac_dim * 2, mlp_hidden)
         self.ac_dim = ac_dim
         self.pi_dist_layer = tfp.layers.DistributionLambda(
             make_distribution_fn=lambda t: make_independent_beta_from_params(t))
         self.build(input_shape=[(None, ob_dim), (None,)])
 
-    def call(self, inputs):
+    def call(self, inputs, **kwargs):
         inputs, deterministic = inputs
         # print(f'Tracing call with inputs={inputs}, deterministic={deterministic}')
         params = self.net(inputs)
         pi_distribution = self.pi_dist_layer(params)
-        pi_action = self.get_pi_action(deterministic, pi_distribution)
+        pi_action = get_pi_action(deterministic, pi_distribution)
         pi_action = tf.clip_by_value(pi_action, -1 + EPS, 1. - EPS)
         logp_pi = pi_distribution.log_prob(pi_action)
         pi_action_final = (pi_action - 0.5) * 2.
         logp_pi = logp_pi - np.log(2.)
         return pi_action_final, logp_pi, pi_action, pi_distribution
-
-    @tf.function
-    def get_pi_action(self, deterministic, pi_distribution):
-        print(f'Tracing get_pi_action with deterministic={deterministic}')
-        return tf.cond(pred=deterministic, true_fn=lambda: pi_distribution.mean(),
-                       false_fn=lambda: pi_distribution.sample())
 
 
 class SquashedGaussianMLPActor(tf.keras.layers.Layer):
@@ -50,62 +116,13 @@ class SquashedGaussianMLPActor(tf.keras.layers.Layer):
                                                                                max_log_scale=LOG_STD_RANGE[1]))
         self.build(input_shape=[(None, ob_dim), (None,)])
 
-    def call(self, inputs):
+    def call(self, inputs, **kwargs):
         inputs, deterministic = inputs
         # print(f'Tracing call with inputs={inputs}, deterministic={deterministic}')
         params = self.net(inputs)
         pi_distribution = self.pi_dist_layer(params)
-        pi_action = self.get_pi_action(deterministic, pi_distribution)
+        pi_action = get_pi_action(deterministic, pi_distribution)
         logp_pi = pi_distribution.log_prob(pi_action)
         logp_pi = apply_squash_log_prob(logp_pi, pi_action)
         pi_action_final = tf.tanh(pi_action)
         return pi_action_final, logp_pi, pi_action, pi_distribution
-
-    @tf.function
-    def get_pi_action(self, deterministic, pi_distribution):
-        print(f'Tracing get_pi_action with deterministic={deterministic}')
-        return tf.cond(pred=deterministic, true_fn=lambda: pi_distribution.mean(),
-                       false_fn=lambda: pi_distribution.sample())
-
-
-class AtariQNetworkDeepMind(tf.keras.layers.Layer):
-    def __init__(self, act_dim, frame_stack=4, dueling=False, data_format='channels_first', scale_input=True):
-        super(AtariQNetworkDeepMind, self).__init__()
-        if data_format == 'channels_first':
-            self.batch_input_shape = (None, frame_stack, 84, 84)
-        else:
-            self.batch_input_shape = (None, 84, 84, frame_stack)
-        self.features = tf.keras.Sequential([
-            tf.keras.layers.InputLayer(batch_input_shape=self.batch_input_shape),
-            tf.keras.layers.Conv2D(filters=32, kernel_size=8, strides=4, padding='same', activation='relu',
-                                   data_format=data_format),
-            tf.keras.layers.Conv2D(filters=64, kernel_size=4, strides=2, padding='same', activation='relu',
-                                   data_format=data_format),
-            tf.keras.layers.Conv2D(filters=64, kernel_size=3, strides=1, padding='same', activation='relu',
-                                   data_format=data_format),
-            tf.keras.layers.Flatten()
-        ])
-        self.dueling = dueling
-        self.scale_input = scale_input
-        self.q_feature = tf.keras.layers.Dense(units=512, activation='relu')
-        self.adv_fc = tf.keras.layers.Dense(units=act_dim)
-        if self.dueling:
-            self.value_fc = tf.keras.layers.Dense(units=1)
-        else:
-            self.value_fc = None
-        self.build(input_shape=self.batch_input_shape)
-
-    def call(self, inputs, training=None):
-        if self.scale_input:
-            # this assumes the inputs is in image format (None, frame_stack, 84, 84)
-            inputs = tf.cast(inputs, dtype=tf.float32) / 255.
-        features = self.features(inputs, training=training)
-        q_value = self.q_feature(features, training=training)
-        adv = self.adv_fc(q_value)  # (None, act_dim)
-        if self.dueling:
-            adv = adv - tf.reduce_mean(adv, axis=-1, keepdims=True)
-            value = self.value_fc(q_value)
-            q_value = value + adv
-        else:
-            q_value = adv
-        return q_value
