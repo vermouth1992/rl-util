@@ -6,6 +6,7 @@ import time
 
 import numpy as np
 import tensorflow as tf
+
 from rlutils.replay_buffers import GAEBuffer
 from rlutils.runner import TFRunner, run_func_as_main
 from rlutils.tf.functional import to_numpy_or_python_type
@@ -213,7 +214,7 @@ class PPORunner(TFRunner):
     def on_epoch_end(self, epoch):
         data = {k: tf.convert_to_tensor(v) for k, v in self.buffer.get().items()}
         self.agent.update_policy(**data)
-        self.logger.log_tabular('Epoch', epoch + 1)
+        self.logger.log_tabular('Epoch', epoch)
         self.logger.log_tabular('EpRet', with_min_and_max=True)
         self.logger.log_tabular('EpLen', average_only=True)
         self.logger.log_tabular('VVals', with_min_and_max=True)
@@ -233,8 +234,7 @@ def ppo(env_name, mlp_hidden=256, seed=0, batch_size=5000, num_parallel_envs=5,
 
     config = locals()
     runner = PPORunner(seed=seed, steps_per_epoch=steps_per_epoch,
-                       epochs=epochs, exp_name=f'{env_name}_ppo_test',
-                       logger_path='data')
+                       epochs=epochs, exp_name=None, logger_path='data')
     runner.setup_env(env_name=env_name, num_parallel_env=num_parallel_envs,
                      frame_stack=None, wrappers=None, asynchronous=False, num_test_episodes=None)
     runner.setup_logger(config)

@@ -2,9 +2,35 @@ import numpy as np
 import tensorflow as tf
 
 
+@tf.function
 def compute_target_value(reward, gamma, done, next_q):
     q_target = reward + gamma * (1.0 - done) * next_q
     return q_target
+
+
+@tf.function
+def flat_grads(grads):
+    print(f'Tracing flat_grads grads={len(grads)}')
+    grads = [tf.reshape(grad, shape=(-1,)) for grad in grads]
+    return tf.concat(grads, axis=0)
+
+
+@tf.function
+def get_flat_trainable_variables(model: tf.keras.layers.Layer):
+    print(f'Tracing get_flat_params_from model={model.name}')
+    trainable_variables = [tf.reshape(p, shape=(-1,)) for p in model.trainable_variables]
+    trainable_variables = tf.concat(trainable_variables, axis=0)
+    return trainable_variables
+
+
+@tf.function
+def set_flat_trainable_variables(model: tf.keras.layers.Layer, trainable_variables):
+    print(f'Tracing set_flat_params_to model={model.name}, flat_params={len(trainable_variables)}')
+    prev_ind = 0
+    for param in model.trainable_variables:
+        flat_size = tf.reduce_prod(param.shape)
+        param.assign(tf.reshape(trainable_variables[prev_ind:prev_ind + flat_size], shape=param.shape))
+        prev_ind += flat_size
 
 
 @tf.function

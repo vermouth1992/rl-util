@@ -13,13 +13,14 @@ from abc import abstractmethod, ABC
 
 import gym
 import numpy as np
-import rlutils.gym
 import tensorflow as tf
 import torch
 from gym.wrappers import FrameStack
+from tqdm.auto import trange
+
+import rlutils.gym
 from rlutils.logx import EpochLogger
 from rlutils.runner.run_utils import setup_logger_kwargs
-from tqdm.auto import trange
 
 
 def _add_frame_stack(wrappers, frame_stack):
@@ -41,7 +42,7 @@ def _add_frame_stack(wrappers, frame_stack):
 
 
 class BaseRunner(ABC):
-    def __init__(self, seed, steps_per_epoch, epochs, exp_name='exp', logger_path='data'):
+    def __init__(self, seed, steps_per_epoch, epochs, exp_name=None, logger_path='data'):
         self.exp_name = exp_name
         self.logger_path = logger_path
         self.steps_per_epoch = steps_per_epoch
@@ -52,6 +53,7 @@ class BaseRunner(ABC):
         self.setup_seed(seed)
 
     def setup_logger(self, config):
+        assert self.exp_name is not None, 'Call setup_env before setup_logger if exp passed by the contructor is None.'
         logger_kwargs = setup_logger_kwargs(exp_name=self.exp_name, data_dir=self.logger_path, seed=self.seed)
         self.logger = EpochLogger(**logger_kwargs)
         self.logger.save_config(config)
@@ -97,6 +99,8 @@ class BaseRunner(ABC):
                   wrappers=None,
                   asynchronous=False,
                   num_test_episodes=None):
+        if self.exp_name is None:
+            self.exp_name = f'{env_name}_{self.__class__.__name__}_test'
         self.num_parallel_env = num_parallel_env
         self.num_test_episodes = num_test_episodes
         self.asynchronous = asynchronous

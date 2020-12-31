@@ -317,7 +317,7 @@ def td3(env_name,
     config = locals()
 
     runner = TD3Runner(seed=seed, steps_per_epoch=steps_per_epoch // num_parallel_env, epochs=epochs,
-                       exp_name=f'{env_name}_td3_test', logger_path='data')
+                       exp_name=None, logger_path='data')
     runner.setup_env(env_name=env_name, num_parallel_env=num_parallel_env, frame_stack=None, wrappers=None,
                      asynchronous=False, num_test_episodes=num_test_episodes)
     runner.setup_seed(seed)
