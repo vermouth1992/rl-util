@@ -2,9 +2,10 @@ import argparse
 import inspect
 
 
-def get_argparser_from_func(func):
+def get_argparser_from_func(func, parser):
     """ Read the argument of a function and parse it as ArgumentParser. """
-    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    if parser is None:
+        parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     signature = inspect.signature(func)
     for k, v in signature.parameters.items():
         if v.default is inspect.Parameter.empty:
@@ -14,8 +15,8 @@ def get_argparser_from_func(func):
     return parser
 
 
-def run_func_as_main(func):
+def run_func_as_main(func, parser=None):
     """ Run function as the main. Put the function arguments into argument parser """
-    parser = get_argparser_from_func(func)
+    parser = get_argparser_from_func(func, parser=parser)
     args = vars(parser.parse_args())
     func(**args)

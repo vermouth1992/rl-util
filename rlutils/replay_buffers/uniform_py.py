@@ -1,6 +1,6 @@
 import numpy as np
-from rlutils.math import flatten_leading_dims
 
+from rlutils.math import flatten_leading_dims
 from .base import BaseReplayBuffer
 from .utils import combined_shape
 
@@ -44,6 +44,29 @@ class PyUniformParallelEnvReplayBuffer(BaseReplayBuffer):
     @property
     def capacity(self):
         return self.max_size
+
+    def load(self, data):
+        obs = data['obs']
+        batch_size = obs.shape[0]
+        for key, item in data.items():
+            assert batch_size == item.shape[0], 'Mismatch batch size in the dataset'
+
+        act = data['act']
+        rew = data['rew']
+        next_obs = data['next_obs']
+        done = data['done']
+
+        if self.ptr + batch_size > self.capacity:
+            print(f'Truncated dataset due to limited capacity. Original size {batch_size}. '
+                  f'Truncated size {self.capacity - self.ptr}')
+        self.obs_buf[self.ptr:self.ptr + batch_size] = obs
+        self.obs2_buf[self.ptr:self.ptr + batch_size] = next_obs
+        self.act_buf[self.ptr:self.ptr + batch_size] = act
+        self.rew_buf[self.ptr:self.ptr + batch_size] = rew
+        self.done_buf[self.ptr:self.ptr + batch_size] = done
+
+        self.ptr = (self.ptr + batch_size) % self.capacity
+        self.size = min(self.size + batch_size, self.capacity)
 
     def add(self, data, priority=None):
         assert priority is None, 'Uniform Replay Buffer'
