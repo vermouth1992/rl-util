@@ -68,6 +68,14 @@ class PyUniformParallelEnvReplayBuffer(BaseReplayBuffer):
         self.ptr = (self.ptr + batch_size) % self.capacity
         self.size = min(self.size + batch_size, self.capacity)
 
+    def get(self):
+        batch = dict(obs=self.obs_buf,
+                     next_obs=self.obs2_buf,
+                     act=self.act_buf,
+                     rew=self.rew_buf,
+                     done=self.done_buf)
+        return batch
+
     def add(self, data, priority=None):
         assert priority is None, 'Uniform Replay Buffer'
         obs = data['obs']
