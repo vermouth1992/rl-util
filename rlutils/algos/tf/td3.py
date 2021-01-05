@@ -65,8 +65,8 @@ class TD3Agent(tf.keras.Model):
         self.logger = logger
 
     def log_tabular(self):
-        self.logger.log_tabular('Q1Vals', with_min_and_max=False)
-        self.logger.log_tabular('Q2Vals', with_min_and_max=False)
+        self.logger.log_tabular('Q1Vals', with_min_and_max=True)
+        self.logger.log_tabular('Q2Vals', with_min_and_max=True)
         self.logger.log_tabular('LossPi', average_only=True)
         self.logger.log_tabular('LossQ', average_only=True)
 
