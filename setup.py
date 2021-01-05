@@ -11,7 +11,8 @@ setup(
     description='Reinforcement Learning Utilities',
     entry_points={
         'console_scripts': [
-            'rlplot=rlutils.plot:main'
+            'rlplot=rlutils.plot:main',
+            'rlrun=rlutils.run:main'
         ]
     }
 )

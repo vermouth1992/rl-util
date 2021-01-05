@@ -1,15 +1,15 @@
 from rlutils.algos.tf.a2c import a2c
 from rlutils.algos.tf.a2c_q import a2c_q
-from rlutils.algos.tf.ddpg import ddpg
 from rlutils.algos.tf.ppo import ppo
 from rlutils.algos.tf.sac import sac
 from rlutils.algos.tf.td3 import td3
 from rlutils.algos.tf.trpo import trpo
 from rlutils.runner import get_argparser_from_func
 
-__all__ = ['ppo', 'td3', 'trpo', 'sac', 'a2c', 'a2c_q', 'ddpg']
+__all__ = ['ppo', 'td3', 'trpo', 'sac', 'a2c', 'a2c_q']
 
-if __name__ == '__main__':
+
+def main():
     import argparse
 
     parser = argparse.ArgumentParser('Running rl algorithms', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -21,3 +21,7 @@ if __name__ == '__main__':
     kwargs = vars(parser.parse_args())
     algo = kwargs.pop('algo')
     eval(algo)(**kwargs)
+
+
+if __name__ == '__main__':
+    main()
