@@ -19,8 +19,7 @@ from gym.wrappers import FrameStack
 from tqdm.auto import trange
 
 import rlutils.gym
-from rlutils.logx import EpochLogger
-from rlutils.runner.run_utils import setup_logger_kwargs
+from rlutils.logx import EpochLogger, setup_logger_kwargs
 
 
 def _add_frame_stack(wrappers, frame_stack):
