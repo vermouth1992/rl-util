@@ -9,6 +9,7 @@ import numpy as np
 import tensorflow as tf
 from tqdm.auto import tqdm
 
+from rlutils.np import DataSpec
 from rlutils.replay_buffers import PyUniformParallelEnvReplayBuffer
 from rlutils.runner import TFRunner, run_func_as_main
 from rlutils.tf.functional import soft_update, hard_update, compute_target_value, to_numpy_or_python_type
@@ -180,11 +181,17 @@ class TD3Runner(TFRunner):
     def setup_replay_buffer(self,
                             replay_size,
                             batch_size):
-        obs_dim = self.env.single_observation_space.shape[0]
-        act_dim = self.env.single_action_space.shape[0]
-        self.replay_buffer = PyUniformParallelEnvReplayBuffer(obs_dim=obs_dim,
-                                                              act_dim=act_dim,
-                                                              act_dtype=np.float32,
+        data_spec = {
+            'obs': DataSpec(shape=self.env.single_observation_space.shape,
+                            dtype=np.float32),
+            'act': DataSpec(shape=self.env.single_action_space.shape,
+                            dtype=np.float32),
+            'next_obs': DataSpec(shape=self.env.single_observation_space.shape,
+                                 dtype=np.float32),
+            'rew': DataSpec(shape=None, dtype=np.float32),
+            'done': DataSpec(shape=None, dtype=np.float32)
+        }
+        self.replay_buffer = PyUniformParallelEnvReplayBuffer(data_spec=data_spec,
                                                               capacity=replay_size,
                                                               batch_size=batch_size,
                                                               num_parallel_env=self.num_parallel_env)
@@ -295,7 +302,7 @@ def td3(env_name,
         steps_per_epoch=5000,
         epochs=200,
         start_steps=10000,
-        update_after=1000,
+        update_after=4000,
         update_every=1,
         update_per_step=1,
         policy_delay=2,

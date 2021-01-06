@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from rlutils.math import inverse_softplus
+from rlutils.np.functional import inverse_softplus
 
 
 class EnsembleDense(nn.Module):

@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-from rlutils.math import inverse_softplus
+from rlutils.np.functional import inverse_softplus
 
 
 class SqueezeLayer(tf.keras.layers.Layer):

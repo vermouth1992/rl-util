@@ -3,8 +3,8 @@ Generalized advantage estimation buffer
 """
 
 import numpy as np
-from rlutils.math import discount_cumsum
-from rlutils.math import flatten_leading_dims
+from rlutils.np.functional import discount_cumsum
+from rlutils.np.functional import flatten_leading_dims
 
 from .utils import combined_shape
 
