@@ -5,7 +5,7 @@ envs=(
   pybullet_envs:AntBulletEnv-v0
 )
 
-algos=(ppo trpo sac td3)
+algos=(ppo trpo sac td3 ddpg)
 
 seeds=(
   110 111 112 113 114 115 116 117 118 119
