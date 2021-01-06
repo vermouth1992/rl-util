@@ -30,3 +30,9 @@ class BaseReplayBuffer(ABC):
 
     def load(self, data):
         pass
+
+    def is_full(self):
+        return len(self) == self.capacity
+
+    def is_empty(self):
+        return len(self) <= 0

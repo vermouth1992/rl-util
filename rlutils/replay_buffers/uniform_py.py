@@ -1,9 +1,9 @@
 from typing import Dict
 
 import numpy as np
-
 from rlutils.np import DataSpec
 from rlutils.np.functional import flatten_leading_dims
+
 from .base import BaseReplayBuffer
 from .utils import combined_shape
 
@@ -37,6 +37,15 @@ class PyUniformParallelEnvReplayBuffer(BaseReplayBuffer):
     def capacity(self):
         return self.max_size
 
+    @classmethod
+    def from_data_dict(cls, data: Dict[str, np.ndarray], batch_size):
+        data_spec = {key: DataSpec(shape=item.shape[1:], dtype=item.dtype) for key, item in data.items()}
+        capacity = list(data.values())[0].shape[0]
+        replay_buffer = cls(data_spec=data_spec, capacity=capacity, batch_size=batch_size, num_parallel_env=1)
+        replay_buffer.load(data=data)
+        assert replay_buffer.is_full()
+        return replay_buffer
+
     def load(self, data: Dict[str, np.ndarray]):
         batch_size = list(data.values())[0].shape[0]
         for key, item in data.items():
@@ -63,6 +72,7 @@ class PyUniformParallelEnvReplayBuffer(BaseReplayBuffer):
         self.size = min(self.size + self.num_parallel_env, self.capacity)
 
     def sample(self):
+        assert not self.is_empty()
         idxs = np.random.randint(0, self.size, size=self.batch_size)
         return self.__getitem__(idxs)
 
