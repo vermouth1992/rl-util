@@ -24,3 +24,6 @@
 #### On-policy
 * TRPO
 * PPO
+
+## Benchmarks
+![alt text](data/HopperBulletEnv.jpeg?raw=true)
