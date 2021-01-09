@@ -48,19 +48,6 @@ class BehaviorPolicy(ConditionalBetaVAE):
         model = tf.keras.Model(inputs=[latent_input, obs_input], outputs=output)
         return model
 
-    def call_n(self, inputs, training=None, n=5):
-        x, cond = inputs
-        batch_size = tf.shape(x)[0]
-        print(f'Tracing call_n with x={x}, cond={cond}')
-        posterior = self.encoder(inputs=(x, cond), training=training)
-        encode_sample = posterior.sample(n)  # (n, None, z_dim)
-        encode_sample = tf.reshape(encode_sample, shape=(n * batch_size, self.latent_dim))
-        cond = tf.tile(cond, multiples=(n, 1))
-        out = self.decoder((encode_sample, cond), training=training)
-        posterior_kld = tfd.kl_divergence(posterior, self.prior)  # (None,)
-        posterior_kld = tf.tile(posterior_kld, multiples=(n,))
-        return out, posterior_kld
-
     @tf.function
     def act_batch(self, obs, deterministic=tf.convert_to_tensor(True)):
         print(f'Tracing vae act_batch with obs {obs}')

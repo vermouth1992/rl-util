@@ -5,6 +5,12 @@ def get_adam_optimizer(lr, **kwargs):
     """ This optimizer can be saved and loaded as a normal tf.keras.Model """
     if isinstance(lr, float):
         lr = tf.Variable(initial_value=lr)
+    elif isinstance(lr, tf.keras.optimizers.schedules.LearningRateSchedule):
+        pass
+    elif isinstance(lr, tf.Variable):
+        pass
+    else:
+        raise ValueError(f'Unknown type lr. Got {type(lr)}')
     optimizer = tf.keras.optimizers.Adam(
         learning_rate=lr,
         beta_1=tf.Variable(0.9),
