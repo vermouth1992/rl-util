@@ -26,7 +26,7 @@ def get_pi_action_categorical(deterministic, pi_distribution):
                    false_fn=lambda: pi_distribution.sample())
 
 
-class CategoricalActor(tf.keras.layers.Layer):
+class CategoricalActor(tf.keras.Model):
     def __init__(self, obs_dim, act_dim, mlp_hidden):
         super(CategoricalActor, self).__init__()
         self.net = build_mlp(input_dim=obs_dim, output_dim=act_dim, mlp_hidden=mlp_hidden)
@@ -44,7 +44,7 @@ class CategoricalActor(tf.keras.layers.Layer):
         return pi_action_final, logp_pi, pi_action, pi_distribution
 
 
-class NormalActor(tf.keras.layers.Layer):
+class NormalActor(tf.keras.Model):
     def __init__(self, obs_dim, act_dim, mlp_hidden, global_std=True):
         super(NormalActor, self).__init__()
         self.global_std = global_std
@@ -81,7 +81,7 @@ class TruncatedNormalActor(NormalActor):
             make_distribution_fn=lambda t: make_independent_truncated_normal(t[0], t[1]))
 
 
-class CenteredBetaMLPActor(tf.keras.layers.Layer):
+class CenteredBetaMLPActor(tf.keras.Model):
     """ Note that Beta distribution is 2x slower than SquashedGaussian"""
 
     def __init__(self, ob_dim, ac_dim, mlp_hidden):
@@ -106,7 +106,7 @@ class CenteredBetaMLPActor(tf.keras.layers.Layer):
         return pi_action_final, logp_pi, pi_action, pi_distribution
 
 
-class SquashedGaussianMLPActor(tf.keras.layers.Layer):
+class SquashedGaussianMLPActor(tf.keras.Model):
     def __init__(self, ob_dim, ac_dim, mlp_hidden):
         super(SquashedGaussianMLPActor, self).__init__()
         self.net = build_mlp(ob_dim, ac_dim * 2, mlp_hidden)

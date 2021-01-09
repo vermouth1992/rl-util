@@ -345,8 +345,8 @@ class CQLRunner(TFRunner):
 
 def cql(env_name,
         max_ep_len=1000,
-        steps_per_epoch=1000,
-        epochs=1000,
+        steps_per_epoch=2000,
+        epochs=500,
         start_steps=1000 * 10,
         batch_size=256,
         num_test_episodes=20,
