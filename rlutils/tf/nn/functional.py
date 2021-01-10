@@ -8,7 +8,8 @@ def build_mlp(input_dim, output_dim, mlp_hidden, num_ensembles=None, num_layers=
               activation='relu', out_activation=None, squeeze=False, dropout=None,
               batch_norm=False, layer_norm=False, regularization=None, out_regularization=None):
     assert not (batch_norm and layer_norm), "batch_norm and layer_norm can't be True simultaneously"
-    assert squeeze and output_dim == 1, "squeeze must have output_dim=1"
+    if squeeze:
+        assert output_dim == 1, "squeeze must have output_dim=1"
     model = tf.keras.Sequential()
     regularizer = l2(regularization) if regularization is not None else None
     out_regularizer = l2(out_regularization) if out_regularization is not None else None
