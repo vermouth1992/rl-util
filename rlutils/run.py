@@ -1,14 +1,8 @@
-from rlutils.algos.tf.a2c import a2c
-from rlutils.algos.tf.a2c_q import a2c_q
-from rlutils.algos.tf.cql import cql
-from rlutils.algos.tf.ddpg import ddpg
-from rlutils.algos.tf.ppo import ppo
-from rlutils.algos.tf.sac import sac
-from rlutils.algos.tf.td3 import td3
-from rlutils.algos.tf.trpo import trpo
+from rlutils.algos.tf.mf import a2c, a2c_q, ddpg, ppo, sac, td3, trpo
+from rlutils.algos.tf.offline import cql, bracp
 from rlutils.runner import get_argparser_from_func
 
-__all__ = ['ppo', 'td3', 'trpo', 'sac', 'a2c', 'a2c_q', 'ddpg', 'cql']
+__all__ = ['ppo', 'td3', 'trpo', 'sac', 'a2c', 'a2c_q', 'ddpg', 'cql', 'bracp']
 
 
 def main():
@@ -18,11 +12,11 @@ def main():
     algorithm_parsers = parser.add_subparsers(title='algorithm', help='algorithm specific parser', dest='algo')
     for algo in __all__:
         algo_parser = algorithm_parsers.add_parser(algo, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-        get_argparser_from_func(eval(algo), algo_parser)
+        get_argparser_from_func(eval(f'{algo}.{algo}'), algo_parser)
 
     kwargs = vars(parser.parse_args())
     algo = kwargs.pop('algo')
-    eval(algo)(**kwargs)
+    eval(f'{algo}.{algo}')(**kwargs)
 
 
 if __name__ == '__main__':
