@@ -12,11 +12,11 @@ from rlutils.tf.distributions import make_independent_normal_from_params
 
 
 class BehaviorPolicy(ConditionalBetaVAE):
-    def __init__(self, obs_dim, act_dim, mlp_hidden=256, lr=1e-3):
+    def __init__(self, obs_dim, act_dim, mlp_hidden=256):
         self.obs_dim = obs_dim
         self.act_dim = act_dim
         self.mlp_hidden = mlp_hidden
-        super(BehaviorPolicy, self).__init__(latent_dim=self.act_dim * 2, beta=1.0, lr=lr)
+        super(BehaviorPolicy, self).__init__(latent_dim=self.act_dim * 2, beta=1.0)
 
     def _make_encoder(self) -> tf.keras.Model:
         obs_input = tf.keras.Input(shape=(self.obs_dim,), dtype=tf.float32)

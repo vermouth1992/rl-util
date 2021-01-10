@@ -3,18 +3,15 @@ import tensorflow_probability as tfp
 
 tfd = tfp.distributions
 
-from rlutils.future.optimizer import get_adam_optimizer
-
 
 class BetaVAE(tf.keras.Model):
-    def __init__(self, latent_dim, beta=1., lr=1e-3):
+    def __init__(self, latent_dim, beta=1.):
         super(BetaVAE, self).__init__()
         self.latent_dim = latent_dim
         self.beta = beta
         self.encoder = self._make_encoder()
         self.decoder = self._make_decoder()
         self.prior = self._make_prior()
-        self.compile(optimizer=get_adam_optimizer(lr=lr))
         self.logger = None
 
     def _make_encoder(self) -> tf.keras.Model:

@@ -58,12 +58,11 @@ class BRACPAgent(tf.keras.Model):
         self.ob_dim = ob_dim
         self.ac_dim = ac_dim
         self.q_mlp_hidden = q_mlp_hidden
-        lr_schedule = tf.keras.optimizers.schedules.PiecewiseConstantDecay(
-            boundaries=[100000, 200000, 300000, 400000],
-            values=[behavior_lr, 0.5 * behavior_lr, 0.1 * behavior_lr, 0.05 * behavior_lr, 0.01 * behavior_lr])
         self.behavior_policy = BehaviorPolicy(obs_dim=self.ob_dim, act_dim=self.ac_dim,
-                                              mlp_hidden=behavior_mlp_hidden,
-                                              lr=lr_schedule)
+                                              mlp_hidden=behavior_mlp_hidden)
+        self.behavior_lr = behavior_lr
+        # maybe overwrite later
+        self.behavior_policy.optimizer = get_adam_optimizer(lr=behavior_lr)
         self.policy_net = SquashedGaussianMLPActor(ob_dim, ac_dim, policy_mlp_hidden)
         self.target_policy_net = SquashedGaussianMLPActor(ob_dim, ac_dim, policy_mlp_hidden)
         hard_update(self.target_policy_net, self.policy_net)
@@ -628,6 +627,13 @@ class BRACPRunner(TFRunner):
         self.agent.save_weights(filepath=self.final_filepath)
 
     def pretrain(self, epochs):
+        interval = epochs * self.steps_per_epoch // 5
+        behavior_lr = self.agent.behavior_lr
+        lr_schedule = tf.keras.optimizers.schedules.PiecewiseConstantDecay(
+            boundaries=[interval, interval * 2, interval * 3, interval * 4],
+            values=[behavior_lr, 0.5 * behavior_lr, 0.1 * behavior_lr, 0.05 * behavior_lr, 0.01 * behavior_lr])
+        self.agent.optimizer = get_adam_optimizer(lr=lr_schedule)
+
         EpochLogger.log(f'Training behavior policy for {self.env_name}')
         t = trange(epochs)
         for epoch in t:

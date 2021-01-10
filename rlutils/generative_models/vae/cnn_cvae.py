@@ -19,24 +19,24 @@ import torch
 
 
 class ConvolutionalCVAE(ConditionalBetaVAE):
-    def __init__(self, image_size, num_classes, lr=1e-3, latent_dim=5):
+    def __init__(self, image_size, num_classes, latent_dim=5):
         self.channel, self.height, self.width = image_size
         assert self.height % 4 == 0 and self.width % 4 == 0
         self.data_format = 'channels_first'
         self.num_classes = num_classes
-        super(ConvolutionalCVAE, self).__init__(latent_dim=latent_dim, beta=1.0, lr=lr)
+        super(ConvolutionalCVAE, self).__init__(latent_dim=latent_dim, beta=1.0)
 
     def _make_encoder(self) -> tf.keras.Model:
         inputs = tf.keras.Input(shape=(self.channel, self.height, self.width), dtype=tf.float32)
         cond_inputs = tf.keras.Input(shape=(), dtype=tf.int32)
         cond = tf.one_hot(indices=cond_inputs, depth=self.num_classes)
         x = tf.keras.layers.Conv2D(filters=64, kernel_size=3, strides=2, padding='same',
-                                   data_format=self.data_format)(inputs)
+                                   data_format=self.data_format, activation='relu')(inputs)
         x = tf.keras.layers.Conv2D(filters=64, kernel_size=3, strides=2, padding='same',
-                                   data_format=self.data_format)(x)
+                                   data_format=self.data_format, activation='relu')(x)
         x = tf.keras.layers.Flatten()(x)
         x = tf.keras.layers.Concatenate(axis=-1)([x, cond])
-        x = tf.keras.layers.Dense(512)(x)
+        x = tf.keras.layers.Dense(512, activation='relu')(x)
         x = tf.keras.layers.Dense(self.latent_dim * 2)(x)
         x = tfl.DistributionLambda(make_distribution_fn=lambda t: make_independent_normal_from_params(t))(x)
         model = tf.keras.Model(inputs=[inputs, cond_inputs], outputs=x)
@@ -47,10 +47,10 @@ class ConvolutionalCVAE(ConditionalBetaVAE):
         cond_inputs = tf.keras.Input(shape=(), dtype=tf.int32)
         cond = tf.one_hot(indices=cond_inputs, depth=self.num_classes)
         z = tf.keras.layers.Concatenate(axis=-1)([latent, cond])
-        z = tf.keras.layers.Dense(16 * self.width // 4 * self.height // 4)(z)
+        z = tf.keras.layers.Dense(16 * self.width // 4 * self.height // 4, activation='relu')(z)
         z = tf.keras.layers.Reshape(target_shape=[16, self.height // 4, self.width // 4])(z)
         z = tf.keras.layers.Conv2DTranspose(filters=64, kernel_size=3, strides=2, padding='same',
-                                            data_format=self.data_format)(z)
+                                            data_format=self.data_format, activation='relu')(z)
         z = tf.keras.layers.Conv2DTranspose(filters=self.channel, kernel_size=3, strides=2, padding='same',
                                             data_format=self.data_format)(z)
         out_lambda = lambda t: tfd.Independent(distribution=tfd.Bernoulli(logits=t), reinterpreted_batch_ndims=3)
@@ -103,7 +103,8 @@ def cnn_cvae(dataset,
     print(f'x_train: {x_train.shape}, y_train: {y_train.shape}, x_test: {x_test.shape}, y_test: {y_test.shape}, '
           f'num_classes: {num_classes}')
     image_size = x_train.shape[1:]
-    model = ConvolutionalCVAE(image_size=image_size, num_classes=num_classes, lr=lr, latent_dim=latent_dim)
+    model = ConvolutionalCVAE(image_size=image_size, num_classes=num_classes, latent_dim=latent_dim)
+    model.compile(optimizer=tf.keras.optimizers.Adam(lr=lr))
     model.compile(optimizer=get_adam_optimizer(lr=lr))
     callback = ShowImage(logdir=f'data/{dataset}', model=model)
     model.fit(x=[x_train, y_train], validation_data=((x_test, y_test),), epochs=epochs, batch_size=batch_size,
