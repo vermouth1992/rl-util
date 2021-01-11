@@ -62,7 +62,6 @@ class BRACPAgent(tf.keras.Model):
                                               mlp_hidden=behavior_mlp_hidden)
         self.behavior_lr = behavior_lr
         # maybe overwrite later
-        self.behavior_policy.optimizer = get_adam_optimizer(lr=behavior_lr)
         self.policy_net = SquashedGaussianMLPActor(ob_dim, ac_dim, policy_mlp_hidden)
         self.target_policy_net = SquashedGaussianMLPActor(ob_dim, ac_dim, policy_mlp_hidden)
         hard_update(self.target_policy_net, self.policy_net)
@@ -100,12 +99,6 @@ class BRACPAgent(tf.keras.Model):
         # delta should set according to the KL between initial policy and behavior policy
         self.delta_behavior = tf.Variable(initial_value=0.0, trainable=False, dtype=tf.float32)
         self.delta_gp = tf.Variable(initial_value=0.0, trainable=False, dtype=tf.float32)
-        self._build_tf_function()
-
-    def _build_tf_function(self):
-        self._compute_kl_behavior = tf.function(func=self._compute_kl_behavior, input_signature=[
-            tf.TensorSpec(shape=[None, self.ob_dim], dtype=tf.float32),
-        ])
 
     def get_alpha(self, obs):
         if self.alpha_update == 'nn':
@@ -153,14 +146,20 @@ class BRACPAgent(tf.keras.Model):
         soft_update(self.target_q_network, self.q_network, self.tau)
         soft_update(self.target_policy_net, self.policy_net, self.tau)
 
-    def _compute_kl_behavior(self, obs):
-        """ Compute the KLD between the behavior policy and the current policy """
-        # TODO: use more samples to estimate KLD
-        print(f'Tracing _compute_kl with obs={obs}')
-        # approximate using samples
-        # obs = tf.tile(obs, (n, 1))  # (None * n, obs_dim)
-        _, log_prob, raw_action, pi_distribution = self.policy_net((obs, False))
-        return self._compute_kl_behavior_v2(obs, raw_action, pi_distribution)
+    @tf.function
+    def compute_pi_pib_distance(self, obs):
+        if self.reg_type == 'kl':
+            _, log_prob, raw_action, pi_distribution = self.policy_net((obs, False))
+            loss, _ = self._compute_kl_behavior_v2(obs, raw_action, pi_distribution)
+        elif self.reg_type == 'mmd':
+            batch_size = tf.shape(obs)[0]
+            obs = tf.tile(obs, (self.n, 1))
+            _, log_prob, raw_action, pi_distribution = self.policy_net((obs, False))
+            loss = self._compute_mmd(obs, raw_action, pi_distribution)
+            log_prob = tf.reduce_mean(tf.reshape(log_prob, shape=(self.n, batch_size)), axis=0)
+        else:
+            raise NotImplementedError
+        return loss, log_prob
 
     def mmd_loss_laplacian(self, samples1, samples2, sigma=0.2):
         """MMD constraint with Laplacian kernel for support matching"""
@@ -311,16 +310,7 @@ class BRACPAgent(tf.keras.Model):
             policy_tape.watch(self.policy_net.trainable_variables)
             beta_tape.watch(self.log_beta.trainable_variables)
             beta = self.log_beta(obs)
-            if self.reg_type == 'kl':
-                action, log_prob, raw_action, pi_distribution = self.policy_net((obs, False))
-                loss, _ = self._compute_kl_behavior_v2(obs, raw_action, pi_distribution)
-            elif self.reg_type == 'mmd':
-                obs = tf.tile(obs, (self.n, 1))
-                action, log_prob, raw_action, pi_distribution = self.policy_net((obs, False))
-                loss = self._compute_mmd(obs, raw_action, pi_distribution)
-            else:
-                raise NotImplementedError
-
+            loss, log_prob = self.compute_pi_pib_distance(obs)
             if self.entropy_reg:
                 if self.reg_type == 'kl':
                     policy_loss = tf.reduce_mean(loss - beta * log_prob, axis=0)
@@ -586,14 +576,13 @@ class BRACPRunner(TFRunner):
 
         # set delta_gp
         kl_stats = self.logger.get_stats('KL')
-        self.agent.set_delta_gp(kl_stats[0] + kl_stats[1])
+        self.agent.set_delta_gp(kl_stats[0] + kl_stats[1])  # mean + std
 
         # Log info about epoch
         self.logger.log_tabular('Epoch', epoch)
         self.logger.log_tabular('TestEpRet', with_min_and_max=True)
         self.logger.log_tabular('NormalizedTestEpRet', average_only=True)
         self.logger.log_tabular('TestEpLen', average_only=True)
-        # logger.log_tabular('TestTrajKLD', with_min_and_max=True)
         self.agent.log_tabular()
         self.logger.log_tabular('Time', time.time() - self.start_time)
         self.logger.dump_tabular()
@@ -603,12 +592,19 @@ class BRACPRunner(TFRunner):
 
     def on_train_begin(self):
         self.agent.policy_net.optimizer = get_adam_optimizer(lr=self.policy_behavior_lr)
+        interval = self.pretrain_epochs * self.steps_per_epoch // 5
+        behavior_lr = self.agent.behavior_lr
+        lr_schedule = tf.keras.optimizers.schedules.PiecewiseConstantDecay(
+            boundaries=[interval, interval * 2, interval * 3, interval * 4],
+            values=[behavior_lr, 0.5 * behavior_lr, 0.1 * behavior_lr, 0.05 * behavior_lr, 0.01 * behavior_lr])
+        self.agent.behavior_policy.optimizer = get_adam_optimizer(lr=lr_schedule)
         try:
             if self.force_pretrain:
                 raise ValueError
             self.agent.behavior_policy.load_weights(filepath=self.behavior_filepath).assert_consumed()
             self.agent.policy_net.load_weights(filepath=self.policy_behavior_filepath).assert_consumed()
             self.agent.log_beta.load_weights(filepath=self.log_beta_behavior_filepath).assert_consumed()
+            self.logger.log(f'Loading behavior from {self.behavior_filepath}')
         except:
             self.pretrain(self.pretrain_epochs)
             self.agent.behavior_policy.save_weights(filepath=self.behavior_filepath)
@@ -621,19 +617,23 @@ class BRACPRunner(TFRunner):
         # reset policy net learning rate
         self.agent.policy_net.optimizer = get_adam_optimizer(lr=self.policy_lr)
 
+        # test behavior policy
+        self.test_agent(self.agent.behavior_policy, name='vae policy')
+        self.test_agent(self.agent, name='behavior cloning')
+        # compute the current KL between pi and pi_b
+        obs_dataset = tf.data.Dataset.from_tensor_slices((self.replay_buffer.get()['obs'],)).batch(1000)
+        distance = []
+        for obs, in obs_dataset:
+            distance.append(self.agent.compute_pi_pib_distance(obs)[0])
+        distance = tf.reduce_mean(tf.concat(distance, axis=0)).numpy()
+        self.logger.log(f'The average distance between pi and pi_b is {distance:.4f}')
+        # set max_kl heuristically if it is None.
         self.start_time = time.time()
 
     def on_train_end(self):
         self.agent.save_weights(filepath=self.final_filepath)
 
     def pretrain(self, epochs):
-        interval = epochs * self.steps_per_epoch // 5
-        behavior_lr = self.agent.behavior_lr
-        lr_schedule = tf.keras.optimizers.schedules.PiecewiseConstantDecay(
-            boundaries=[interval, interval * 2, interval * 3, interval * 4],
-            values=[behavior_lr, 0.5 * behavior_lr, 0.1 * behavior_lr, 0.05 * behavior_lr, 0.01 * behavior_lr])
-        self.agent.optimizer = get_adam_optimizer(lr=lr_schedule)
-
         EpochLogger.log(f'Training behavior policy for {self.env_name}')
         t = trange(epochs)
         for epoch in t:
@@ -741,7 +741,7 @@ if __name__ == '__main__':
             target_entropy=6,
         ),
         'd4rl:walker2d-expert-v0': dict(
-            max_kl=4.8,
+            max_kl=4.75,
             target_entropy=-12,
         ),
         'd4rl:hopper-medium-expert-v0': dict(
@@ -759,6 +759,10 @@ if __name__ == '__main__':
         'd4rl:hopper-medium-replay-v0': dict(
             max_kl=3.0,
             target_entropy=-3,
+        ),
+        'd4rl:hopper-expert-v0': dict(
+            max_kl=2.6,
+            target_entropy=-6,
         ),
         'd4rl:halfcheetah-medium-expert-v0': dict(
             max_kl=11.5,
