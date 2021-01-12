@@ -1,14 +1,15 @@
 import tensorflow as tf
 import tensorflow_probability as tfp
-
-tfd = tfp.distributions
+from rlutils.tf.distributions import make_independent_normal_from_params
+from rlutils.tf.nn.functional import build_mlp
 
 from .base import ConditionalBetaVAE
 
+tfd = tfp.distributions
 tfl = tfp.layers
 
-from rlutils.tf.nn.functional import build_mlp
-from rlutils.tf.distributions import make_independent_normal_from_params
+MIN_LOG_SCALE = -20.
+MAX_LOG_SCALE = 5.
 
 
 class BehaviorPolicy(ConditionalBetaVAE):
@@ -27,8 +28,8 @@ class BehaviorPolicy(ConditionalBetaVAE):
                             mlp_hidden=self.mlp_hidden,
                             num_layers=3)
         encoder.add(tfl.DistributionLambda(
-            make_distribution_fn=lambda t: make_independent_normal_from_params(t, min_log_scale=-10.,
-                                                                               max_log_scale=5.)))
+            make_distribution_fn=lambda t: make_independent_normal_from_params(t, min_log_scale=MIN_LOG_SCALE,
+                                                                               max_log_scale=MAX_LOG_SCALE)))
         output = encoder(input)
         model = tf.keras.Model(inputs=[act_input, obs_input], outputs=output)
         return model
@@ -42,8 +43,8 @@ class BehaviorPolicy(ConditionalBetaVAE):
                             mlp_hidden=self.mlp_hidden,
                             num_layers=3)
         decoder.add(tfl.DistributionLambda(
-            make_distribution_fn=lambda t: make_independent_normal_from_params(t, min_log_scale=-10.,
-                                                                               max_log_scale=5.)))
+            make_distribution_fn=lambda t: make_independent_normal_from_params(t, min_log_scale=MIN_LOG_SCALE,
+                                                                               max_log_scale=MAX_LOG_SCALE)))
         output = decoder(input)
         model = tf.keras.Model(inputs=[latent_input, obs_input], outputs=output)
         return model
@@ -85,8 +86,8 @@ class EnsembleBehaviorPolicy(BehaviorPolicy):
                             num_layers=3,
                             num_ensembles=self.num_ensembles)
         encoder.add(tfl.DistributionLambda(
-            make_distribution_fn=lambda t: make_independent_normal_from_params(t, min_log_scale=-10.,
-                                                                               max_log_scale=5.)))
+            make_distribution_fn=lambda t: make_independent_normal_from_params(t, min_log_scale=MIN_LOG_SCALE,
+                                                                               max_log_scale=MAX_LOG_SCALE)))
         output = encoder(input)
         model = tf.keras.Model(inputs=[act_input, obs_input], outputs=output)
         return model
@@ -102,8 +103,8 @@ class EnsembleBehaviorPolicy(BehaviorPolicy):
                             num_layers=3,
                             num_ensembles=self.num_ensembles)
         decoder.add(tfl.DistributionLambda(
-            make_distribution_fn=lambda t: make_independent_normal_from_params(t, min_log_scale=-10.,
-                                                                               max_log_scale=5.)))
+            make_distribution_fn=lambda t: make_independent_normal_from_params(t, min_log_scale=MIN_LOG_SCALE,
+                                                                               max_log_scale=MAX_LOG_SCALE)))
         output = decoder(input)
         model = tf.keras.Model(inputs=[latent_input, obs_input], outputs=output)
         return model

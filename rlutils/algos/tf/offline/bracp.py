@@ -12,7 +12,7 @@ import gym
 import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
-from rlutils.future.optimizer import get_adam_optimizer
+from rlutils.future.optimizer import get_adam_optimizer, minimize
 from rlutils.generative_models.vae import EnsembleBehaviorPolicy
 from rlutils.logx import EpochLogger
 from rlutils.np.functional import clip_arctanh
@@ -72,13 +72,20 @@ class BRACPAgent(tf.keras.Model):
         self.target_q_network = EnsembleMinQNet(ob_dim, ac_dim, q_mlp_hidden)
         hard_update(self.target_q_network, self.q_network)
 
-        self.log_alpha = LagrangeLayer(initial_value=alpha)
-        self.log_alpha.compile(optimizer=get_adam_optimizer(1e-3))
         self.log_beta = LagrangeLayer(initial_value=alpha)
         self.log_beta.compile(optimizer=get_adam_optimizer(1e-3))
-        self.alpha_net = build_mlp(input_dim=self.ob_dim, output_dim=1, mlp_hidden=alpha_mlp_hidden,
-                                   squeeze=True, out_activation='softplus')
-        self.alpha_net.compile(optimizer=get_adam_optimizer(alpha_lr))
+
+        if alpha_update == 'nn':
+            self.alpha_net = build_mlp(input_dim=self.ob_dim, output_dim=1, mlp_hidden=alpha_mlp_hidden,
+                                       squeeze=True, out_activation='softplus')
+            self.alpha_net.compile(optimizer=get_adam_optimizer(alpha_lr))
+        else:
+            self.alpha_net = LagrangeLayer(initial_value=alpha)
+            self.alpha_net.compile(optimizer=get_adam_optimizer(1e-3))
+
+        self.log_gp = LagrangeLayer(initial_value=alpha)
+        self.log_gp.compile(optimizer=get_adam_optimizer(1e-3))
+
         self.target_entropy = -ac_dim if target_entropy is None else target_entropy
         self.huber_delta = huber_delta
         self.alpha_update = alpha_update
@@ -92,8 +99,8 @@ class BRACPAgent(tf.keras.Model):
         self.entropy_reg = entropy_reg
         self.kl_backup = kl_backup
         self.gradient_clipping = False
-        self.gp_weight = gp_weight
         self.sensitivity = 1.0
+        self.max_ood_grad_norm = 0.01
         self.gp_type = gp_type
         assert self.gp_type in ['hard', 'sigmoid', 'none', 'softplus']
         self.sigma = sigma
@@ -103,14 +110,7 @@ class BRACPAgent(tf.keras.Model):
         self.delta_gp = tf.Variable(initial_value=0.0, trainable=False, dtype=tf.float32)
 
     def get_alpha(self, obs):
-        if self.alpha_update == 'nn':
-            return self.alpha_net(obs)
-        elif self.alpha_update == 'global':
-            return self.log_alpha(obs)
-        elif self.alpha_update == 'fixed':
-            return self.log_alpha(obs)
-        else:
-            raise NotImplementedError
+        return self.alpha_net(obs)
 
     def call(self, inputs, training=None, mask=None):
         obs, deterministic = inputs
@@ -143,6 +143,7 @@ class BRACPAgent(tf.keras.Model):
         self.logger.log_tabular('BetaLoss', average_only=True)
         self.logger.log_tabular('BehaviorLoss', average_only=True)
         self.logger.log_tabular('GP', average_only=True)
+        self.logger.log_tabular('GPWeight', average_only=True)
 
     def update_target(self):
         soft_update(self.target_q_network, self.q_network, self.tau)
@@ -288,21 +289,11 @@ class BRACPAgent(tf.keras.Model):
             else:
                 raise NotImplementedError
 
-        policy_gradients = policy_tape.gradient(policy_loss, self.policy_net.trainable_variables)
-        self.policy_net.optimizer.apply_gradients(zip(policy_gradients, self.policy_net.trainable_variables))
-
-        if self.alpha_update == 'nn':
-            alpha_gradient = alpha_tape.gradient(alpha_loss, self.alpha_net.trainable_variables)
-            self.alpha_net.optimizer.apply_gradients(zip(alpha_gradient, self.alpha_net.trainable_variables))
-        elif self.alpha_update == 'global':
-            alpha_gradient = alpha_tape.gradient(alpha_loss, self.log_alpha.trainable_variables)
-            self.log_alpha.optimizer.apply_gradients(zip(alpha_gradient, self.log_alpha.trainable_variables))
-        else:
-            raise NotImplementedError
+        minimize(policy_loss, policy_tape, self.policy_net)
+        minimize(alpha_loss, alpha_tape, self.alpha_net)
 
         if self.entropy_reg:
-            beta_gradient = beta_tape.gradient(beta_loss, self.log_beta.trainable_variables)
-            self.log_beta.optimizer.apply_gradients(zip(beta_gradient, self.log_beta.trainable_variables))
+            minimize(beta_loss, beta_tape, self.log_beta)
 
         info = dict(
             LossPi=policy_loss,
@@ -336,13 +327,10 @@ class BRACPAgent(tf.keras.Model):
                 policy_loss = tf.reduce_mean(loss, axis=0)
             beta_loss = tf.reduce_mean(beta * (log_prob + self.target_entropy), axis=0)
 
-        policy_gradients = policy_tape.gradient(policy_loss, self.policy_net.trainable_variables)
-        self.policy_net.optimizer.apply_gradients(zip(policy_gradients, self.policy_net.trainable_variables))
+        minimize(policy_loss, policy_tape, self.policy_net)
 
         if self.entropy_reg:
-            beta_gradient = beta_tape.gradient(beta_loss, self.log_beta.trainable_variables)
-            self.log_beta.optimizer.apply_gradients(zip(beta_gradient,
-                                                        self.log_beta.trainable_variables))
+            minimize(beta_loss, beta_tape, self.log_beta)
 
         info = dict(
             KL=loss,
@@ -399,33 +387,39 @@ class BRACPAgent(tf.keras.Model):
         elif self.gp_type == 'softplus':
             penalty = penalty * tf.nn.softplus((kl - self.delta_gp) * self.sensitivity)
         elif self.gp_type == 'none':
-            penalty = tf.zeros(shape=[1], dtype=tf.float32)
+            penalty = tf.zeros(shape=[batch_size], dtype=tf.float32)
         else:
             raise NotImplementedError
-        penalty = tf.reduce_mean(penalty, axis=0) * self.gp_weight
         return penalty
 
     def _update_q_nets(self, obs, actions, q_target):
         # q loss
-        with tf.GradientTape() as q_tape:
+        with tf.GradientTape() as q_tape, tf.GradientTape() as gp_weight_tape:
+            q_tape.watch(self.q_network.trainable_variables)
+            gp_weight_tape.watch(self.log_gp.trainable_variables)
+
             q_values = self.q_network((obs, actions), training=True)  # (num_ensembles, None)
             q_values_loss = 0.5 * tf.square(tf.expand_dims(q_target, axis=0) - q_values)
             # (num_ensembles, None)
             q_values_loss = tf.reduce_sum(q_values_loss, axis=0)  # (None,)
-            # apply importance weights
-            q_values_loss = tf.reduce_mean(q_values_loss)
 
+            gp_weight = self.log_gp(obs)
             gp = self._compute_q_net_gp(obs)
-            loss = q_values_loss + gp
+            delta_gp = (gp - self.max_ood_grad_norm) * gp_weight
+            loss = q_values_loss + delta_gp
+            loss = tf.reduce_mean(loss, axis=0)
 
-        q_gradients = q_tape.gradient(loss, self.q_network.trainable_variables)
-        self.q_network.optimizer.apply_gradients(zip(q_gradients, self.q_network.trainable_variables))
+            loss_gp_weight = -tf.reduce_mean(delta_gp, axis=0)
+
+        minimize(loss, q_tape, self.q_network)
+        minimize(loss_gp_weight, gp_weight_tape, self.log_gp)
 
         info = dict(
             Q1Vals=q_values[0],
             Q2Vals=q_values[1],
             LossQ=q_values_loss,
             GP=gp,
+            GPWeight=gp_weight,
         )
         return info
 
