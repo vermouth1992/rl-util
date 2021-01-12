@@ -1,6 +1,19 @@
 import numpy as np
 import tensorflow as tf
 
+EPS = 1e-6
+
+
+def flatten_leading_dims(tensor, n_dims):
+    if n_dims <= 1:
+        return tensor
+    newshape = [tf.math.reduce_prod(tf.shape(tensor)[:n_dims])] + tf.TensorShape(tf.shape(tensor)[n_dims:])
+    return tf.reshape(tensor, shape=newshape)
+
+
+def clip_atanh(x, name=None):
+    return tf.atanh(tf.clip_by_value(x, clip_value_min=-1. + EPS, clip_value_max=1. - EPS), name=name)
+
 
 @tf.function
 def compute_target_value(reward, gamma, done, next_q):

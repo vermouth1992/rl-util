@@ -4,20 +4,15 @@ Implement soft actor critic agent here
 
 import time
 
-try:
-    import d4rl
-except:
-    print('Warning! d4rl is not install.')
 import gym
 import numpy as np
 import tensorflow as tf
-from tqdm.auto import tqdm
-
 from rlutils.replay_buffers import PyUniformParallelEnvReplayBuffer
 from rlutils.runner import TFRunner, run_func_as_main
 from rlutils.tf.distributions import apply_squash_log_prob
 from rlutils.tf.functional import soft_update, hard_update, compute_target_value, to_numpy_or_python_type
 from rlutils.tf.nn import LagrangeLayer, SquashedGaussianMLPActor, EnsembleMinQNet
+from tqdm.auto import tqdm
 
 EPS = 1e-6
 
@@ -266,6 +261,7 @@ class CQLRunner(TFRunner):
         self.logger.store(TestEpRet=ep_ret, NormalizedTestEpRet=normalized_ep_ret, TestEpLen=ep_len)
 
     def setup_replay_buffer(self, batch_size):
+        import d4rl
         self.dummy_env = gym.make(self.env_name)
         dataset = d4rl.qlearning_dataset(env=self.dummy_env)
         # modify keys
@@ -345,8 +341,8 @@ class CQLRunner(TFRunner):
 
 def cql(env_name,
         max_ep_len=1000,
-        steps_per_epoch=1000,
-        epochs=1000,
+        steps_per_epoch=2000,
+        epochs=500,
         start_steps=1000 * 10,
         batch_size=256,
         num_test_episodes=20,

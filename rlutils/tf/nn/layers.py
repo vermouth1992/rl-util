@@ -49,7 +49,7 @@ class EnsembleDense(tf.keras.layers.Dense):
         return outputs
 
 
-class LagrangeLayer(tf.keras.layers.Layer):
+class LagrangeLayer(tf.keras.Model):
     def __init__(self, initial_value=1.0):
         super(LagrangeLayer, self).__init__()
         self.log_value = inverse_softplus(initial_value)

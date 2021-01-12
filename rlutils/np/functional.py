@@ -1,6 +1,8 @@
 import numpy as np
 import scipy.signal
 
+EPS = 1e-6
+
 
 def inverse_softplus(x, beta=1.):
     return np.log(np.exp(x * beta) - 1.) / beta
@@ -12,6 +14,10 @@ def flatten_leading_dims(array, n_dims):
         return array
     newshape = [-1] + list(array.shape[n_dims:])
     return np.reshape(array, newshape=newshape)
+
+
+def clip_arctanh(x):
+    return np.arctanh(np.clip(x, a_min=-1. + EPS, a_max=1. - EPS))
 
 
 def discount_cumsum(x, discount):

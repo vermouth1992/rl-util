@@ -3,7 +3,7 @@ import tensorflow as tf
 from rlutils.tf.nn.functional import build_mlp
 
 
-class EnsembleMinQNet(tf.keras.layers.Layer):
+class EnsembleMinQNet(tf.keras.Model):
     def __init__(self, ob_dim, ac_dim, mlp_hidden, num_ensembles=2, num_layers=3):
         super(EnsembleMinQNet, self).__init__()
         self.ob_dim = ob_dim
@@ -41,7 +41,7 @@ class EnsembleMinQNet(tf.keras.layers.Layer):
             return tf.reduce_min(q, axis=0)
 
 
-class AtariQNetworkDeepMind(tf.keras.layers.Layer):
+class AtariQNetworkDeepMind(tf.keras.Model):
     def __init__(self, act_dim, frame_stack=4, dueling=False, data_format='channels_first', scale_input=True):
         super(AtariQNetworkDeepMind, self).__init__()
         if data_format == 'channels_first':
