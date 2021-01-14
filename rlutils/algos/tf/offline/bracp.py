@@ -54,7 +54,7 @@ class BRACPAgent(tf.keras.Model):
                  ):
         super(BRACPAgent, self).__init__()
         self.reg_type = reg_type
-        assert self.reg_type in ['kl', 'mmd']
+        assert self.reg_type in ['kl', 'mmd', 'cross_entropy']
 
         self.ob_dim = ob_dim
         self.ac_dim = ac_dim
@@ -75,18 +75,17 @@ class BRACPAgent(tf.keras.Model):
         self.log_beta = LagrangeLayer(initial_value=alpha)
         self.log_beta.compile(optimizer=get_adam_optimizer(1e-3))
 
-        if alpha_update == 'nn':
-            self.alpha_net = build_mlp(input_dim=self.ob_dim, output_dim=1, mlp_hidden=alpha_mlp_hidden,
-                                       squeeze=True, out_activation='softplus')
-            self.alpha_net.compile(optimizer=get_adam_optimizer(alpha_lr))
-        else:
-            self.alpha_net = LagrangeLayer(initial_value=alpha)
-            self.alpha_net.compile(optimizer=get_adam_optimizer(1e-3))
+        self.log_alpha = LagrangeLayer(initial_value=alpha)
+        self.log_alpha.compile(optimizer=get_adam_optimizer(1e-3))
 
-        self.log_gp = LagrangeLayer(initial_value=alpha)
+        self.alpha_net = build_mlp(input_dim=self.ob_dim, output_dim=1, mlp_hidden=alpha_mlp_hidden,
+                                   squeeze=True, out_activation='softplus')
+        self.alpha_net.compile(optimizer=get_adam_optimizer(alpha_lr))
+
+        self.log_gp = LagrangeLayer(initial_value=gp_weight)
         self.log_gp.compile(optimizer=get_adam_optimizer(1e-3))
 
-        self.target_entropy = -ac_dim if target_entropy is None else target_entropy
+        self.target_entropy = -ac_dim * 2 if target_entropy is None else target_entropy
         self.huber_delta = huber_delta
         self.alpha_update = alpha_update
 
@@ -110,7 +109,10 @@ class BRACPAgent(tf.keras.Model):
         self.delta_gp = tf.Variable(initial_value=0.0, trainable=False, dtype=tf.float32)
 
     def get_alpha(self, obs):
-        return self.alpha_net(obs)
+        if self.alpha_update == 'nn':
+            return self.alpha_net(obs)
+        else:
+            return self.log_alpha(obs)
 
     def call(self, inputs, training=None, mask=None):
         obs, deterministic = inputs
@@ -151,7 +153,7 @@ class BRACPAgent(tf.keras.Model):
 
     @tf.function
     def compute_pi_pib_distance(self, obs):
-        if self.reg_type == 'kl':
+        if self.reg_type in ['kl', 'cross_entropy']:
             _, log_prob, raw_action, pi_distribution = self.policy_net((obs, False))
             loss = self._compute_kl_behavior_v2(obs, raw_action, pi_distribution)
         elif self.reg_type == 'mmd':
@@ -182,24 +184,22 @@ class BRACPAgent(tf.keras.Model):
     def _compute_mmd(self, obs, raw_action, pi_distribution):
         # obs: (n * None, obs_dim), raw_actions: (n * None, ac_dim)
         batch_size = tf.shape(obs)[0] // self.n
-        num_ensembles = self.behavior_policy.num_ensembles
         samples_pi = raw_action
-        samples_pi = self.behavior_policy.expand_ensemble_dim(samples_pi)  # (num_ensembles, n * None, act_dim)
-        samples_pi = tf.reshape(samples_pi, shape=(num_ensembles, self.n, batch_size, self.ac_dim))
-        samples_pi = tf.transpose(samples_pi, perm=[1, 0, 2, 3])  # (n, ensembles, None, act_dim)
-        samples_pi = tf.reshape(samples_pi, shape=(self.n, num_ensembles * batch_size, self.ac_dim))
+        samples_pi = tf.tile(samples_pi, (self.behavior_policy.num_ensembles, 1))
+        samples_pi = tf.reshape(samples_pi, shape=(self.n * self.behavior_policy.num_ensembles,
+                                                   batch_size, self.ac_dim))
 
-        obs = self.behavior_policy.expand_ensemble_dim(obs)  # (num_ensembles, n * None, act_dim)
-        samples_pi_b = self.behavior_policy.sample(obs, full_path=False)  # (num_ensembles, n * batch_size, d)
-        samples_pi_b = tf.reshape(samples_pi_b, shape=(num_ensembles, self.n, batch_size, self.ac_dim))
-        samples_pi_b = tf.transpose(samples_pi_b, perm=[1, 0, 2, 3])  # (n, ensembles, None, act_dim)
-        samples_pi_b = tf.reshape(samples_pi_b, shape=(self.n, num_ensembles * batch_size, self.ac_dim))
+        obs_expand = self.behavior_policy.expand_ensemble_dim(obs)
+        samples_pi_b = self.behavior_policy.sample(
+            obs_expand, full_path=tf.convert_to_tensor(False))  # (num_ensembles, n * batch_size, d)
+        samples_pi_b = tf.reshape(samples_pi_b, shape=(self.n * self.behavior_policy.num_ensembles,
+                                                       batch_size, self.ac_dim))
 
-        samples_pi = tf.tanh(samples_pi)
-        samples_pi_b = tf.tanh(samples_pi_b)
+        # samples_pi = tf.clip_by_value(samples_pi, -4., 4.)
+        # samples_pi_b = tf.clip_by_value(samples_pi_b, -4., 4.)
+        # samples_pi = tf.tanh(samples_pi)
+        # samples_pi_b = tf.tanh(samples_pi_b)
         mmd_loss = self.mmd_loss_laplacian(samples_pi, samples_pi_b, sigma=self.sigma)
-        mmd_loss = tf.reshape(mmd_loss, shape=(num_ensembles, batch_size, self.ac_dim))
-        mmd_loss = tf.reduce_mean(mmd_loss, axis=0)
         return mmd_loss
 
     def _compute_kl_behavior_v2(self, obs, raw_action, pi_distribution):
@@ -222,10 +222,19 @@ class BRACPAgent(tf.keras.Model):
                                                          n * batch_size,
                                                          self.behavior_policy.latent_dim))
         cond = tf.tile(cond, multiples=(1, n, 1))  # (num_ensembles, n * None, obs_dim)
-        beta_distribution = self.behavior_policy.decode_distribution(z=(encode_sample, cond))
+        beta_distribution = self.behavior_policy.decode_distribution(z=(encode_sample, cond))  # (ensemble, n * None)
         posterior_kld = tfd.kl_divergence(posterior, self.behavior_policy.prior)  # (num_ensembles, None,)
         posterior_kld = tf.tile(posterior_kld, multiples=(1, n,))
-        kl_loss = tfd.kl_divergence(pi_distribution, beta_distribution)  # (ensembles, n * None)
+
+        if self.reg_type == 'kl':
+            kl_loss = tfd.kl_divergence(pi_distribution, beta_distribution)  # (ensembles, n * None)
+        elif self.reg_type == 'cross_entropy':
+            # Cross entropy
+            x = tf.tile(x, multiples=(1, n, 1))  # (num_ensembles, n * None, act_dim)
+            kl_loss = -beta_distribution.log_prob(x)  # (ensembles, None * n)
+        else:
+            raise NotImplementedError
+
         final_kl_loss = kl_loss + posterior_kld  # (ensembles, None * n)
         final_kl_loss = tf.reshape(final_kl_loss, shape=(self.behavior_policy.num_ensembles, n, batch_size))
         final_kl_loss = tf.reduce_mean(final_kl_loss, axis=[0, 1])  # average both latent and ensemble dimension
@@ -235,31 +244,30 @@ class BRACPAgent(tf.keras.Model):
     def update_actor_first_order(self, obs):
         # TODO: maybe we just follow behavior policy and keep a minimum entropy instead of the optimal one.
         # policy loss
-        with tf.GradientTape() as policy_tape, tf.GradientTape() as alpha_tape, tf.GradientTape() as beta_tape:
+        with tf.GradientTape() as policy_tape, tf.GradientTape() as beta_tape:
             """ Compute the loss function of the policy that maximizes the Q function """
             print(f'Tracing _compute_surrogate_loss_pi with obs={obs}')
 
             policy_tape.watch(self.policy_net.trainable_variables)
-            alpha_tape.watch(self.alpha_net.trainable_variables)
             beta_tape.watch(self.log_beta.trainable_variables)
 
             batch_size = tf.shape(obs)[0]
             alpha = self.get_alpha(obs)  # (None, act_dim)
             beta = self.log_beta(obs)
 
-            obs = tf.tile(obs, (self.n, 1))
+            obs_tile = tf.tile(obs, (self.n, 1))
 
             # policy loss
-            action, log_prob, raw_action, pi_distribution = self.policy_net((obs, False))
+            action, log_prob, raw_action, pi_distribution = self.policy_net((obs_tile, False))
             log_prob = tf.reduce_mean(tf.reshape(log_prob, shape=(self.n, batch_size)), axis=0)
-            q_values_pi_min = self.q_network((obs, action), training=False)
+            q_values_pi_min = self.q_network((obs_tile, action), training=False)
             q_values_pi_min = tf.reduce_mean(tf.reshape(q_values_pi_min, shape=(self.n, batch_size)), axis=0)
             # add KL divergence penalty, high variance?
-            if self.reg_type == 'kl':
-                kl_loss = self._compute_kl_behavior_v2(obs, raw_action, pi_distribution)  # (None, act_dim)
+            if self.reg_type in ['kl', 'cross_entropy']:
+                kl_loss = self._compute_kl_behavior_v2(obs_tile, raw_action, pi_distribution)  # (None, act_dim)
                 kl_loss = tf.reduce_mean(tf.reshape(kl_loss, shape=(self.n, batch_size)), axis=0)
             elif self.reg_type == 'mmd':
-                kl_loss = self._compute_mmd(obs, raw_action, pi_distribution)
+                kl_loss = self._compute_mmd(obs_tile, raw_action, pi_distribution)
             else:
                 raise NotImplementedError
 
@@ -271,7 +279,7 @@ class BRACPAgent(tf.keras.Model):
                     policy_loss = tf.reduce_mean(- q_values_pi_min + penalty - beta * log_prob, axis=0)
                 else:
                     policy_loss = tf.reduce_mean(- q_values_pi_min + penalty, axis=0)
-            elif self.reg_type in ['mmd']:
+            elif self.reg_type in ['mmd', 'cross_entropy']:
                 if self.entropy_reg:
                     policy_loss = tf.reduce_mean(- q_values_pi_min + penalty + beta * log_prob, axis=0)
                 else:
@@ -279,18 +287,25 @@ class BRACPAgent(tf.keras.Model):
             else:
                 raise NotImplementedError
 
-            # alpha loss
-            alpha_loss = -tf.reduce_mean(penalty, axis=0)
             # beta loss
             if self.reg_type == 'kl':
                 beta_loss = tf.reduce_mean(beta * (log_prob + self.target_entropy))
-            elif self.reg_type in ['mmd']:
+            elif self.reg_type in ['mmd', 'cross_entropy']:
                 beta_loss = -tf.reduce_mean(beta * (log_prob + self.target_entropy))
             else:
                 raise NotImplementedError
 
+        with tf.GradientTape() as alpha_tape:
+            # alpha loss
+            alpha = self.get_alpha(obs)
+            penalty = delta * alpha
+            alpha_loss = -tf.reduce_mean(penalty, axis=0)
         minimize(policy_loss, policy_tape, self.policy_net)
-        minimize(alpha_loss, alpha_tape, self.alpha_net)
+
+        if self.alpha_update == 'nn':
+            minimize(alpha_loss, alpha_tape, self.alpha_net)
+        else:
+            minimize(alpha_loss, alpha_tape, self.log_alpha)
 
         if self.entropy_reg:
             minimize(beta_loss, beta_tape, self.log_beta)
@@ -317,15 +332,16 @@ class BRACPAgent(tf.keras.Model):
             beta = self.log_beta(obs)
             loss, log_prob = self.compute_pi_pib_distance(obs)
             if self.entropy_reg:
-                if self.reg_type == 'kl':
+                if self.reg_type in ['kl']:
                     policy_loss = tf.reduce_mean(loss - beta * log_prob, axis=0)
-                elif self.reg_type == 'mmd':
+                    beta_loss = tf.reduce_mean(beta * (log_prob + self.target_entropy), axis=0)
+                elif self.reg_type in ['mmd', 'cross_entropy']:
                     policy_loss = tf.reduce_mean(loss + beta * log_prob, axis=0)
+                    beta_loss = -tf.reduce_mean(beta * (log_prob + self.target_entropy), axis=0)
                 else:
                     raise NotImplementedError
             else:
                 policy_loss = tf.reduce_mean(loss, axis=0)
-            beta_loss = tf.reduce_mean(beta * (log_prob + self.target_entropy), axis=0)
 
         minimize(policy_loss, policy_tape, self.policy_net)
 
@@ -361,7 +377,7 @@ class BRACPAgent(tf.keras.Model):
 
     def _compute_q_net_gp(self, obs):
         batch_size = tf.shape(obs)[0]
-        if self.reg_type == 'kl':
+        if self.reg_type in ['kl', 'cross_entropy']:
             action, log_prob, raw_action, pi_distribution = self.policy_net((obs, False))
             kl = self._compute_kl_behavior_v2(obs, raw_action, pi_distribution)  # (None,)
         elif self.reg_type == 'mmd':
@@ -471,14 +487,14 @@ class BRACPRunner(TFRunner):
         return self.agent.act_batch(tf.convert_to_tensor(o, dtype=tf.float32),
                                     deterministic).numpy()
 
-    def test_agent(self, agent, name, logger=None):
+    def test_agent(self, agent, name, deterministic=False, logger=None):
         o, d, ep_ret, ep_len = self.env.reset(), np.zeros(shape=self.num_test_episodes, dtype=np.bool), \
                                np.zeros(shape=self.num_test_episodes), np.zeros(shape=self.num_test_episodes,
                                                                                 dtype=np.int64)
         t = tqdm(total=1, desc=f'Testing {name}')
         while not np.all(d):
             a = agent.act_batch(tf.convert_to_tensor(o, dtype=tf.float32),
-                                tf.convert_to_tensor(False)).numpy()
+                                tf.convert_to_tensor(deterministic)).numpy()
             assert not np.any(np.isnan(a)), f'nan action: {a}'
             o, r, d_, _ = self.env.step(a)
             ep_ret = r * (1 - d) + ep_ret
@@ -595,6 +611,7 @@ class BRACPRunner(TFRunner):
         self.logger.log_tabular('NormalizedTestEpRet', average_only=True)
         self.logger.log_tabular('TestEpLen', average_only=True)
         self.agent.log_tabular()
+        self.logger.log_tabular('GradientSteps', epoch * self.steps_per_epoch)
         self.logger.log_tabular('Time', time.time() - self.start_time)
         self.logger.dump_tabular()
 
@@ -610,9 +627,13 @@ class BRACPRunner(TFRunner):
             values=[behavior_lr, 0.5 * behavior_lr, 0.1 * behavior_lr, 0.05 * behavior_lr, 0.01 * behavior_lr])
         self.agent.behavior_policy.optimizer = get_adam_optimizer(lr=lr_schedule)
         try:
-            if self.force_pretrain_behavior or self.force_pretrain_cloning:
+            self.success_load_behavior_policy = False
+            if self.force_pretrain_behavior:
                 raise ValueError
             self.agent.behavior_policy.load_weights(filepath=self.behavior_filepath).assert_consumed()
+            self.success_load_behavior_policy = True
+            if self.force_pretrain_cloning:
+                raise ValueError
             self.agent.policy_net.load_weights(filepath=self.policy_behavior_filepath).assert_consumed()
             self.agent.log_beta.load_weights(filepath=self.log_beta_behavior_filepath).assert_consumed()
             self.logger.log(f'Loading behavior from {self.behavior_filepath}')
@@ -627,17 +648,18 @@ class BRACPRunner(TFRunner):
         self.agent.set_delta_gp(self.max_kl)
         # reset policy net learning rate
         self.agent.policy_net.optimizer = get_adam_optimizer(lr=self.policy_lr)
+        self.agent.log_beta.optimizer = get_adam_optimizer(lr=1e-3)
 
         # test behavior policy
         self.test_agent(self.agent.behavior_policy, name='vae policy')
-        self.test_agent(self.agent, name='behavior cloning')
+        self.test_agent(self.agent, deterministic=True, name='behavior cloning')
         # compute the current KL between pi and pi_b
         obs_dataset = tf.data.Dataset.from_tensor_slices((self.replay_buffer.get()['obs'],)).batch(1000)
         distance = []
         for obs, in obs_dataset:
             distance.append(self.agent.compute_pi_pib_distance(obs)[0])
         distance = tf.reduce_mean(tf.concat(distance, axis=0)).numpy()
-        self.logger.log(f'The average distance between pi and pi_b is {distance:.4f}')
+        self.logger.log(f'The average distance ({self.agent.reg_type}) between pi and pi_b is {distance:.4f}')
         # set max_kl heuristically if it is None.
         self.start_time = time.time()
 
@@ -653,7 +675,7 @@ class BRACPRunner(TFRunner):
                 # update q_b, pi_0, pi_b
                 data = self.replay_buffer.sample()
                 obs = data['obs']
-                if self.force_pretrain_behavior:
+                if self.force_pretrain_behavior or (not self.success_load_behavior_policy):
                     raw_act = clip_arctanh(data['act'])
                     behavior_loss = self.agent.behavior_policy.train_on_batch(x=(raw_act, obs), return_dict=True)[
                         'loss']
@@ -674,11 +696,11 @@ class BRACPRunner(TFRunner):
 
 
 def bracp(env_name,
-          steps_per_epoch=2000,
-          pretrain_epochs=250,
+          steps_per_epoch=2500,
+          pretrain_epochs=200,
           force_pretrain_behavior=False,
           force_pretrain_cloning=False,
-          epochs=500,
+          epochs=400,
           batch_size=100,
 
           num_test_episodes=20,
@@ -696,17 +718,17 @@ def bracp(env_name,
           gamma=0.99,
           huber_delta=None,
           target_entropy=None,
-          max_kl=None,
-          alpha_update='nn',
+          max_kl=-np.log(0.1),
+          alpha_update='global',
           gp_type='hard',
-          reg_type='kl',
+          reg_type='cross_entropy',
           sigma=10,
           n=5,
           gp_weight=0.1,
           entropy_reg=True,
           kl_backup=False,
           # behavior policy
-          num_ensembles=5,
+          num_ensembles=1,
           behavior_mlp_hidden=256,
           behavior_lr=1e-3,
           # others
@@ -742,97 +764,6 @@ def bracp(env_name,
 
 
 if __name__ == '__main__':
-    default_hyperparameters = {
-        'd4rl:walker2d-medium-v0': dict(
-            max_kl=2.2,
-            target_entropy=-9,
-        ),
-        'd4rl:walker2d-medium-expert-v0': dict(
-            max_kl=5,
-            target_entropy=-12,
-        ),
-        'd4rl:walker2d-medium-replay-v0': dict(
-            max_kl=4.0,
-            target_entropy=-6,
-        ),
-        'd4rl:walker2d-random-v0': dict(
-            max_kl=0.1,
-            target_entropy=6,
-        ),
-        'd4rl:walker2d-expert-v0': dict(
-            max_kl=4.8,
-            target_entropy=-12,
-        ),
-        'd4rl:hopper-medium-expert-v0': dict(
-            max_kl=2.6,
-            target_entropy=-6,
-        ),
-        'd4rl:hopper-medium-v0': dict(
-            max_kl=2.4,
-            target_entropy=-6,
-        ),
-        'd4rl:hopper-random-v0': dict(
-            max_kl=3.0,
-            target_entropy=-3,
-        ),
-        'd4rl:hopper-medium-replay-v0': dict(
-            max_kl=3.0,
-            target_entropy=-3,
-        ),
-        'd4rl:hopper-expert-v0': dict(
-            max_kl=2.6,
-            target_entropy=-6,
-        ),
-        'd4rl:halfcheetah-medium-expert-v0': dict(
-            max_kl=11.5,
-            target_entropy=-24,
-        ),
-        'd4rl:halfcheetah-medium-v0': dict(
-            max_kl=4,
-            target_entropy=-12,
-        ),
-        'd4rl:halfcheetah-medium-replay-v0': dict(
-            max_kl=6.0,
-            target_entropy=-12,
-        ),
-        'd4rl:halfcheetah-random-v0': dict(
-            max_kl=9,
-            target_entropy=-3,
-        ),
-        'd4rl:door-human-v0': dict(
-            max_kl=0.1,
-            target_entropy=-60,
-            reg_type='mmd',
-            alpha_lr=1e-7,
-            policy_lr=5e-8,
-            sigma=60,
-        ),
-        'd4rl:pen-human-v0': dict(
-            max_kl=0.06,
-            target_entropy=-200,
-            reg_type='mmd',
-            alpha_lr=1e-7,
-            policy_lr=5e-8,
-            sigma=60,
-        ),
-        'd4rl:hammer-human-v0': dict(
-            max_kl=0.1,
-            target_entropy=-60,
-            reg_type='mmd',
-            alpha_lr=1e-7,
-            policy_lr=5e-8,
-            sigma=60,
-        ),
-        'd4rl:relocate-human-v0': dict(
-            max_kl=0.1,
-            target_entropy=-60,
-            reg_type='mmd',
-            alpha_lr=1e-7,
-            policy_lr=5e-8,
-            sigma=60,
-        )
-    }
-
     import argparse
 
     parser = argparse.ArgumentParser()
@@ -844,7 +775,4 @@ if __name__ == '__main__':
     args = vars(parser.parse_args())
     env_name = args['env_name']
 
-    config = default_hyperparameters[env_name]
-    config.update(args)
-
-    bracp(**config)
+    bracp(**args)

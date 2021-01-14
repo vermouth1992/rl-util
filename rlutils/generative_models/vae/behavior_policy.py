@@ -1,6 +1,6 @@
 import tensorflow as tf
 import tensorflow_probability as tfp
-from rlutils.tf.distributions import make_independent_normal_from_params
+from rlutils.tf.distributions import make_independent_normal_from_params, apply_squash_log_prob
 from rlutils.tf.nn.functional import build_mlp
 
 from .base import ConditionalBetaVAE
@@ -61,6 +61,8 @@ class EnsembleBehaviorPolicy(BehaviorPolicy):
     def __init__(self, num_ensembles, obs_dim, act_dim, mlp_hidden=256):
         self.num_ensembles = num_ensembles
         super(EnsembleBehaviorPolicy, self).__init__(obs_dim=obs_dim, act_dim=act_dim, mlp_hidden=mlp_hidden)
+        self.build(input_shape=[(self.num_ensembles, None, act_dim),
+                                (self.num_ensembles, None, obs_dim)])
 
     def expand_ensemble_dim(self, x):
         """ functionality for outer class to expand before passing into the ensemble model. """
@@ -127,6 +129,7 @@ class EnsembleBehaviorPolicy(BehaviorPolicy):
         encode_sample = posterior.sample()
         out = self.decoder((encode_sample, cond), training=training)
         log_likelihood = out.log_prob(x)  # (num_ensembles, None)
+        log_likelihood = apply_squash_log_prob(log_likelihood, x)
         kl_divergence = tfd.kl_divergence(posterior, self.prior)
         nll = -tf.reduce_mean(tf.reduce_sum(log_likelihood, axis=0), axis=0)
         kld = tf.reduce_mean(tf.reduce_sum(kl_divergence, axis=0), axis=0)

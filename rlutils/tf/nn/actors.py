@@ -91,7 +91,7 @@ class CenteredBetaMLPActor(tf.keras.Model):
         self.ac_dim = ac_dim
         self.pi_dist_layer = tfp.layers.DistributionLambda(
             make_distribution_fn=lambda t: make_independent_beta_from_params(t))
-        self.build(input_shape=[(None, ob_dim), (None,)])
+        self.build(input_shape=[(None, ob_dim), ()])
 
     def call(self, inputs, **kwargs):
         inputs, deterministic = inputs
@@ -118,7 +118,6 @@ class SquashedGaussianMLPActor(tf.keras.Model):
 
     def call(self, inputs, **kwargs):
         inputs, deterministic = inputs
-        # print(f'Tracing call with inputs={inputs}, deterministic={deterministic}')
         params = self.net(inputs)
         pi_distribution = self.pi_dist_layer(params)
         pi_action = get_pi_action(deterministic, pi_distribution)
