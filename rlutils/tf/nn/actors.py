@@ -87,7 +87,6 @@ class CenteredBetaMLPActor(tf.keras.Model):
 
     def __init__(self, ob_dim, ac_dim, mlp_hidden):
         super(CenteredBetaMLPActor, self).__init__()
-        print('Warning! This actor is not tested')
         self.net = build_mlp(ob_dim, ac_dim * 2, mlp_hidden)
         self.ac_dim = ac_dim
         self.pi_dist_layer = tfp.layers.DistributionLambda(

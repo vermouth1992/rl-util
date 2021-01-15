@@ -220,10 +220,16 @@ class BRACPAgent(tf.keras.Model):
     def _compute_kl_behavior_v2(self, obs, raw_action, pi_distribution):
         n = self.kl_n
         batch_size = tf.shape(obs)[0]
-        pi_distribution = tfd.Independent(distribution=tfd.Normal(
-            loc=tf.tile(pi_distribution.distribution.loc, (n, 1)),
-            scale=tf.tile(pi_distribution.distribution.scale, (n, 1))
-        ), reinterpreted_batch_ndims=1)  # (n * batch_size)
+        if self.behavior_policy.out_dist == 'normal':
+            pi_distribution = tfd.Independent(distribution=tfd.Normal(
+                loc=tf.tile(pi_distribution.distribution.loc, (n, 1)),
+                scale=tf.tile(pi_distribution.distribution.scale, (n, 1))
+            ), reinterpreted_batch_ndims=1)  # (n * batch_size)
+        else:
+            pi_distribution = tfd.Independent(distribution=tfd.Beta(
+                concentration0=tf.tile(pi_distribution.distribution.concentration0, (n, 1)),
+                concentration1=tf.tile(pi_distribution.distribution.concentration1, (n, 1))
+            ), reinterpreted_batch_ndims=1)
 
         # compute KLD upper bound
         x, cond = raw_action, obs
