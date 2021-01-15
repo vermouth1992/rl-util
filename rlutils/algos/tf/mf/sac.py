@@ -19,7 +19,7 @@ class SACAgent(tf.keras.Model):
     def __init__(self,
                  obs_spec,
                  act_spec,
-                 policy_type='gaussian',
+                 policy_type='beta',
                  policy_mlp_hidden=128,
                  policy_lr=3e-4,
                  q_mlp_hidden=256,
