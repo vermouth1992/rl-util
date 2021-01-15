@@ -176,6 +176,5 @@ def _decode_initializer(name):
         name = 'glorot_uniform'
     if isinstance(name, str):
         if name in ensemble_init:
-            print(f'Using ensemble {name} initializer')
             return ensemble_init[name]
     return name

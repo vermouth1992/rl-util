@@ -94,7 +94,7 @@ class BRACPAgent(tf.keras.Model):
         self.log_gp = LagrangeLayer(initial_value=gp_weight)
         self.log_gp.compile(optimizer=get_adam_optimizer(1e-3))
 
-        self.target_entropy = -ac_dim * 2 if target_entropy is None else target_entropy
+        self.target_entropy = target_entropy
         self.huber_delta = huber_delta
         self.alpha_update = alpha_update
 
@@ -571,6 +571,7 @@ class BRACPRunner(TFRunner):
         )
 
     def setup_agent(self,
+                    actor_distribution,
                     num_ensembles,
                     behavior_mlp_hidden,
                     behavior_lr,
@@ -599,7 +600,9 @@ class BRACPRunner(TFRunner):
         act_dim = self.env.single_action_space.shape[-1]
         self.policy_lr = policy_lr
         self.policy_behavior_lr = policy_behavior_lr
-        self.agent = BRACPAgent(ob_dim=obs_dim, ac_dim=act_dim, num_ensembles=num_ensembles,
+        self.agent = BRACPAgent(ob_dim=obs_dim, ac_dim=act_dim,
+                                out_dist=actor_distribution,
+                                num_ensembles=num_ensembles,
                                 behavior_mlp_hidden=behavior_mlp_hidden,
                                 behavior_lr=behavior_lr,
                                 policy_mlp_hidden=policy_mlp_hidden, q_mlp_hidden=q_mlp_hidden,
@@ -622,13 +625,15 @@ class BRACPRunner(TFRunner):
                     save_freq,
                     max_kl,
                     force_pretrain_behavior,
-                    force_pretrain_cloning
+                    force_pretrain_cloning,
+                    generalization_threshold
                     ):
         self.pretrain_epochs = pretrain_epochs
         self.save_freq = save_freq
         self.max_kl = max_kl
         self.force_pretrain_behavior = force_pretrain_behavior
         self.force_pretrain_cloning = force_pretrain_cloning
+        self.generalization_threshold = generalization_threshold
 
     def run_one_step(self, t):
         self.agent.update(self.replay_buffer)
@@ -670,6 +675,21 @@ class BRACPRunner(TFRunner):
             self.pretrain_behavior_policy(self.pretrain_epochs)
             self.agent.behavior_policy.save_weights(filepath=self.behavior_filepath)
 
+        obs_act_dataset = tf.data.Dataset.from_tensor_slices((self.replay_buffer.get()['obs'],
+                                                              self.replay_buffer.get()['act'])).batch(1000)
+        # evaluate dataset log probability
+        behavior_nll = []
+        for obs, act in obs_act_dataset:
+            raw_act = self.agent.behavior_policy.inverse_transform_action(act)
+            behavior_nll.append(self.agent.behavior_policy.test_on_batch(x=(raw_act, obs))['loss'])
+        behavior_nll = tf.reduce_mean(tf.concat(behavior_nll, axis=0)).numpy()
+        self.logger.log(f'Behavior policy data log probability is {-behavior_nll:.4f}')
+        # set target_entropy heuristically as -behavior_log_prob - act_dim
+        if self.agent.target_entropy is None:
+            self.agent.target_entropy = behavior_nll - self.agent.ac_dim
+
+        self.logger.log(f'The target entropy of the behavior policy is {self.agent.target_entropy:.4f}')
+
         try:
             if self.force_pretrain_cloning:
                 raise ValueError()
@@ -690,15 +710,16 @@ class BRACPRunner(TFRunner):
         self.test_agent(self.agent.behavior_policy, name='vae policy')
         self.test_agent(self.agent, deterministic=True, name='behavior cloning')
         # compute the current KL between pi and pi_b
-        obs_dataset = tf.data.Dataset.from_tensor_slices((self.replay_buffer.get()['obs'],)).batch(1000)
+
         distance = []
-        for obs, in obs_dataset:
+        for obs, act in obs_act_dataset:
             distance.append(self.agent.compute_pi_pib_distance(obs)[0])
         distance = tf.reduce_mean(tf.concat(distance, axis=0)).numpy()
+
         self.logger.log(f'The average distance ({self.agent.reg_type}) between pi and pi_b is {distance:.4f}')
         # set max_kl heuristically if it is None.
         if self.max_kl is None:
-            self.max_kl = distance + np.log(2) * self.agent.ac_dim
+            self.max_kl = distance + self.generalization_threshold  # allow space to explore generalization
 
         self.agent.set_delta_behavior(self.max_kl)
         self.agent.set_delta_gp(self.max_kl)
@@ -734,7 +755,7 @@ class BRACPRunner(TFRunner):
                 data = self.replay_buffer.sample()
                 obs = data['obs']
                 raw_act = self.agent.behavior_policy.inverse_transform_action(data['act'])
-                behavior_loss = self.agent.behavior_policy.train_on_batch(x=(raw_act, obs), return_dict=True)['loss']
+                behavior_loss = self.agent.behavior_policy.train_on_batch(x=(raw_act, obs))['loss']
                 loss.append(behavior_loss)
             loss = tf.reduce_mean(loss).numpy()
             t.set_description(desc=f'Loss: {loss:.2f}')
@@ -763,15 +784,17 @@ def bracp(env_name,
           gamma=0.99,
           huber_delta=None,
           target_entropy=None,
-          max_kl=0.15,
+          max_kl=None,
           alpha_update='nn',
           gp_type='hard',
-          reg_type='mmd',
+          reg_type='kl',
           sigma=20,
+          actor_distribution='beta',
           n=5,
           gp_weight=0.1,
-          entropy_reg=False,
+          entropy_reg=True,
           kl_backup=False,
+          generalization_threshold=0.1,
           # behavior policy
           num_ensembles=3,
           behavior_mlp_hidden=256,
@@ -787,7 +810,8 @@ def bracp(env_name,
     runner.setup_env(env_name=env_name, num_parallel_env=num_test_episodes, frame_stack=None, wrappers=None,
                      asynchronous=False, num_test_episodes=None)
     runner.setup_logger(config=config)
-    runner.setup_agent(num_ensembles=num_ensembles,
+    runner.setup_agent(actor_distribution=actor_distribution,
+                       num_ensembles=num_ensembles,
                        behavior_mlp_hidden=behavior_mlp_hidden,
                        behavior_lr=behavior_lr,
                        policy_mlp_hidden=policy_mlp_hidden, q_mlp_hidden=q_mlp_hidden,
@@ -801,7 +825,8 @@ def bracp(env_name,
                        save_freq=save_freq,
                        max_kl=max_kl,
                        force_pretrain_behavior=pretrain_behavior,
-                       force_pretrain_cloning=pretrain_cloning)
+                       force_pretrain_cloning=pretrain_cloning,
+                       generalization_threshold=generalization_threshold)
     runner.setup_replay_buffer(batch_size=batch_size,
                                reward_scale=reward_scale)
 
