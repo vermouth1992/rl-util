@@ -110,6 +110,7 @@ class BRACPAgent(tf.keras.Model):
         self.sensitivity = 1.0
         self.max_ood_grad_norm = 0.01
         self.gp_type = gp_type
+        self.use_gp = False
         assert self.gp_type in ['hard', 'sigmoid', 'none', 'softplus']
         self.sigma = sigma
 
@@ -442,20 +443,27 @@ class BRACPAgent(tf.keras.Model):
             # (num_ensembles, None)
             q_values_loss = tf.reduce_sum(q_values_loss, axis=0)  # (None,)
 
-            gp_weight = self.log_gp(obs)
-            gp = self._compute_q_net_gp(obs)
-            loss = q_values_loss + gp * gp_weight
+            if self.use_gp:
+                gp_weight = self.log_gp(obs)
+                gp = self._compute_q_net_gp(obs)
+                loss = q_values_loss + gp * gp_weight
+            else:
+                loss = q_values_loss
             loss = tf.reduce_mean(loss, axis=0)
 
         minimize(loss, q_tape, self.q_network)
 
-        with tf.GradientTape() as gp_weight_tape:
-            gp_weight_tape.watch(self.log_gp.trainable_variables)
-            gp_weight = self.log_gp(obs)
-            delta_gp = (gp - self.max_ood_grad_norm) * gp_weight
-            loss_gp_weight = -tf.reduce_mean(delta_gp, axis=0)
+        if self.use_gp:
+            with tf.GradientTape() as gp_weight_tape:
+                gp_weight_tape.watch(self.log_gp.trainable_variables)
+                gp_weight = self.log_gp(obs)
+                delta_gp = (gp - self.max_ood_grad_norm) * gp_weight
+                loss_gp_weight = -tf.reduce_mean(delta_gp, axis=0)
 
-        minimize(loss_gp_weight, gp_weight_tape, self.log_gp)
+            minimize(loss_gp_weight, gp_weight_tape, self.log_gp)
+        else:
+            gp = 0.
+            gp_weight = 0.
 
         info = dict(
             Q1Vals=q_values[0],
