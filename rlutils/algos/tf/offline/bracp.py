@@ -110,7 +110,7 @@ class BRACPAgent(tf.keras.Model):
         self.sensitivity = 1.0
         self.max_ood_grad_norm = 0.01
         self.gp_type = gp_type
-        self.use_gp = False
+        self.use_gp = False if self.gp_type == 'none' else True
         assert self.gp_type in ['hard', 'sigmoid', 'none', 'softplus']
         self.sigma = sigma
 
@@ -791,11 +791,11 @@ def bracp(env_name,
           huber_delta=None,
           target_entropy=None,
           max_kl=None,
-          alpha_update='nn',
+          alpha_update='global',
           gp_type='hard',
           reg_type='kl',
           sigma=20,
-          actor_distribution='beta',
+          actor_distribution='normal',
           n=5,
           gp_weight=0.1,
           entropy_reg=True,
