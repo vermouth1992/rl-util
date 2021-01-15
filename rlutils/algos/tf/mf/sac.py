@@ -33,17 +33,17 @@ class SACAgent(tf.keras.Model):
         super(SACAgent, self).__init__()
         self.obs_spec = obs_spec
         self.act_spec = act_spec
-        act_dim = self.act_spec.shape[0]
+        self.act_dim = self.act_spec.shape[0]
         if len(self.obs_spec.shape) == 1:  # 1D observation
-            obs_dim = self.obs_spec.shape[0]
+            self.obs_dim = self.obs_spec.shape[0]
             if policy_type == 'gaussian':
-                self.policy_net = SquashedGaussianMLPActor(obs_dim, act_dim, policy_mlp_hidden)
+                self.policy_net = SquashedGaussianMLPActor(self.obs_dim, self.act_dim, policy_mlp_hidden)
             elif policy_type == 'beta':
-                self.policy_net = CenteredBetaMLPActor(obs_dim, act_dim, policy_mlp_hidden)
+                self.policy_net = CenteredBetaMLPActor(self.obs_dim, self.act_dim, policy_mlp_hidden)
             else:
                 raise NotImplementedError
-            self.q_network = EnsembleMinQNet(obs_dim, act_dim, q_mlp_hidden)
-            self.target_q_network = EnsembleMinQNet(obs_dim, act_dim, q_mlp_hidden)
+            self.q_network = EnsembleMinQNet(self.obs_dim, self.act_dim, q_mlp_hidden)
+            self.target_q_network = EnsembleMinQNet(self.obs_dim, self.act_dim, q_mlp_hidden)
         else:
             raise NotImplementedError
         hard_update(self.target_q_network, self.q_network)
@@ -53,7 +53,7 @@ class SACAgent(tf.keras.Model):
 
         self.log_alpha = LagrangeLayer(initial_value=alpha)
         self.alpha_optimizer = tf.keras.optimizers.Adam(lr=alpha_lr)
-        self.target_entropy = -act_dim if target_entropy is None else target_entropy
+        self.target_entropy = -self.act_dim if target_entropy is None else target_entropy
 
         self.tau = tau
         self.gamma = gamma
@@ -154,6 +154,20 @@ class SACAgent(tf.keras.Model):
         pi_final = self.policy_net((obs, deterministic))[0]
         return pi_final
 
+    @tf.function
+    def act_batch_test(self, obs):
+        n = 20
+        batch_size = tf.shape(obs)[0]
+        obs = tf.tile(obs, (n, 1))
+        action = self.policy_net((obs, False))[0]
+        q_values_pi_min = self.q_network((obs, action), training=True)[0, :]
+        action = tf.reshape(action, shape=(n, batch_size, self.act_dim))
+        idx = tf.argmax(tf.reshape(q_values_pi_min, shape=(n, batch_size)), axis=0,
+                        output_type=tf.int32)  # (batch_size)
+        idx = tf.stack([idx, tf.range(batch_size)], axis=-1)
+        pi_final = tf.gather_nd(action, idx)
+        return pi_final
+
 
 class SACRunner(TFRunner):
     def get_action_batch(self, o, deterministic=False):
@@ -166,7 +180,7 @@ class SACRunner(TFRunner):
                                np.zeros(shape=self.num_test_episodes, dtype=np.int64)
         t = tqdm(total=1, desc='Testing')
         while not np.all(d):
-            a = self.get_action_batch(o, deterministic=True)
+            a = self.agent.act_batch_test(o.astype(np.float32))
             o, r, d_, _ = self.test_env.step(a)
             ep_ret = r * (1 - d) + ep_ret
             ep_len = np.ones(shape=self.num_test_episodes, dtype=np.int64) * (1 - d) + ep_len
