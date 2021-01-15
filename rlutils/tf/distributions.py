@@ -45,7 +45,7 @@ def make_independent_truncated_normal(loc_params, scale_params, ndims=1):
 
 
 def make_independent_beta_from_params(params):
-    params = tf.math.softplus(params)
+    params = tf.math.softplus(params) + 1.0
     c1, c2 = tf.split(params, 2, axis=-1)
     distribution = make_independent_beta(c1, c2, ndims=1)
     return distribution

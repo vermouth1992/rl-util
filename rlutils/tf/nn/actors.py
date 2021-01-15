@@ -3,6 +3,7 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 from rlutils.tf.distributions import make_independent_normal_from_params, apply_squash_log_prob, \
     make_independent_beta_from_params, make_independent_truncated_normal, make_independent_normal
+from rlutils.tf.functional import clip_atanh
 
 from .functional import build_mlp
 
@@ -93,8 +94,13 @@ class CenteredBetaMLPActor(tf.keras.Model):
             make_distribution_fn=lambda t: make_independent_beta_from_params(t))
         self.build(input_shape=[(None, ob_dim), (None,)])
 
-    def transform_raw_action(self, action):
-        return (action - 0.5) * 2
+    def transform_raw_action(self, raw_action):
+        return (raw_action - 0.5) * 2
+
+    def inverse_transform_action(self, action):
+        raw_action = (action + 1) / 2
+        raw_action = tf.clip_by_value(raw_action, EPS, 1. - EPS)
+        return raw_action
 
     def transform_raw_log_prob(self, raw_log_prob, raw_action):
         return raw_log_prob - np.log(2.)
@@ -124,6 +130,9 @@ class SquashedGaussianMLPActor(tf.keras.Model):
 
     def transform_raw_action(self, action):
         return tf.tanh(action)
+
+    def inverse_transform_action(self, action):
+        return clip_atanh(action)
 
     def transform_raw_log_prob(self, raw_log_prob, raw_action):
         return apply_squash_log_prob(raw_log_prob=raw_log_prob, x=raw_action)

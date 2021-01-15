@@ -15,11 +15,10 @@ import tensorflow_probability as tfp
 from rlutils.future.optimizer import get_adam_optimizer, minimize
 from rlutils.generative_models.vae import EnsembleBehaviorPolicy
 from rlutils.logx import EpochLogger
-from rlutils.np.functional import clip_arctanh
 from rlutils.replay_buffers import PyUniformParallelEnvReplayBuffer
 from rlutils.runner import TFRunner
 from rlutils.tf.distributions import apply_squash_log_prob
-from rlutils.tf.functional import soft_update, hard_update, to_numpy_or_python_type, clip_atanh
+from rlutils.tf.functional import soft_update, hard_update, to_numpy_or_python_type
 from rlutils.tf.nn import SquashedGaussianMLPActor, EnsembleMinQNet, LagrangeLayer, CenteredBetaMLPActor
 from rlutils.tf.nn.functional import build_mlp
 from tqdm.auto import tqdm, trange
@@ -33,6 +32,7 @@ class BRACPAgent(tf.keras.Model):
     def __init__(self,
                  ob_dim,
                  ac_dim,
+                 out_dist='beta',
                  num_ensembles=5,
                  behavior_mlp_hidden=256,
                  behavior_lr=1e-4,
@@ -62,13 +62,19 @@ class BRACPAgent(tf.keras.Model):
         self.ob_dim = ob_dim
         self.ac_dim = ac_dim
         self.q_mlp_hidden = q_mlp_hidden
-        self.behavior_policy = EnsembleBehaviorPolicy(num_ensembles=num_ensembles,
+        self.behavior_policy = EnsembleBehaviorPolicy(num_ensembles=num_ensembles, out_dist=out_dist,
                                                       obs_dim=self.ob_dim, act_dim=self.ac_dim,
                                                       mlp_hidden=behavior_mlp_hidden)
         self.behavior_lr = behavior_lr
         # maybe overwrite later
-        self.policy_net = CenteredBetaMLPActor(ob_dim, ac_dim, policy_mlp_hidden)
-        self.target_policy_net = CenteredBetaMLPActor(ob_dim, ac_dim, policy_mlp_hidden)
+        if out_dist == 'beta':
+            self.policy_net = CenteredBetaMLPActor(ob_dim, ac_dim, policy_mlp_hidden)
+            self.target_policy_net = CenteredBetaMLPActor(ob_dim, ac_dim, policy_mlp_hidden)
+        elif out_dist == 'normal':
+            self.policy_net = SquashedGaussianMLPActor(ob_dim, ac_dim, policy_mlp_hidden)
+            self.target_policy_net = SquashedGaussianMLPActor(ob_dim, ac_dim, policy_mlp_hidden)
+        else:
+            raise NotImplementedError
         hard_update(self.target_policy_net, self.policy_net)
         self.q_network = EnsembleMinQNet(ob_dim, ac_dim, q_mlp_hidden)
         self.q_network.compile(optimizer=get_adam_optimizer(q_lr))
@@ -102,7 +108,7 @@ class BRACPAgent(tf.keras.Model):
         self.kl_backup = kl_backup
         self.gradient_clipping = False
         self.sensitivity = 1.0
-        self.max_ood_grad_norm = 0.001
+        self.max_ood_grad_norm = 0.01
         self.gp_type = gp_type
         assert self.gp_type in ['hard', 'sigmoid', 'none', 'softplus']
         self.sigma = sigma
@@ -197,14 +203,14 @@ class BRACPAgent(tf.keras.Model):
 
         obs_expand = self.behavior_policy.expand_ensemble_dim(obs)
         samples_pi_b = self.behavior_policy.sample(
-            obs_expand, full_path=tf.convert_to_tensor(False))  # (num_ensembles, n * batch_size, d)
+            obs_expand, full_path=tf.convert_to_tensor(True))  # (num_ensembles, n * batch_size, d)
         samples_pi_b = tf.reshape(samples_pi_b, shape=(self.behavior_policy.num_ensembles, self.n,
                                                        batch_size, self.ac_dim))
         samples_pi_b = tf.transpose(samples_pi_b, perm=[1, 0, 2, 3])
         samples_pi_b = tf.reshape(samples_pi_b, shape=(self.n, self.behavior_policy.num_ensembles * batch_size,
                                                        self.ac_dim))
         samples_pi = self.policy_net.transform_raw_action(samples_pi)
-        samples_pi_b = tf.tanh(samples_pi_b)
+        samples_pi_b = self.behavior_policy.transform_raw_action(samples_pi_b)
         mmd_loss = self.mmd_loss_laplacian(samples_pi, samples_pi_b, sigma=self.sigma)
         mmd_loss = tf.reshape(mmd_loss, shape=(self.behavior_policy.num_ensembles, batch_size))
         mmd_loss = tf.reduce_mean(mmd_loss, axis=0)
@@ -253,12 +259,11 @@ class BRACPAgent(tf.keras.Model):
     def update_actor_first_order(self, obs):
         # TODO: maybe we just follow behavior policy and keep a minimum entropy instead of the optimal one.
         # policy loss
-        with tf.GradientTape() as policy_tape, tf.GradientTape() as beta_tape:
+        with tf.GradientTape() as policy_tape:
             """ Compute the loss function of the policy that maximizes the Q function """
             print(f'Tracing _compute_surrogate_loss_pi with obs={obs}')
 
             policy_tape.watch(self.policy_net.trainable_variables)
-            beta_tape.watch(self.log_beta.trainable_variables)
 
             batch_size = tf.shape(obs)[0]
             alpha = self.get_alpha(obs)  # (None, act_dim)
@@ -296,28 +301,33 @@ class BRACPAgent(tf.keras.Model):
             else:
                 raise NotImplementedError
 
-            # beta loss
-            if self.reg_type == 'kl':
-                beta_loss = tf.reduce_mean(beta * (log_prob + self.target_entropy))
-            elif self.reg_type in ['mmd', 'cross_entropy']:
-                beta_loss = -tf.reduce_mean(beta * (log_prob + self.target_entropy))
-            else:
-                raise NotImplementedError
+        minimize(policy_loss, policy_tape, self.policy_net)
+
+        if self.entropy_reg:
+            with tf.GradientTape() as beta_tape:
+                beta_tape.watch(self.log_beta.trainable_variables)
+                beta = self.log_beta(obs)
+                # beta loss
+                if self.reg_type == 'kl':
+                    beta_loss = tf.reduce_mean(beta * (log_prob + self.target_entropy))
+                elif self.reg_type in ['mmd', 'cross_entropy']:
+                    beta_loss = -tf.reduce_mean(beta * (log_prob + self.target_entropy))
+                else:
+                    raise NotImplementedError
+            minimize(beta_loss, beta_tape, self.log_beta)
+        else:
+            beta_loss = 0.
 
         with tf.GradientTape() as alpha_tape:
             # alpha loss
             alpha = self.get_alpha(obs)
             penalty = delta * alpha
             alpha_loss = -tf.reduce_mean(penalty, axis=0)
-        minimize(policy_loss, policy_tape, self.policy_net)
 
         if self.alpha_update == 'nn':
             minimize(alpha_loss, alpha_tape, self.alpha_net)
         else:
             minimize(alpha_loss, alpha_tape, self.log_alpha)
-
-        if self.entropy_reg:
-            minimize(beta_loss, beta_tape, self.log_beta)
 
         info = dict(
             LossPi=policy_loss,
@@ -464,7 +474,7 @@ class BRACPAgent(tf.keras.Model):
 
     @tf.function
     def _update(self, obs, act, obs2, done, rew):
-        raw_act = clip_atanh(act)
+        raw_act = self.behavior_policy.inverse_transform_action(act)
         behavior_loss = self.behavior_policy.train_on_batch(x=(raw_act, obs))['loss']
         info = self.update_q_nets(obs, act, obs2, done, rew)
         actor_info = self.update_actor_first_order(obs)
@@ -715,7 +725,7 @@ class BRACPRunner(TFRunner):
                 # update q_b, pi_0, pi_b
                 data = self.replay_buffer.sample()
                 obs = data['obs']
-                raw_act = clip_arctanh(data['act'])
+                raw_act = self.agent.behavior_policy.inverse_transform_action(data['act'])
                 behavior_loss = self.agent.behavior_policy.train_on_batch(x=(raw_act, obs), return_dict=True)['loss']
                 loss.append(behavior_loss)
             loss = tf.reduce_mean(loss).numpy()
@@ -745,8 +755,8 @@ def bracp(env_name,
           gamma=0.99,
           huber_delta=None,
           target_entropy=None,
-          max_kl=0.2,
-          alpha_update='global',
+          max_kl=0.15,
+          alpha_update='nn',
           gp_type='hard',
           reg_type='mmd',
           sigma=20,
