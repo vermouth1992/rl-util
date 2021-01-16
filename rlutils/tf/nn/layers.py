@@ -1,6 +1,7 @@
 import tensorflow as tf
-
 from rlutils.np.functional import inverse_softplus
+
+from .initializer import _decode_initializer
 
 
 class SqueezeLayer(tf.keras.layers.Layer):
@@ -13,8 +14,9 @@ class SqueezeLayer(tf.keras.layers.Layer):
 
 
 class EnsembleDense(tf.keras.layers.Dense):
-    def __init__(self, num_ensembles, units, **kwargs):
-        super(EnsembleDense, self).__init__(units=units, **kwargs)
+    def __init__(self, num_ensembles, units, kernel_initializer, **kwargs):
+        kernel_initializer = _decode_initializer(kernel_initializer)
+        super(EnsembleDense, self).__init__(units=units, kernel_initializer=kernel_initializer, **kwargs)
         self.num_ensembles = num_ensembles
 
     def build(self, input_shape):
@@ -49,7 +51,7 @@ class EnsembleDense(tf.keras.layers.Dense):
         return outputs
 
 
-class LagrangeLayer(tf.keras.layers.Layer):
+class LagrangeLayer(tf.keras.Model):
     def __init__(self, initial_value=1.0):
         super(LagrangeLayer, self).__init__()
         self.log_value = inverse_softplus(initial_value)

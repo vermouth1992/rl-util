@@ -33,7 +33,10 @@ def plot_data(data, xaxis='Epoch', value="AverageEpRet", condition="Condition1",
         data = pd.concat(data, ignore_index=True)
 
     if xaxis not in data:
-        xaxis = 'Epoch'
+        if 'GradientSteps' in data:
+            xaxis = 'GradientSteps'
+        else:
+            xaxis = 'Epoch'
 
     sns.set(style="darkgrid", font_scale=1.5)
     sns.lineplot(data=data, x=xaxis, y=value, hue=condition, ci='sd', **kwargs)
