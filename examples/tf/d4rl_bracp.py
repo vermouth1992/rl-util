@@ -10,10 +10,14 @@ if __name__ == '__main__':
     parser.add_argument('--env_name', type=str, required=True)
     parser.add_argument('--pretrain_behavior', action='store_true')
     parser.add_argument('--pretrain_cloning', action='store_true')
-    parser.add_argument('--seed', type=int, default=1)
+    parser.add_argument('--seed', type=int, nargs='*', default=[1])
 
     args = vars(parser.parse_args())
     env_name = args['env_name']
     # setup env specific arguments.
+    seeds = args.pop('seed')
 
-    bracp(**args)
+    print(f'Running {env_name} for seeds {seeds}')
+
+    for seed in seeds:
+        bracp(**args, seed=seed)
