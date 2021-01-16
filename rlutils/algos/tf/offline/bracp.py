@@ -428,16 +428,9 @@ class BRACPAgent(tf.keras.Model):
             penalty = tf.reshape(penalty, shape=(self.n, batch_size))
             penalty = tf.reduce_mean(penalty, axis=0)
         # TODO: consider using soft constraints instead of hard clip
-        if self.gp_type == 'hard':
-            penalty = penalty * tf.cast((kl - self.delta_gp) > 0, dtype=tf.float32)
-        elif self.gp_type == 'sigmoid':
-            penalty = penalty * tf.nn.sigmoid((kl - self.delta_gp) * self.sensitivity)
-        elif self.gp_type == 'softplus':
-            penalty = penalty * tf.nn.softplus((kl - self.delta_gp) * self.sensitivity)
-        elif self.gp_type == 'none':
-            penalty = tf.zeros(shape=[batch_size], dtype=tf.float32)
-        else:
-            raise NotImplementedError
+        weights = tf.nn.softplus((kl - self.delta_behavior) * self.sensitivity)
+        weights = weights / tf.reduce_max(weights)
+        penalty = penalty * tf.stop_gradient(weights)
         return penalty
 
     def _update_q_nets(self, obs, actions, q_target):
@@ -632,7 +625,8 @@ class BRACPRunner(TFRunner):
                     max_kl,
                     force_pretrain_behavior,
                     force_pretrain_cloning,
-                    generalization_threshold
+                    generalization_threshold,
+                    std_scale
                     ):
         self.pretrain_epochs = pretrain_epochs
         self.save_freq = save_freq
@@ -640,6 +634,7 @@ class BRACPRunner(TFRunner):
         self.force_pretrain_behavior = force_pretrain_behavior
         self.force_pretrain_cloning = force_pretrain_cloning
         self.generalization_threshold = generalization_threshold
+        self.std_scale = std_scale
 
     def run_one_step(self, t):
         self.agent.update(self.replay_buffer)
@@ -692,7 +687,8 @@ class BRACPRunner(TFRunner):
         self.logger.log(f'Behavior policy data log probability is {-behavior_nll:.4f}')
         # set target_entropy heuristically as -behavior_log_prob - act_dim
         if self.agent.target_entropy is None:
-            self.agent.target_entropy = behavior_nll - self.agent.ac_dim
+            # std reduced by a factor of x
+            self.agent.target_entropy = behavior_nll - self.agent.ac_dim * np.log(self.std_scale)
 
         self.logger.log(f'The target entropy of the behavior policy is {self.agent.target_entropy:.4f}')
 
@@ -703,7 +699,7 @@ class BRACPRunner(TFRunner):
             self.agent.log_beta.load_weights(filepath=self.log_beta_behavior_filepath).assert_consumed()
             EpochLogger.log(f'Successfully load initial policy from {self.policy_behavior_filepath}')
         except:
-            self.pretrain_cloning(self.pretrain_epochs // 2)
+            self.pretrain_cloning(self.pretrain_epochs)
             self.agent.policy_net.save_weights(filepath=self.policy_behavior_filepath)
             self.agent.log_beta.save_weights(filepath=self.log_beta_behavior_filepath)
 
@@ -801,8 +797,9 @@ def bracp(env_name,
           entropy_reg=True,
           kl_backup=False,
           generalization_threshold=0.1,
+          std_scale=4.,
           # behavior policy
-          num_ensembles=3,
+          num_ensembles=1,
           behavior_mlp_hidden=256,
           behavior_lr=1e-3,
           # others
@@ -832,7 +829,8 @@ def bracp(env_name,
                        max_kl=max_kl,
                        force_pretrain_behavior=pretrain_behavior,
                        force_pretrain_cloning=pretrain_cloning,
-                       generalization_threshold=generalization_threshold)
+                       generalization_threshold=generalization_threshold,
+                       std_scale=std_scale)
     runner.setup_replay_buffer(batch_size=batch_size,
                                reward_scale=reward_scale)
 
