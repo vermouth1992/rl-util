@@ -1,0 +1,20 @@
+{
+    "algo":	"trpo",
+    "backtrack_coeff":	0.8,
+    "backtrack_iters":	10,
+    "batch_size":	5000,
+    "cg_iters":	10,
+    "damping_coeff":	0.1,
+    "delta":	0.01,
+    "env_name":	"Hopper-v2",
+    "epochs":	200,
+    "exp_name":	"Hopper-v2_TRPORunner_test",
+    "gamma":	0.99,
+    "lam":	0.97,
+    "mlp_hidden":	128,
+    "num_parallel_envs":	5,
+    "seed":	111,
+    "steps_per_epoch":	1000,
+    "train_vf_iters":	80,
+    "vf_lr":	0.001
+}

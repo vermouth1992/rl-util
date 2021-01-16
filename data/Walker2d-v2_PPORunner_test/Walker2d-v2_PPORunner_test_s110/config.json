@@ -1,0 +1,20 @@
+{
+    "batch_size":	5000,
+    "clip_ratio":	0.2,
+    "entropy_coef":	0.001,
+    "env_name":	"Walker2d-v2",
+    "epochs":	200,
+    "exp_name":	"Walker2d-v2_PPORunner_test",
+    "gamma":	0.99,
+    "lam":	0.97,
+    "max_ep_len":	1000,
+    "mlp_hidden":	256,
+    "num_parallel_envs":	5,
+    "pi_lr":	0.0003,
+    "seed":	110,
+    "steps_per_epoch":	1000,
+    "target_kl":	0.05,
+    "train_pi_iters":	80,
+    "train_vf_iters":	80,
+    "vf_lr":	0.001
+}
