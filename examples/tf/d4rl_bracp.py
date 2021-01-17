@@ -120,7 +120,7 @@ def train_policy(args):
         generalization_threshold = 0.5
         std_scale = 4.
     elif 'medium' in env_name:
-        generalization_threshold = 0.1
+        generalization_threshold = 0.7
         std_scale = 4.
     elif 'random' in env_name:
         generalization_threshold = None
