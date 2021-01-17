@@ -1,17 +1,24 @@
 import argparse
 import inspect
 
+import docstring_parser
+
 
 def get_argparser_from_func(func, parser):
     """ Read the argument of a function and parse it as ArgumentParser. """
     if parser is None:
         parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     signature = inspect.signature(func)
+    docstring = docstring_parser.parse(inspect.getdoc(func))
+
+    # transform docstring.params to dictionary
+    params = {p.arg_name: p.description for p in docstring.params}
+
     for k, v in signature.parameters.items():
         if v.default is inspect.Parameter.empty:
-            parser.add_argument('--' + k, help=' ')
+            parser.add_argument('--' + k, help=params.get(k, ' '))
         else:
-            parser.add_argument('--' + k, type=type(v.default), default=v.default, help=' ')
+            parser.add_argument('--' + k, type=type(v.default), default=v.default, help=params.get(k, ' '))
     return parser
 
 

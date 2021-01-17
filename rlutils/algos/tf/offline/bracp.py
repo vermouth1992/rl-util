@@ -20,7 +20,6 @@ from rlutils.runner import TFRunner
 from rlutils.tf.distributions import apply_squash_log_prob
 from rlutils.tf.functional import soft_update, hard_update, to_numpy_or_python_type
 from rlutils.tf.nn import SquashedGaussianMLPActor, EnsembleMinQNet, LagrangeLayer, CenteredBetaMLPActor
-from rlutils.tf.nn.functional import build_mlp
 from tqdm.auto import tqdm, trange
 
 tfd = tfp.distributions
@@ -32,22 +31,18 @@ class BRACPAgent(tf.keras.Model):
     def __init__(self,
                  ob_dim,
                  ac_dim,
-                 out_dist='beta',
                  num_ensembles=5,
                  behavior_mlp_hidden=256,
                  behavior_lr=1e-4,
                  policy_mlp_hidden=128,
                  q_mlp_hidden=256,
                  q_lr=3e-4,
-                 alpha_lr=1e-2,
+                 alpha_lr=1e-3,
                  alpha=1.0,
-                 alpha_mlp_hidden=64,
                  tau=5e-3,
                  gamma=0.99,
                  target_entropy=None,
-                 huber_delta=None,
-                 alpha_update='nn',
-                 gp_type='hard',
+                 use_gp=True,
                  reg_type='kl',
                  sigma=10,
                  n=5,
@@ -62,19 +57,12 @@ class BRACPAgent(tf.keras.Model):
         self.ob_dim = ob_dim
         self.ac_dim = ac_dim
         self.q_mlp_hidden = q_mlp_hidden
-        self.behavior_policy = EnsembleBehaviorPolicy(num_ensembles=num_ensembles, out_dist=out_dist,
+        self.behavior_policy = EnsembleBehaviorPolicy(num_ensembles=num_ensembles, out_dist='normal',
                                                       obs_dim=self.ob_dim, act_dim=self.ac_dim,
                                                       mlp_hidden=behavior_mlp_hidden)
         self.behavior_lr = behavior_lr
-        # maybe overwrite later
-        if out_dist == 'beta':
-            self.policy_net = CenteredBetaMLPActor(ob_dim, ac_dim, policy_mlp_hidden)
-            self.target_policy_net = CenteredBetaMLPActor(ob_dim, ac_dim, policy_mlp_hidden)
-        elif out_dist == 'normal':
-            self.policy_net = SquashedGaussianMLPActor(ob_dim, ac_dim, policy_mlp_hidden)
-            self.target_policy_net = SquashedGaussianMLPActor(ob_dim, ac_dim, policy_mlp_hidden)
-        else:
-            raise NotImplementedError
+        self.policy_net = SquashedGaussianMLPActor(ob_dim, ac_dim, policy_mlp_hidden)
+        self.target_policy_net = SquashedGaussianMLPActor(ob_dim, ac_dim, policy_mlp_hidden)
         hard_update(self.target_policy_net, self.policy_net)
         self.q_network = EnsembleMinQNet(ob_dim, ac_dim, q_mlp_hidden)
         self.q_network.compile(optimizer=get_adam_optimizer(q_lr))
@@ -82,21 +70,15 @@ class BRACPAgent(tf.keras.Model):
         hard_update(self.target_q_network, self.q_network)
 
         self.log_beta = LagrangeLayer(initial_value=alpha)
-        self.log_beta.compile(optimizer=get_adam_optimizer(1e-3))
+        self.log_beta.compile(optimizer=get_adam_optimizer(alpha_lr))
 
         self.log_alpha = LagrangeLayer(initial_value=alpha)
-        self.log_alpha.compile(optimizer=get_adam_optimizer(1e-3))
-
-        self.alpha_net = build_mlp(input_dim=self.ob_dim, output_dim=1, mlp_hidden=alpha_mlp_hidden,
-                                   squeeze=True, out_activation='softplus')
-        self.alpha_net.compile(optimizer=get_adam_optimizer(alpha_lr))
+        self.log_alpha.compile(optimizer=get_adam_optimizer(alpha_lr))
 
         self.log_gp = LagrangeLayer(initial_value=gp_weight)
-        self.log_gp.compile(optimizer=get_adam_optimizer(1e-3))
+        self.log_gp.compile(optimizer=get_adam_optimizer(alpha_lr))
 
         self.target_entropy = target_entropy
-        self.huber_delta = huber_delta
-        self.alpha_update = alpha_update
 
         self.tau = tau
         self.gamma = gamma
@@ -109,20 +91,14 @@ class BRACPAgent(tf.keras.Model):
         self.gradient_clipping = False
         self.sensitivity = 1.0
         self.max_ood_grad_norm = 0.01
-        self.gp_type = gp_type
-        self.use_gp = False if self.gp_type == 'none' else True
-        assert self.gp_type in ['hard', 'sigmoid', 'none', 'softplus']
+        self.use_gp = use_gp
         self.sigma = sigma
 
         # delta should set according to the KL between initial policy and behavior policy
         self.delta_behavior = tf.Variable(initial_value=0.0, trainable=False, dtype=tf.float32)
-        self.delta_gp = tf.Variable(initial_value=0.0, trainable=False, dtype=tf.float32)
 
     def get_alpha(self, obs):
-        if self.alpha_update == 'nn':
-            return self.alpha_net(obs)
-        else:
-            return self.log_alpha(obs)
+        return self.log_alpha(obs)
 
     def call(self, inputs, training=None, mask=None):
         obs, deterministic = inputs
@@ -132,10 +108,6 @@ class BRACPAgent(tf.keras.Model):
     def set_delta_behavior(self, delta_behavior):
         EpochLogger.log(f'Setting behavior hard KL to {delta_behavior:.4f}')
         self.delta_behavior.assign(delta_behavior)
-
-    def set_delta_gp(self, delta_gp):
-        EpochLogger.log(f'Setting delta GP to {delta_gp:.4f}')
-        self.delta_gp.assign(delta_gp)
 
     def set_logger(self, logger):
         self.logger = logger
@@ -221,17 +193,10 @@ class BRACPAgent(tf.keras.Model):
     def _compute_kl_behavior_v2(self, obs, raw_action, pi_distribution):
         n = self.kl_n
         batch_size = tf.shape(obs)[0]
-        if self.behavior_policy.out_dist == 'normal':
-            pi_distribution = tfd.Independent(distribution=tfd.Normal(
-                loc=tf.tile(pi_distribution.distribution.loc, (n, 1)),
-                scale=tf.tile(pi_distribution.distribution.scale, (n, 1))
-            ), reinterpreted_batch_ndims=1)  # (n * batch_size)
-        else:
-            pi_distribution = tfd.Independent(distribution=tfd.Beta(
-                concentration0=tf.tile(pi_distribution.distribution.concentration0, (n, 1)),
-                concentration1=tf.tile(pi_distribution.distribution.concentration1, (n, 1))
-            ), reinterpreted_batch_ndims=1)
-
+        pi_distribution = tfd.Independent(distribution=tfd.Normal(
+            loc=tf.tile(pi_distribution.distribution.loc, (n, 1)),
+            scale=tf.tile(pi_distribution.distribution.scale, (n, 1))
+        ), reinterpreted_batch_ndims=1)  # (n * batch_size)
         # compute KLD upper bound
         x, cond = raw_action, obs
         print(f'Tracing call_n with x={x}, cond={cond}')
@@ -332,10 +297,7 @@ class BRACPAgent(tf.keras.Model):
             penalty = delta * alpha
             alpha_loss = -tf.reduce_mean(penalty, axis=0)
 
-        if self.alpha_update == 'nn':
-            minimize(alpha_loss, alpha_tape, self.alpha_net)
-        else:
-            minimize(alpha_loss, alpha_tape, self.log_alpha)
+        minimize(alpha_loss, alpha_tape, self.log_alpha)
 
         info = dict(
             LossPi=policy_loss,
@@ -571,13 +533,11 @@ class BRACPRunner(TFRunner):
         )
 
     def setup_agent(self,
-                    actor_distribution,
                     num_ensembles,
                     behavior_mlp_hidden,
                     behavior_lr,
                     policy_mlp_hidden,
                     q_mlp_hidden,
-                    alpha_mlp_hidden,
                     policy_lr,
                     q_lr,
                     alpha_lr,
@@ -585,9 +545,7 @@ class BRACPRunner(TFRunner):
                     tau,
                     gamma,
                     target_entropy,
-                    huber_delta,
-                    gp_type,
-                    alpha_update,
+                    use_gp,
                     policy_behavior_lr,
                     reg_type,
                     sigma,
@@ -601,15 +559,12 @@ class BRACPRunner(TFRunner):
         self.policy_lr = policy_lr
         self.policy_behavior_lr = policy_behavior_lr
         self.agent = BRACPAgent(ob_dim=obs_dim, ac_dim=act_dim,
-                                out_dist=actor_distribution,
                                 num_ensembles=num_ensembles,
                                 behavior_mlp_hidden=behavior_mlp_hidden,
                                 behavior_lr=behavior_lr,
                                 policy_mlp_hidden=policy_mlp_hidden, q_mlp_hidden=q_mlp_hidden,
-                                alpha_mlp_hidden=alpha_mlp_hidden,
                                 q_lr=q_lr, alpha_lr=alpha_lr, alpha=alpha, tau=tau, gamma=gamma,
-                                target_entropy=target_entropy, huber_delta=huber_delta, gp_type=gp_type,
-                                alpha_update=alpha_update,
+                                target_entropy=target_entropy, use_gp=use_gp,
                                 reg_type=reg_type, sigma=sigma, n=n, gp_weight=gp_weight,
                                 entropy_reg=entropy_reg, kl_backup=kl_backup)
         self.agent.set_logger(self.logger)
@@ -642,10 +597,6 @@ class BRACPRunner(TFRunner):
 
     def on_epoch_end(self, epoch):
         self.test_agent(agent=self.agent, name='policy', logger=self.logger)
-
-        # set delta_gp
-        kl_stats = self.logger.get_stats('KL')
-        self.agent.set_delta_gp(kl_stats[0] + kl_stats[1])  # mean + std
 
         # Log info about epoch
         self.logger.log_tabular('Epoch', epoch)
@@ -725,7 +676,6 @@ class BRACPRunner(TFRunner):
             self.max_kl = distance + self.generalization_threshold  # allow space to explore generalization
 
         self.agent.set_delta_behavior(self.max_kl)
-        self.agent.set_delta_gp(self.max_kl)
 
         self.start_time = time.time()
 
@@ -780,19 +730,15 @@ def bracp(env_name,
           policy_lr=5e-6,
           policy_behavior_lr=3e-4,
           q_lr=3e-4,
-          alpha_lr=1e-5,
+          alpha_lr=1e-3,
           alpha=10.0,
-          alpha_mlp_hidden=256,
           tau=1e-3,
           gamma=0.99,
-          huber_delta=None,
           target_entropy=None,
           max_kl=None,
-          alpha_update='global',
-          gp_type='hard',
+          use_gp=True,
           reg_type='kl',
           sigma=20,
-          actor_distribution='normal',
           n=5,
           gp_weight=0.1,
           entropy_reg=True,
@@ -807,6 +753,51 @@ def bracp(env_name,
           reward_scale=True,
           save_freq=None,
           ):
+    """Main function to run Improved Behavior Regularized Actor Critic (BRAC+)
+
+    Args:
+        env_name (str): name of the environment
+        steps_per_epoch (int): number of steps per epoch
+        pretrain_epochs (int): number of epochs to pretrain
+        pretrain_behavior (bool): whether to pretrain the behavior policy or load from checkpoint.
+            If load fails, the flag is ignored.
+        pretrain_cloning (bool):whether to pretrain the initial policy or load from checkpoint.
+            If load fails, the flag is ignored.
+        epochs (int): number of epochs to run
+        batch_size (int): batch size of the data sampled from the dataset
+        num_test_episodes (int): number of test episodes to evaluate the policy after each epoch
+        seed (int): random seed
+        policy_mlp_hidden (int): MLP hidden size of the policy network
+        q_mlp_hidden (int): MLP hidden size of the Q network
+        policy_lr (float): learning rate of the policy network
+        policy_behavior_lr (float): learning rate used to train the policy that minimize the distance between the policy
+            and the behavior policy. This is usally larger than policy_lr.
+        q_lr (float): learning rate of the q network
+        alpha_lr (float): learning rate of the alpha
+        alpha (int): initial Lagrange multiplier used to control the maximum distance between the \pi and \pi_b
+        tau (float): polyak average coefficient of the target update
+        gamma (float): discount factor
+        target_entropy (float or None): target entropy of the policy
+        max_kl (float or None): maximum of the distance between \pi and \pi_b
+        use_gp (bool): whether use gradient penalty or not
+        reg_type (str): regularization type
+        sigma (float): sigma of the Laplacian kernel for MMD
+        n (int): number of samples when estimate the expectation for policy evaluation and update
+        gp_weight (float): initial GP weight
+        entropy_reg (bool): whether use entropy regularization or not
+        kl_backup (bool): whether add the KL loss to the backup value of the target Q network
+        generalization_threshold (float): generalization threshold used to compute max_kl when max_kl is None
+        std_scale (float): standard deviation scale when computing target_entropy when it is None.
+        num_ensembles (int): number of ensembles to train the behavior policy
+        behavior_mlp_hidden (int): MLP hidden size of the behavior policy
+        behavior_lr (float): the learning rate of the behavior policy
+        reward_scale (float): whether to use reward scale or not. By default, it will scale to [0, 1]
+        save_freq (int or None): the frequency to save the model
+
+    Returns: None
+
+    """
+
     config = locals()
 
     runner = BRACPRunner(seed=seed, steps_per_epoch=steps_per_epoch, epochs=epochs,
@@ -814,15 +805,13 @@ def bracp(env_name,
     runner.setup_env(env_name=env_name, num_parallel_env=num_test_episodes, frame_stack=None, wrappers=None,
                      asynchronous=False, num_test_episodes=None)
     runner.setup_logger(config=config)
-    runner.setup_agent(actor_distribution=actor_distribution,
-                       num_ensembles=num_ensembles,
+    runner.setup_agent(num_ensembles=num_ensembles,
                        behavior_mlp_hidden=behavior_mlp_hidden,
                        behavior_lr=behavior_lr,
                        policy_mlp_hidden=policy_mlp_hidden, q_mlp_hidden=q_mlp_hidden,
-                       alpha_mlp_hidden=alpha_mlp_hidden,
                        policy_lr=policy_lr, q_lr=q_lr, alpha_lr=alpha_lr, alpha=alpha, tau=tau, gamma=gamma,
-                       target_entropy=target_entropy, huber_delta=huber_delta, gp_type=gp_type,
-                       alpha_update=alpha_update, policy_behavior_lr=policy_behavior_lr,
+                       target_entropy=target_entropy, use_gp=use_gp,
+                       policy_behavior_lr=policy_behavior_lr,
                        reg_type=reg_type, sigma=sigma, n=n, gp_weight=gp_weight,
                        entropy_reg=entropy_reg, kl_backup=kl_backup)
     runner.setup_extra(pretrain_epochs=pretrain_epochs,

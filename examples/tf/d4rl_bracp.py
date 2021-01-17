@@ -11,6 +11,7 @@ import numpy as np
 import tensorflow as tf
 from rlutils.algos.tf.offline.bracp import bracp, BRACPAgent
 from rlutils.logx import EpochLogger
+from rlutils.runner import get_argparser_from_func
 from tqdm.auto import tqdm
 
 __all__ = ['d4rl']
@@ -27,15 +28,12 @@ def load_policy_and_env(filepath):
     obs_dim = dummy_env.observation_space.shape[-1]
     act_dim = dummy_env.action_space.shape[-1]
     agent = BRACPAgent(ob_dim=obs_dim, ac_dim=act_dim,
-                       out_dist=config['actor_distribution'],
                        num_ensembles=config['num_ensembles'],
                        behavior_mlp_hidden=config['behavior_mlp_hidden'],
                        behavior_lr=1e-3,
                        policy_mlp_hidden=config['policy_mlp_hidden'], q_mlp_hidden=config['q_mlp_hidden'],
-                       alpha_mlp_hidden=config['alpha_mlp_hidden'],
                        q_lr=1e-3, alpha_lr=1e-3, alpha=1, tau=None, gamma=None,
-                       target_entropy=None, huber_delta=None, gp_type='none',
-                       alpha_update='global',
+                       target_entropy=None, use_gp=True,
                        reg_type='kl', sigma=None, n=None, gp_weight=1,
                        entropy_reg=None, kl_backup=None)
     agent.load_weights(filepath=filepath).expect_partial()  # no optimizer is defined
@@ -109,37 +107,23 @@ def test_policy(args):
 
 def train_policy(args):
     env_name = args['env_name']
+    override_args = {}
     # setup env specific arguments.
-    seeds = args.pop('seed')
-    print(f'Running {env_name} for seeds {seeds}')
-
     if 'medium-expert' in env_name:
-        generalization_threshold = 0.1
-        std_scale = 4.
+        override_args['generalization_threshold'] = 0.1
     elif 'medium-replay' in env_name:
-        generalization_threshold = 0.5
-        std_scale = 4.
+        override_args['generalization_threshold'] = 3.0
     elif 'medium' in env_name:
-        generalization_threshold = 0.7
-        std_scale = 4.
+        override_args['generalization_threshold'] = 0.7
     elif 'random' in env_name:
         generalization_threshold = None
-        std_scale = None
     elif 'human' in env_name:
         generalization_threshold = None
-        std_scale = None
     else:
         raise ValueError(f'Unknown env_name {env_name}')
 
-    for seed in seeds:
-        print(f'Running {env_name} for seed {seed}')
-        bracp(**args,
-              std_scale=std_scale,
-              generalization_threshold=generalization_threshold,
-              seed=seed)
-
-    for seed in seeds:
-        bracp(**args, seed=seed)
+    args.update(override_args)
+    bracp(**args)
 
 
 if __name__ == '__main__':
@@ -147,13 +131,10 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     subparser = parser.add_subparsers(dest='action')
-    train_parser = subparser.add_parser(name='train')
-    train_parser.add_argument('--env_name', type=str, required=True)
-    train_parser.add_argument('--pretrain_behavior', action='store_true')
-    train_parser.add_argument('--pretrain_cloning', action='store_true')
-    train_parser.add_argument('--seed', type=int, nargs='*', default=[1])
+    train_parser = subparser.add_parser(name='train', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    train_parser = get_argparser_from_func(bracp, train_parser)
 
-    test_parser = subparser.add_parser(name='test')
+    test_parser = subparser.add_parser(name='test', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     test_parser.add_argument('fpath', type=str)
     test_parser.add_argument('--episodes', '-n', type=int, default=100)
     test_parser.add_argument('--seed', type=int, default=0)
