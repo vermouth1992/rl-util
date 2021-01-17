@@ -89,7 +89,7 @@ def run_policy(env_name, agent, num_episodes=1000, seed=0):
 
 def test_policy(args):
     sub_folders = glob.glob(os.path.join(args['fpath'], './*/'))
-    sub_folders = list(filter(lambda s: 'tensorboard' in s, sub_folders))
+    sub_folders = list(filter(lambda s: 'tensorboard' not in s, sub_folders))
     if len(sub_folders) == 0:
         env_name, agent = load_policy_and_env(args['fpath'])
         run_policy(env_name, agent, num_episodes=args['episodes'], seed=args['seed'])
