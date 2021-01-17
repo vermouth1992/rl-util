@@ -117,7 +117,7 @@ def train_policy(args):
         generalization_threshold = 0.1
         std_scale = 4.
     elif 'medium-replay' in env_name:
-        generalization_threshold = 0.5
+        generalization_threshold = 4.0
         std_scale = 4.
     elif 'medium' in env_name:
         generalization_threshold = 0.1
