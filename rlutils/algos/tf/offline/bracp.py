@@ -157,11 +157,12 @@ class BRACPAgent(tf.keras.Model):
         self.logger.log_tabular('GP', average_only=True)
         self.logger.log_tabular('GPWeight', average_only=True)
 
+    @tf.function
     def update_target(self):
         soft_update(self.target_q_network, self.q_network, self.tau)
         soft_update(self.target_policy_net, self.policy_net, self.tau)
 
-    @tf.function
+    @tf.function(experimental_relax_shapes=True)
     def compute_pi_pib_distance(self, obs):
         if self.reg_type in ['kl', 'cross_entropy']:
             _, log_prob, raw_action, pi_distribution = self.policy_net((obs, False))
