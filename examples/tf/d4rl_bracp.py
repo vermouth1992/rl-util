@@ -1,16 +1,17 @@
-import d4rl
-from rlutils.algos.tf.offline.bracp import bracp, BRACPAgent
-from rlutils.logx import EpochLogger
-import tensorflow as tf
+import glob
 import json
 import os
-import gym
-import glob
-import time
-import numpy as np
-from tqdm.auto import tqdm
-import sys
 import pprint
+import sys
+import time
+
+import d4rl
+import gym
+import numpy as np
+import tensorflow as tf
+from rlutils.algos.tf.offline.bracp import bracp, BRACPAgent
+from rlutils.logx import EpochLogger
+from tqdm.auto import tqdm
 
 __all__ = ['d4rl']
 
@@ -111,6 +112,32 @@ def train_policy(args):
     # setup env specific arguments.
     seeds = args.pop('seed')
     print(f'Running {env_name} for seeds {seeds}')
+
+    if 'medium-expert' in env_name:
+        generalization_threshold = 0.1
+        std_scale = 4.
+    elif 'medium-replay' in env_name:
+        generalization_threshold = None
+        std_scale = None
+    elif 'medium' in env_name:
+        generalization_threshold = 0.1
+        std_scale = 2.
+    elif 'random' in env_name:
+        generalization_threshold = None
+        std_scale = None
+    elif 'human' in env_name:
+        generalization_threshold = None
+        std_scale = None
+    else:
+        raise ValueError(f'Unknown env_name {env_name}')
+
+    for seed in seeds:
+        print(f'Running {env_name} for seed {seed}')
+        bracp(**args,
+              std_scale=std_scale,
+              generalization_threshold=generalization_threshold,
+              seed=seed)
+
     for seed in seeds:
         bracp(**args, seed=seed)
 
