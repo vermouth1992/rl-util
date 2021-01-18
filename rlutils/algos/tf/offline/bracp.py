@@ -611,14 +611,19 @@ class BRACPRunner(TFRunner):
         if self.save_freq is not None and (epoch + 1) % self.save_freq == 0:
             self.agent.save_weights(filepath=os.path.join(self.logger.output_dir, f'agent_final_{epoch + 1}.ckpt'))
 
-    def on_train_begin(self):
-        self.agent.policy_net.optimizer = get_adam_optimizer(lr=self.policy_behavior_lr)
-        interval = self.pretrain_epochs * self.steps_per_epoch // 5
-        behavior_lr = self.agent.behavior_lr
+    def get_decayed_lr_schedule(self, lr, interval):
         lr_schedule = tf.keras.optimizers.schedules.PiecewiseConstantDecay(
             boundaries=[interval, interval * 2, interval * 3, interval * 4],
-            values=[behavior_lr, 0.5 * behavior_lr, 0.1 * behavior_lr, 0.05 * behavior_lr, 0.01 * behavior_lr])
-        self.agent.behavior_policy.optimizer = get_adam_optimizer(lr=lr_schedule)
+            values=[lr, 0.5 * lr, 0.1 * lr, 0.05 * lr, 0.01 * lr])
+        return lr_schedule
+
+    def on_train_begin(self):
+        interval = self.pretrain_epochs * self.steps_per_epoch // 5
+        behavior_lr = self.agent.behavior_lr
+        self.agent.policy_net.optimizer = get_adam_optimizer(lr=self.get_decayed_lr_schedule(lr=self.policy_behavior_lr,
+                                                                                             interval=interval))
+        self.agent.behavior_policy.optimizer = get_adam_optimizer(lr=self.get_decayed_lr_schedule(lr=behavior_lr,
+                                                                                                  interval=interval))
         try:
             if self.force_pretrain_behavior:
                 raise ValueError()
