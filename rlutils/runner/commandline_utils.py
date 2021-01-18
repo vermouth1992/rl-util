@@ -16,7 +16,7 @@ def get_argparser_from_func(func, parser):
 
     for k, v in signature.parameters.items():
         if v.default is inspect.Parameter.empty:
-            parser.add_argument('--' + k, help=params.get(k, ' '))
+            parser.add_argument('--' + k, help=params.get(k, ' '), required=True)
         else:
             parser.add_argument('--' + k, type=type(v.default), default=v.default, help=params.get(k, ' '))
     return parser

@@ -752,6 +752,7 @@ def bracp(env_name,
           # others
           reward_scale=True,
           save_freq=None,
+          tensorboard=False,
           ):
     """Main function to run Improved Behavior Regularized Actor Critic (BRAC+)
 
@@ -791,11 +792,9 @@ def bracp(env_name,
         num_ensembles (int): number of ensembles to train the behavior policy
         behavior_mlp_hidden (int): MLP hidden size of the behavior policy
         behavior_lr (float): the learning rate of the behavior policy
-        reward_scale (float): whether to use reward scale or not. By default, it will scale to [0, 1]
+        reward_scale (bool): whether to use reward scale or not. By default, it will scale to [0, 1]
         save_freq (int or None): the frequency to save the model
-
-    Returns: None
-
+        tensorboard (bool): whether to turn on tensorboard logging
     """
 
     config = locals()
@@ -804,7 +803,7 @@ def bracp(env_name,
                          exp_name=None, logger_path='data')
     runner.setup_env(env_name=env_name, num_parallel_env=num_test_episodes, frame_stack=None, wrappers=None,
                      asynchronous=False, num_test_episodes=None)
-    runner.setup_logger(config=config)
+    runner.setup_logger(config=config, tensorboard=tensorboard)
     runner.setup_agent(num_ensembles=num_ensembles,
                        behavior_mlp_hidden=behavior_mlp_hidden,
                        behavior_lr=behavior_lr,

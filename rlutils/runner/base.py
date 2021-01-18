@@ -13,13 +13,12 @@ from abc import abstractmethod, ABC
 
 import gym
 import numpy as np
+import rlutils.gym
 import tensorflow as tf
 import torch
 from gym.wrappers import FrameStack
-from tqdm.auto import trange
-
-import rlutils.gym
 from rlutils.logx import EpochLogger, setup_logger_kwargs
+from tqdm.auto import trange
 
 
 def _add_frame_stack(wrappers, frame_stack):
@@ -51,10 +50,10 @@ class BaseRunner(ABC):
         self.max_seed = sys.maxsize
         self.setup_seed(seed)
 
-    def setup_logger(self, config):
+    def setup_logger(self, config, tensorboard=False):
         assert self.exp_name is not None, 'Call setup_env before setup_logger if exp passed by the contructor is None.'
         logger_kwargs = setup_logger_kwargs(exp_name=self.exp_name, data_dir=self.logger_path, seed=self.seed)
-        self.logger = EpochLogger(**logger_kwargs)
+        self.logger = EpochLogger(**logger_kwargs, tensorboard=tensorboard)
         self.logger.save_config(config)
 
     def setup_seed(self, seed):
