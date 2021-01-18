@@ -18,7 +18,14 @@ def get_argparser_from_func(func, parser):
         if v.default is inspect.Parameter.empty:
             parser.add_argument('--' + k, help=params.get(k, ' '), required=True)
         else:
-            parser.add_argument('--' + k, type=type(v.default), default=v.default, help=params.get(k, ' '))
+            if isinstance(v.default, bool):
+                if not v.default:
+                    action = 'store_true'
+                else:
+                    action = 'store_false'
+                parser.add_argument('--' + k, action=action, help=params.get(k, ' '))
+            else:
+                parser.add_argument('--' + k, type=type(v.default), default=v.default, help=params.get(k, ' '))
     return parser
 
 
