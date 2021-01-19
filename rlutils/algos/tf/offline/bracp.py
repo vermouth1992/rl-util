@@ -397,7 +397,7 @@ class BRACPAgent(tf.keras.Model):
             penalty = tf.reduce_mean(penalty, axis=0)
         # TODO: consider using soft constraints instead of hard clip
         # weights = tf.nn.sigmoid((kl - self.delta_behavior * 2.) * self.sensitivity)
-        weights = tf.nn.softplus((kl - self.delta_behavior * 2) * self.sensitivity)
+        weights = tf.nn.softplus((kl - self.delta_gp) * self.sensitivity)
         weights = weights / tf.reduce_max(weights)
         # weights = tf.cast((kl - self.delta_gp) > 0, dtype=tf.float32)
         penalty = penalty * tf.stop_gradient(weights)
@@ -608,8 +608,8 @@ class BRACPRunner(TFRunner):
         self.test_agent(agent=self.agent, name='policy', logger=self.logger)
 
         # set delta_gp
-        kl_stats = self.logger.get_stats('KL')
-        self.agent.set_delta_gp(kl_stats[0] + kl_stats[1])  # mean + std
+        # kl_stats = self.logger.get_stats('KL')
+        # self.agent.set_delta_gp(kl_stats[0] + kl_stats[1])  # mean + std
 
         # Log info about epoch
         self.logger.log_tabular('Epoch', epoch)
@@ -694,7 +694,7 @@ class BRACPRunner(TFRunner):
             self.max_kl = distance + self.generalization_threshold  # allow space to explore generalization
 
         self.agent.set_delta_behavior(self.max_kl)
-        self.agent.set_delta_gp(self.max_kl)
+        self.agent.set_delta_gp(self.max_kl + self.generalization_threshold)
 
         self.start_time = time.time()
 

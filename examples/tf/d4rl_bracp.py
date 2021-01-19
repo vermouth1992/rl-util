@@ -114,9 +114,9 @@ def train_policy(args):
     elif 'medium-replay' in env_name:
         override_args['generalization_threshold'] = 3.0
         if 'hopper' in env_name:
-            override_args['generalization_threshold'] = 4.0
+            override_args['generalization_threshold'] = 3.0
         if 'halfcheetah' in env_name:
-            override_args['generalization_threshold'] = 0.5
+            override_args['generalization_threshold'] = 1.0
     elif 'medium' in env_name:
         override_args['generalization_threshold'] = 5.0
         if 'walker2d' in env_name:
