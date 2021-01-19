@@ -116,7 +116,7 @@ def train_policy(args):
         if 'hopper' in env_name:
             override_args['generalization_threshold'] = 4.0
         if 'halfcheetah' in env_name:
-            override_args['generalization_threshold'] = 2.0
+            override_args['generalization_threshold'] = 0.5
     elif 'medium' in env_name:
         override_args['generalization_threshold'] = 5.0
         if 'walker2d' in env_name:

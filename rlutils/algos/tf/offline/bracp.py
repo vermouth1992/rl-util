@@ -96,6 +96,8 @@ class BRACPAgent(tf.keras.Model):
 
         # delta should set according to the KL between initial policy and behavior policy
         self.delta_behavior = tf.Variable(initial_value=0.0, trainable=False, dtype=tf.float32)
+        self.delta_gp = tf.Variable(initial_value=0.0, trainable=False, dtype=tf.float32)
+        self.reward_scale_factor = 1.0
 
     def get_alpha(self, obs):
         return self.log_alpha(obs)
@@ -108,6 +110,10 @@ class BRACPAgent(tf.keras.Model):
     def set_delta_behavior(self, delta_behavior):
         EpochLogger.log(f'Setting behavior hard KL to {delta_behavior:.4f}')
         self.delta_behavior.assign(delta_behavior)
+
+    def set_delta_gp(self, delta_gp):
+        EpochLogger.log(f'Setting delta GP to {delta_gp:.4f}')
+        self.delta_gp.assign(delta_gp)
 
     def set_logger(self, logger):
         self.logger = logger
@@ -352,21 +358,20 @@ class BRACPAgent(tf.keras.Model):
     def _compute_target_q(self, next_obs, reward, done):
         batch_size = tf.shape(next_obs)[0]
         alpha = self.get_alpha(next_obs)
-        if self.max_q_backup is True:
-            next_obs = tf.tile(next_obs, multiples=(self.n, 1))
+        next_obs = tf.tile(next_obs, multiples=(self.n, 1))
         next_action, next_action_log_prob, next_raw_action, pi_distribution = self.target_policy_net((next_obs, False))
         target_q_values = self.target_q_network((next_obs, next_action), training=False)
-        if self.max_q_backup is True:
-            target_q_values = tf.reduce_mean(tf.reshape(target_q_values, shape=(self.n, batch_size)), axis=0)
-            if self.kl_backup is True:
+        target_q_values = tf.reduce_max(tf.reshape(target_q_values, shape=(self.n, batch_size)), axis=0)
+        if self.kl_backup is True:
+            if self.reg_type in ['kl', 'cross_entropy']:
                 kl_loss = self._compute_kl_behavior_v2(next_obs, next_raw_action, pi_distribution)  # (None, act_dim)
                 kl_loss = tf.reduce_mean(tf.reshape(kl_loss, shape=(self.n, batch_size)), axis=0)
-                target_q_values = target_q_values - alpha * (kl_loss - self.delta_behavior)
-        else:
-            if self.kl_backup is True:
-                kl_loss = self._compute_kl_behavior_v2(next_obs, next_raw_action, pi_distribution)  # (None, act_dim)
-                target_q_values = target_q_values - alpha * tf.minimum(kl_loss, self.max_kl_backup)
-
+            elif self.reg_type == 'mmd':
+                kl_loss = self._compute_mmd(next_obs, next_raw_action, pi_distribution)
+            else:
+                raise NotImplementedError
+            kl_loss = kl_loss / self.reward_scale_factor
+            target_q_values = target_q_values - alpha * kl_loss
         q_target = reward + self.gamma * (1.0 - done) * target_q_values
         return q_target
 
@@ -391,8 +396,10 @@ class BRACPAgent(tf.keras.Model):
             penalty = tf.reshape(penalty, shape=(self.n, batch_size))
             penalty = tf.reduce_mean(penalty, axis=0)
         # TODO: consider using soft constraints instead of hard clip
-        weights = tf.nn.softplus((kl - self.delta_behavior) * self.sensitivity)
+        # weights = tf.nn.sigmoid((kl - self.delta_behavior * 2.) * self.sensitivity)
+        weights = tf.nn.softplus((kl - self.delta_behavior * 2) * self.sensitivity)
         weights = weights / tf.reduce_max(weights)
+        # weights = tf.cast((kl - self.delta_gp) > 0, dtype=tf.float32)
         penalty = penalty * tf.stop_gradient(weights)
         return penalty
 
@@ -518,6 +525,8 @@ class BRACPRunner(TFRunner):
 
         if reward_scale:
             EpochLogger.log('Using reward scale', color='red')
+            self.agent.reward_scale_factor = np.max(dataset['rewards'] - np.min(dataset['rewards']))
+            EpochLogger.log(f'The scale factor is {self.agent.reward_scale_factor:.2f}')
             dataset['rewards'] = rescale(dataset['rewards'])
         # modify keys
         dataset['obs'] = dataset.pop('observations')
@@ -597,6 +606,10 @@ class BRACPRunner(TFRunner):
 
     def on_epoch_end(self, epoch):
         self.test_agent(agent=self.agent, name='policy', logger=self.logger)
+
+        # set delta_gp
+        kl_stats = self.logger.get_stats('KL')
+        self.agent.set_delta_gp(kl_stats[0] + kl_stats[1])  # mean + std
 
         # Log info about epoch
         self.logger.log_tabular('Epoch', epoch)
@@ -681,6 +694,7 @@ class BRACPRunner(TFRunner):
             self.max_kl = distance + self.generalization_threshold  # allow space to explore generalization
 
         self.agent.set_delta_behavior(self.max_kl)
+        self.agent.set_delta_gp(self.max_kl)
 
         self.start_time = time.time()
 
