@@ -637,14 +637,19 @@ class BRACPRunner(TFRunner):
                                                                                              interval=interval))
         self.agent.behavior_policy.optimizer = get_adam_optimizer(lr=self.get_decayed_lr_schedule(lr=behavior_lr,
                                                                                                   interval=interval))
+
         try:
             if self.force_pretrain_behavior:
-                raise ValueError()
+                raise tf.errors.NotFoundError(None, None, None)
             self.agent.behavior_policy.load_weights(filepath=self.behavior_filepath).assert_consumed()
             EpochLogger.log(f'Successfully load behavior policy from {self.behavior_filepath}')
-        except:
+        except tf.errors.NotFoundError:
             self.pretrain_behavior_policy(self.pretrain_epochs)
             self.agent.behavior_policy.save_weights(filepath=self.behavior_filepath)
+        except AssertionError as e:
+            print(e)
+            EpochLogger.log('The structure of model is altered. Add --pretrain_behavior flag.', color='red')
+            raise
 
         obs_act_dataset = tf.data.Dataset.from_tensor_slices((self.replay_buffer.get()['obs'],
                                                               self.replay_buffer.get()['act'])).batch(1000)
@@ -664,14 +669,18 @@ class BRACPRunner(TFRunner):
 
         try:
             if self.force_pretrain_cloning:
-                raise ValueError()
+                raise tf.errors.NotFoundError(None, None, None)
             self.agent.policy_net.load_weights(filepath=self.policy_behavior_filepath).assert_consumed()
             self.agent.log_beta.load_weights(filepath=self.log_beta_behavior_filepath).assert_consumed()
             EpochLogger.log(f'Successfully load initial policy from {self.policy_behavior_filepath}')
-        except:
+        except tf.errors.NotFoundError:
             self.pretrain_cloning(self.pretrain_epochs)
             self.agent.policy_net.save_weights(filepath=self.policy_behavior_filepath)
             self.agent.log_beta.save_weights(filepath=self.log_beta_behavior_filepath)
+        except AssertionError as e:
+            print(e)
+            EpochLogger.log('The structure of model is altered. Add --pretrain_cloning flag', color='red')
+            raise
 
         hard_update(self.agent.target_policy_net, self.agent.policy_net)
         # reset policy net learning rate
@@ -747,7 +756,7 @@ def bracp(env_name,
           policy_mlp_hidden=256,
           q_mlp_hidden=256,
           policy_lr=5e-6,
-          policy_behavior_lr=3e-4,
+          policy_behavior_lr=1e-3,
           q_lr=3e-4,
           alpha_lr=1e-3,
           alpha=10.0,
