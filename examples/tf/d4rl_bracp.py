@@ -127,7 +127,7 @@ def train_policy(args):
             'generalization_threshold': 0.8,
         },
         'halfcheetah-medium-v0': {
-            'generalization_threshold': 6.0,
+            'generalization_threshold': 7.0,
         },
         'hopper-medium-replay-v0': {
             'generalization_threshold': 4.0,
