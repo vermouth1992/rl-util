@@ -477,7 +477,8 @@ class BRACPAgent(tf.keras.Model):
             batch_size = tf.shape(obs)[0]
             obs = tf.tile(obs, (n, 1))
             action = self.policy_net((obs, False))[0]
-            q_values_pi_min = self.q_network((obs, action), training=True)[0, :]
+            q_values_pi_min = self.q_network((obs, action), training=True)
+            q_values_pi_min = tf.reduce_mean(q_values_pi_min, axis=0)
             action = tf.reshape(action, shape=(n, batch_size, self.ac_dim))
             idx = tf.argmax(tf.reshape(q_values_pi_min, shape=(n, batch_size)), axis=0,
                             output_type=tf.int32)  # (batch_size)
@@ -774,7 +775,7 @@ def bracp(env_name,
           generalization_threshold=0.1,
           std_scale=4.,
           # behavior policy
-          num_ensembles=1,
+          num_ensembles=3,
           behavior_mlp_hidden=256,
           behavior_lr=1e-3,
           # others
