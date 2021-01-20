@@ -107,27 +107,37 @@ def test_policy(args):
 
 def train_policy(args):
     env_name = args['env_name']
-    override_args = {}
     # setup env specific arguments.
-    if 'medium-expert' in env_name:
-        override_args['generalization_threshold'] = 0.1
-    elif 'medium-replay' in env_name:
-        override_args['generalization_threshold'] = 3.0
-        if 'hopper' in env_name:
-            override_args['generalization_threshold'] = 3.0
-        if 'halfcheetah' in env_name:
-            override_args['generalization_threshold'] = 1.0
-    elif 'medium' in env_name:
-        override_args['generalization_threshold'] = 5.0
-        if 'walker2d' in env_name:
-            override_args['generalization_threshold'] = 0.8
-    elif 'random' in env_name:
-        generalization_threshold = None
-    elif 'human' in env_name:
-        generalization_threshold = None
-    else:
-        raise ValueError(f'Unknown env_name {env_name}')
-
+    default_args = {
+        'hopper-medium-expert-v0': {
+            'generalization_threshold': 0.1,
+        },
+        'walker2d-medium-expert-v0': {
+            'generalization_threshold': 0.1,
+        },
+        'halfcheetah-medium-expert-v0': {
+            'generalization_threshold': 0.1,
+        },
+        'hopper-medium-v0': {
+            'generalization_threshold': 0.4,
+        },
+        'walker2d-medium-v0': {
+            'generalization_threshold': 0.8,
+        },
+        'halfcheetah-medium-v0': {
+            'generalization_threshold': 6.0,
+        },
+        'hopper-medium-replay-v0': {
+            'generalization_threshold': 4.0,
+        },
+        'walker2d-medium-replay-v0': {
+            'generalization_threshold': 3.0,
+        },
+        'halfcheetah-medium-replay-v0': {
+            'generalization_threshold': 0.5,
+        },
+    }
+    override_args = default_args.get(env_name, dict())
     args.update(override_args)
     bracp(**args)
 
