@@ -483,7 +483,7 @@ class BRACPAgent(tf.keras.Model):
             if type == 4:
                 mean = tf.tile(tf.expand_dims(pi_distribution.mean(), axis=0), (n, 1, 1))
                 std = tf.tile(tf.expand_dims(pi_distribution.stddev(), axis=0), (n, 1, 1))
-                samples = tf.clip_by_value(samples, mean - std, mean + std)
+                samples = tf.clip_by_value(samples, mean - 2 * std, mean + 2 * std)
             samples = tf.tanh(samples)
             action = tf.reshape(samples, shape=(n * batch_size, self.ac_dim))
             obs_tile = tf.tile(obs, (n, 1))
