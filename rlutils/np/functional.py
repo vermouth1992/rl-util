@@ -5,7 +5,11 @@ EPS = 1e-6
 
 
 def inverse_softplus(x, beta=1.):
-    return np.log(np.exp(x * beta) - 1.) / beta
+    assert x > 0, 'x must be positive'
+    if x < 20:
+        return np.log(np.exp(x * beta) - 1.) / beta
+    else:
+        return x
 
 
 def flatten_leading_dims(array, n_dims):
