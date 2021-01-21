@@ -1,5 +1,6 @@
 import tensorflow as tf
 from rlutils.np.functional import inverse_softplus
+from rlutils.tf.functional import clip_by_value
 
 from .initializer import _decode_initializer
 
@@ -52,9 +53,17 @@ class EnsembleDense(tf.keras.layers.Dense):
 
 
 class LagrangeLayer(tf.keras.Model):
-    def __init__(self, initial_value=1.0):
+    def __init__(self, initial_value=1.0, min_value=None, max_value=10000.):
         super(LagrangeLayer, self).__init__()
         self.log_value = inverse_softplus(initial_value)
+        if min_value is not None:
+            self.min_log_value = inverse_softplus(min_value)
+        else:
+            self.min_log_value = None
+        if max_value is not None:
+            self.max_log_value = inverse_softplus(max_value)
+        else:
+            self.max_log_value = None
         self.build(input_shape=None)
 
     def build(self, input_shape):
@@ -70,7 +79,7 @@ class LagrangeLayer(tf.keras.Model):
         return super(LagrangeLayer, self).__call__(tf.random.normal(shape=(), dtype=tf.float32))
 
     def call(self, inputs, **kwargs):
-        return tf.nn.softplus(self.kernel)
+        return tf.nn.softplus(clip_by_value(self.kernel, self.min_log_value, self.max_log_value))
 
     def assign(self, value):
         self.kernel.assign(value)

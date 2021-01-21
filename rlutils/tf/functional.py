@@ -4,6 +4,14 @@ import tensorflow as tf
 EPS = 1e-6
 
 
+def clip_by_value(t, clip_value_min=None, clip_value_max=None):
+    if clip_value_min is not None:
+        t = tf.maximum(t, clip_value_min)
+    if clip_value_max is not None:
+        t = tf.minimum(t, clip_value_max)
+    return t
+
+
 def flatten_leading_dims(tensor, n_dims):
     if n_dims <= 1:
         return tensor
