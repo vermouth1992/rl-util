@@ -115,10 +115,10 @@ def train_policy(args):
             'generalization_threshold': 0.1,
         },
         'walker2d-medium-expert-v0': {
-            'generalization_threshold': 0.1,
+            'generalization_threshold': 0.2,
         },
         'halfcheetah-medium-expert-v0': {
-            'generalization_threshold': 0.1,
+            'generalization_threshold': 0.2,
         },
         'hopper-medium-v0': {
             'generalization_threshold': 0.4,
