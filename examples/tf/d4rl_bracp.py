@@ -142,6 +142,10 @@ def train_policy(args):
             'reg_type': 'mmd',
             'generalization_threshold': 0.
         },
+        'antmaze-umaze-v0': {
+            'reg_type': 'kl',
+            'generalization_threshold': 0.1,
+        }
     }
     override_args = default_args.get(env_name, dict())
     args.update(override_args)
