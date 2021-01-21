@@ -468,14 +468,14 @@ class BRACPAgent(tf.keras.Model):
         self.logger.store(**to_numpy_or_python_type(info))
 
     @tf.function
-    def act_batch(self, obs, type=4):
+    def act_batch(self, obs, type=5):
         if type == 1:
             pi_final = self.policy_net((obs, tf.convert_to_tensor(True)))[0]
             return pi_final
         elif type == 2:
             pi_final = self.policy_net((obs, tf.convert_to_tensor(False)))[0]
             return pi_final
-        elif type == 3 or type == 4:
+        elif type == 3 or type == 4 or type == 5:
             n = 20
             batch_size = tf.shape(obs)[0]
             pi_distribution = self.policy_net((obs, tf.convert_to_tensor(False)))[-1]
@@ -484,6 +484,10 @@ class BRACPAgent(tf.keras.Model):
                 mean = tf.tile(tf.expand_dims(pi_distribution.mean(), axis=0), (n, 1, 1))
                 std = tf.tile(tf.expand_dims(pi_distribution.stddev(), axis=0), (n, 1, 1))
                 samples = tf.clip_by_value(samples, mean - 2 * std, mean + 2 * std)
+            elif type == 5:
+                mean = tf.tile(tf.expand_dims(pi_distribution.mean(), axis=0), (n, 1, 1))
+                std = tf.tile(tf.expand_dims(pi_distribution.stddev(), axis=0), (n, 1, 1))
+                samples = tf.clip_by_value(samples, mean - std, mean + std)
             samples = tf.tanh(samples)
             action = tf.reshape(samples, shape=(n * batch_size, self.ac_dim))
             obs_tile = tf.tile(obs, (n, 1))
@@ -510,7 +514,7 @@ class BRACPRunner(TFRunner):
                                                                                 dtype=np.int64)
         t = tqdm(total=1, desc=f'Testing {name}')
         while not np.all(d):
-            a = agent.act_batch(tf.convert_to_tensor(o, dtype=tf.float32), 4).numpy()
+            a = agent.act_batch(tf.convert_to_tensor(o, dtype=tf.float32), 5).numpy()
             assert not np.any(np.isnan(a)), f'nan action: {a}'
             o, r, d_, _ = self.env.step(a)
             ep_ret = r * (1 - d) + ep_ret
