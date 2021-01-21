@@ -161,7 +161,7 @@ if __name__ == '__main__':
     test_parser.add_argument('--episodes', '-n', type=int, default=100)
     test_parser.add_argument('--seed', type=int, default=0)
     test_parser.add_argument('--render', '-r', action='store_true')
-    test_parser.add_argument('--test_type', '-t', type=int, default=4)
+    test_parser.add_argument('--test_type', '-t', type=int, default=5)
 
     args = vars(parser.parse_args())
 
