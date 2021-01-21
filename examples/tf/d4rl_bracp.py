@@ -42,13 +42,12 @@ def load_policy_and_env(filepath):
     return config['env_name'], agent
 
 
-def test_agent(test_env, dummy_env, num_test_episodes, agent, name, deterministic, logger=None):
+def test_agent(test_env, dummy_env, num_test_episodes, agent, name, test_type, logger=None):
     o, d, ep_ret, ep_len = test_env.reset(), np.zeros(shape=num_test_episodes, dtype=np.bool), \
                            np.zeros(shape=num_test_episodes), np.zeros(shape=num_test_episodes, dtype=np.int64)
     t = tqdm(total=1, desc=f'Testing {name}')
     while not np.all(d):
-        a = agent.act_batch(tf.convert_to_tensor(o, dtype=tf.float32),
-                            tf.convert_to_tensor(deterministic, dtype=tf.bool)).numpy()
+        a = agent.act_batch(tf.convert_to_tensor(o, dtype=tf.float32), test_type).numpy()
         assert not np.any(np.isnan(a)), f'nan action: {a}'
         o, r, d_, _ = test_env.step(a)
         ep_ret = r * (1 - d) + ep_ret
@@ -63,7 +62,7 @@ def test_agent(test_env, dummy_env, num_test_episodes, agent, name, deterministi
         print(f'EpRet: {np.mean(ep_ret):.2f}, TestEpLen: {np.mean(ep_len):.2f}')
 
 
-def run_policy(env_name, agent, deterministic=False, num_episodes=1000, seed=0):
+def run_policy(env_name, agent, test_type, num_episodes=1000, seed=0):
     num_test_episodes = 20
     assert num_episodes % num_test_episodes == 0, f"num_episodes must be multiplier of {num_test_episodes}"
     dummy_env = gym.make(env_name)
@@ -73,7 +72,7 @@ def run_policy(env_name, agent, deterministic=False, num_episodes=1000, seed=0):
     tf.random.set_seed(np.random.randint(sys.maxsize))
     logger = EpochLogger(output_dir=os.path.expanduser("~/tmp/experiments/%i" % int(time.time())))
     for _ in range(num_episodes // num_test_episodes):
-        test_agent(test_env, dummy_env, num_test_episodes, agent, 'final policy', deterministic, logger)
+        test_agent(test_env, dummy_env, num_test_episodes, agent, 'final policy', test_type, logger)
 
     mean_ep_ret = logger.get_stats('TestEpRet')[0]
     mean_normalized_ep_ret = logger.get_stats('NormalizedTestEpRet')[0]
@@ -91,7 +90,7 @@ def test_policy(args):
     sub_folders = list(filter(lambda s: 'tensorboard' not in s, sub_folders))
     if len(sub_folders) == 0:
         env_name, agent = load_policy_and_env(args['fpath'])
-        run_policy(env_name, agent, deterministic=args['deterministic'], num_episodes=args['episodes'],
+        run_policy(env_name, agent, test_type=args['test_type'], num_episodes=args['episodes'],
                    seed=args['seed'])
     else:
         ret = []
@@ -99,7 +98,7 @@ def test_policy(args):
         for sub_folder in sub_folders:
             env_name, agent = load_policy_and_env(sub_folder)
             mean_ep_ret, mean_normalized_ep_ret = run_policy(
-                env_name, agent, deterministic=args['deterministic'], num_episodes=args['episodes'], seed=args['seed'])
+                env_name, agent, test_type=args['test_type'], num_episodes=args['episodes'], seed=args['seed'])
             ret.append(mean_ep_ret)
             normalized_ret.append(mean_normalized_ep_ret)
         print(f'Mean EpRet: {np.mean(ret):.2f}, Std EpRet: {np.std(ret):.2f}')
@@ -157,7 +156,7 @@ if __name__ == '__main__':
     test_parser.add_argument('--episodes', '-n', type=int, default=100)
     test_parser.add_argument('--seed', type=int, default=0)
     test_parser.add_argument('--render', '-r', action='store_true')
-    test_parser.add_argument('--deterministic', '-d', action='store_true')
+    test_parser.add_argument('--test_type', '-t', type=int, default=4)
 
     args = vars(parser.parse_args())
 

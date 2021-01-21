@@ -468,23 +468,35 @@ class BRACPAgent(tf.keras.Model):
         self.logger.store(**to_numpy_or_python_type(info))
 
     @tf.function
-    def act_batch(self, obs, deterministic=True):
-        print(f'Tracing act_batch with obs {obs}')
-        if deterministic:
-            pi_final, log_prob, raw_action, pi_distribution = self.policy_net((obs, deterministic))
-        else:
+    def act_batch(self, obs, type=4):
+        if type == 1:
+            pi_final = self.policy_net((obs, tf.convert_to_tensor(True)))[0]
+            return pi_final
+        elif type == 2:
+            pi_final = self.policy_net((obs, tf.convert_to_tensor(False)))[0]
+            return pi_final
+        elif type == 3 or type == 4:
             n = 20
             batch_size = tf.shape(obs)[0]
-            obs = tf.tile(obs, (n, 1))
-            action = self.policy_net((obs, False))[0]
-            q_values_pi_min = self.q_network((obs, action), training=True)
+            pi_distribution = self.policy_net((obs, tf.convert_to_tensor(False)))[-1]
+            samples = pi_distribution.sample(n)  # (n, None, act_dim)
+            if type == 4:
+                mean = tf.tile(tf.expand_dims(pi_distribution.mean(), axis=0), (n, 1, 1))
+                std = tf.tile(tf.expand_dims(pi_distribution.stddev(), axis=0), (n, 1, 1))
+                samples = tf.clip_by_value(samples, mean - std, mean + std)
+            samples = tf.tanh(samples)
+            action = tf.reshape(samples, shape=(n * batch_size, self.ac_dim))
+            obs_tile = tf.tile(obs, (n, 1))
+
+            q_values_pi_min = self.q_network((obs_tile, action), training=True)
             q_values_pi_min = tf.reduce_mean(q_values_pi_min, axis=0)
-            action = tf.reshape(action, shape=(n, batch_size, self.ac_dim))
             idx = tf.argmax(tf.reshape(q_values_pi_min, shape=(n, batch_size)), axis=0,
                             output_type=tf.int32)  # (batch_size)
             idx = tf.stack([idx, tf.range(batch_size)], axis=-1)
-            pi_final = tf.gather_nd(action, idx)
-        return pi_final
+            pi_final = tf.gather_nd(samples, idx)
+            return pi_final
+        else:
+            raise NotImplementedError
 
 
 class BRACPRunner(TFRunner):
@@ -498,8 +510,7 @@ class BRACPRunner(TFRunner):
                                                                                 dtype=np.int64)
         t = tqdm(total=1, desc=f'Testing {name}')
         while not np.all(d):
-            a = agent.act_batch(tf.convert_to_tensor(o, dtype=tf.float32),
-                                tf.convert_to_tensor(deterministic)).numpy()
+            a = agent.act_batch(tf.convert_to_tensor(o, dtype=tf.float32), 4).numpy()
             assert not np.any(np.isnan(a)), f'nan action: {a}'
             o, r, d_, _ = self.env.step(a)
             ep_ret = r * (1 - d) + ep_ret
@@ -689,8 +700,8 @@ class BRACPRunner(TFRunner):
         self.agent.log_beta.optimizer = get_adam_optimizer(lr=1e-3)
 
         # test behavior policy
-        self.test_agent(self.agent.behavior_policy, name='vae policy')
-        self.test_agent(self.agent, deterministic=True, name='behavior cloning')
+        # self.test_agent(self.agent.behavior_policy, name='vae policy')
+        # self.test_agent(self.agent, deterministic=True, name='behavior cloning')
         # compute the current KL between pi and pi_b
 
         distance = []
