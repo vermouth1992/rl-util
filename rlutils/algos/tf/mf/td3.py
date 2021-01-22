@@ -7,8 +7,6 @@ import time
 
 import numpy as np
 import tensorflow as tf
-from tqdm.auto import tqdm
-
 from rlutils.np import DataSpec
 from rlutils.replay_buffers import PyUniformParallelEnvReplayBuffer
 from rlutils.runner import TFRunner, run_func_as_main
@@ -159,24 +157,9 @@ class TD3Agent(tf.keras.Model):
 
 
 class TD3Runner(TFRunner):
-    def get_action_batch(self, o, deterministic=False):
+    def get_action_batch(self, o):
         return self.agent.act_batch(tf.convert_to_tensor(o, dtype=tf.float32),
-                                    deterministic).numpy()
-
-    def test_agent(self):
-        o, d, ep_ret, ep_len = self.test_env.reset(), np.zeros(shape=self.num_test_episodes, dtype=np.bool), \
-                               np.zeros(shape=self.num_test_episodes), \
-                               np.zeros(shape=self.num_test_episodes, dtype=np.int64)
-        t = tqdm(total=1, desc='Testing')
-        while not np.all(d):
-            a = self.get_action_batch(o, deterministic=True)
-            o, r, d_, _ = self.test_env.step(a)
-            ep_ret = r * (1 - d) + ep_ret
-            ep_len = np.ones(shape=self.num_test_episodes, dtype=np.int64) * (1 - d) + ep_len
-            d = np.logical_or(d, d_)
-        t.update(1)
-        t.close()
-        self.logger.store(TestEpRet=ep_ret, TestEpLen=ep_len)
+                                    tf.convert_to_tensor(False)).numpy()
 
     def setup_replay_buffer(self,
                             replay_size,
@@ -236,7 +219,7 @@ class TD3Runner(TFRunner):
     def run_one_step(self, t):
         global_env_steps = self.global_step * self.num_parallel_env
         if global_env_steps >= self.start_steps:
-            a = self.get_action_batch(self.o, deterministic=False)
+            a = self.agent.act_batch(self.o, deterministic=tf.convert_to_tensor(False)).numpy()
         else:
             a = self.env.action_space.sample()
 

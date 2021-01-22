@@ -18,7 +18,7 @@ import tensorflow as tf
 import torch
 from gym.wrappers import FrameStack
 from rlutils.logx import EpochLogger, setup_logger_kwargs
-from tqdm.auto import trange
+from tqdm.auto import trange, tqdm
 
 
 def _add_frame_stack(wrappers, frame_stack):
@@ -55,6 +55,27 @@ class BaseRunner(ABC):
         logger_kwargs = setup_logger_kwargs(exp_name=self.exp_name, data_dir=self.logger_path, seed=self.seed)
         self.logger = EpochLogger(**logger_kwargs, tensorboard=tensorboard)
         self.logger.save_config(config)
+
+    def get_action_batch(self, obs):
+        raise NotImplementedError
+
+    def test_agent(self):
+        o, d, ep_ret, ep_len = self.test_env.reset(), np.zeros(shape=self.num_test_episodes, dtype=np.bool), \
+                               np.zeros(shape=self.num_test_episodes), \
+                               np.zeros(shape=self.num_test_episodes, dtype=np.int64)
+        t = tqdm(total=self.num_test_episodes, desc='Testing')
+        while not np.all(d):
+            a = self.get_action_batch(o)
+            o, r, d_, _ = self.test_env.step(a)
+            ep_ret = r * (1 - d) + ep_ret
+            ep_len = np.ones(shape=self.num_test_episodes, dtype=np.int64) * (1 - d) + ep_len
+            prev_d = d.copy()
+            d = np.logical_or(d, d_)
+            newly_finished = np.sum(d) - np.sum(prev_d)
+            if newly_finished > 0:
+                t.update(newly_finished)
+        t.close()
+        self.logger.store(TestEpRet=ep_ret, TestEpLen=ep_len)
 
     def setup_seed(self, seed):
         # we set numpy seed first and use it to generate other seeds
