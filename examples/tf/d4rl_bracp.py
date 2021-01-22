@@ -137,14 +137,6 @@ def train_policy(args):
         },
         'halfcheetah-medium-replay-v0': {
             'generalization_threshold': 2.0,
-        },
-        'pen-human-v0': {
-            'reg_type': 'mmd',
-            'generalization_threshold': 0.
-        },
-        'antmaze-umaze-v0': {
-            'reg_type': 'kl',
-            'generalization_threshold': 0.1,
         }
     }
     override_args = default_args.get(env_name, dict())

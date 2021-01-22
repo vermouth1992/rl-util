@@ -545,10 +545,10 @@ class BRACPRunner(TFRunner):
             EpochLogger.log(f'The scale factor is {self.agent.reward_scale_factor:.2f}')
             dataset['rewards'] = rescale(dataset['rewards'])
         # modify keys
-        dataset['obs'] = dataset.pop('observations')
-        dataset['act'] = dataset.pop('actions')
-        dataset['obs2'] = dataset.pop('next_observations')
-        dataset['rew'] = dataset.pop('rewards')
+        dataset['obs'] = dataset.pop('observations').astype(np.float32)
+        dataset['act'] = dataset.pop('actions').astype(np.float32)
+        dataset['obs2'] = dataset.pop('next_observations').astype(np.float32)
+        dataset['rew'] = dataset.pop('rewards').astype(np.float32)
         dataset['done'] = dataset.pop('terminals').astype(np.float32)
         replay_size = dataset['obs'].shape[0]
         self.logger.log(f'Dataset size: {replay_size}')
@@ -778,8 +778,8 @@ def bracp(env_name,
           alpha=10.0,
           tau=1e-3,
           gamma=0.99,
-          target_entropy=None,
-          max_kl=None,
+          target_entropy: float = None,
+          max_kl: float = None,
           use_gp=True,
           reg_type='kl',
           sigma=20,
@@ -795,7 +795,7 @@ def bracp(env_name,
           behavior_lr=1e-3,
           # others
           reward_scale=True,
-          save_freq=None,
+          save_freq: int = None,
           tensorboard=False,
           ):
     """Main function to run Improved Behavior Regularized Actor Critic (BRAC+)
