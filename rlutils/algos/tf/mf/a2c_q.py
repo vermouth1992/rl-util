@@ -6,7 +6,6 @@ import time
 
 import numpy as np
 import tensorflow as tf
-
 from rlutils.replay_buffers import PyUniformParallelEnvReplayBuffer
 from rlutils.runner import TFRunner, run_func_as_main
 from rlutils.tf.functional import to_numpy_or_python_type, hard_update, compute_target_value, soft_update
@@ -204,7 +203,7 @@ class A2CQRunner(TFRunner):
 
 def a2c_q(env_name, mlp_hidden=256, seed=0, batch_size=5000, num_parallel_envs=5,
           epochs=200, gamma=0.99, clip_ratio=0.2, pi_lr=3e-4, vf_lr=1e-3,
-          train_vf_iters=80, lam=0.97, max_ep_len=1000, target_kl=0.05, entropy_coef=1e-3):
+          train_vf_iters=80, lam=0.97, max_ep_len=1000, target_kl=0.05, entropy_coef=1e-3, logger_path='data'):
     # Instantiate environment
     assert batch_size % num_parallel_envs == 0
 
@@ -212,7 +211,7 @@ def a2c_q(env_name, mlp_hidden=256, seed=0, batch_size=5000, num_parallel_envs=5
 
     config = locals()
     runner = A2CQRunner(seed=seed, steps_per_epoch=steps_per_epoch,
-                        epochs=epochs, exp_name=None, logger_path='data')
+                        epochs=epochs, exp_name=None, logger_path=logger_path)
     runner.setup_env(env_name=env_name, num_parallel_env=num_parallel_envs,
                      frame_stack=None, wrappers=None, asynchronous=False, num_test_episodes=None)
     runner.setup_logger(config)

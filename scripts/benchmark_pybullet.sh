@@ -14,7 +14,7 @@ seeds=(
 for env in "${envs[@]}"; do
   for algo in "${algos[@]}"; do
     for seed in "${seeds[@]}"; do
-      python -m rlutils.run $algo --env_name $env --seed $seed
+      python -m rlutils.run $algo --env_name $env --seed $seed --logger_path 'benchmark_results'
     done
   done
 done

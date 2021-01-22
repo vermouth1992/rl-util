@@ -252,11 +252,11 @@ def dqn(env_name,
         tau=5e-3,
         epsilon=0.1,
         # replay
-        update_horizon=1,
-        replay_size=int(1e6)
+        replay_size=int(1e6),
+        logger_path='data'
         ):
     config = locals()
-    runner = DQNRunner(seed=seed, steps_per_epoch=steps_per_epoch, epochs=epochs, logger_path='data')
+    runner = DQNRunner(seed=seed, steps_per_epoch=steps_per_epoch, epochs=epochs, logger_path=logger_path)
     runner.setup_env(env_name=env_name, num_parallel_env=num_parallel_env, asynchronous=False,
                      num_test_episodes=num_test_episodes)
     runner.setup_seed(seed)
