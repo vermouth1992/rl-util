@@ -112,7 +112,7 @@ def train_policy(args):
     # setup env specific arguments.
     default_args = {
         'hopper-medium-expert-v0': {
-            'generalization_threshold': 0.1,
+            'generalization_threshold': 0.2,
         },
         'walker2d-medium-expert-v0': {
             'generalization_threshold': 0.2,
@@ -137,6 +137,18 @@ def train_policy(args):
         },
         'halfcheetah-medium-replay-v0': {
             'generalization_threshold': 2.0,
+        },
+        'hopper-random-v0': {
+            'generalization_threshold': 0.1,
+            'std_scale': 1.0
+        },
+        'walker2d-random-v0': {
+            'generalization_threshold': 0.1,
+            'std_scale': 1.0
+        },
+        'halfcheetah-random-v0': {
+            'generalization_threshold': 0.1,
+            'std_scale': 1.0
         },
         'pen-human-v0': {
             'reg_type': 'mmd',
