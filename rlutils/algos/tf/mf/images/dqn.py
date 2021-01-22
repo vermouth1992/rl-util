@@ -3,15 +3,15 @@ import time
 import numpy as np
 import tensorflow as tf
 
-from rlutils.utils.tf_utils import set_tf_allow_growth
+from rlutils.tf.utils import set_tf_allow_growth
 
 set_tf_allow_growth()
 
 from rlutils.runner import TFRunner
 from rlutils.tf.nn import AtariQNetworkDeepMind, hard_update
-from rlutils.replay_buffers import ReverbTransitionReplayBuffer
+from rlutils.replay_buffers import PyUniformParallelEnvReplayBufferFrame
 from rlutils.runner import run_func_as_main
-from rlutils.schedulers import PiecewiseSchedule
+from rlutils.np.schedulers import PiecewiseSchedule
 
 from gym.wrappers import AtariPreprocessing
 
@@ -55,7 +55,7 @@ class DQN(tf.keras.Model):
         self.logger = logger
 
     def log_tabular(self):
-        self.logger.log_tabular('QVals', with_min_and_max=False)
+        self.logger.log_tabular('QVals', with_min_and_max=True)
         self.logger.log_tabular('LossQ', average_only=True)
 
     def set_epsilon(self, epsilon):
@@ -76,10 +76,10 @@ class DQN(tf.keras.Model):
             target_q_values = gather_q_values(target_q_values, target_actions)
         else:
             target_q_values = tf.reduce_max(target_q_values, axis=-1)
-        target_q_values = rew + (1. - done) * target_q_values
+        target_q_values = rew + self.gamma * (1. - done) * target_q_values
         with tf.GradientTape() as tape:
             q_values = gather_q_values(self.q_network(obs), act)  # (None,)
-            loss = self.loss_fn(target_q_values, q_values)  # (None,)
+            loss = self.loss_fn(q_values, target_q_values)  # (None,)
         grad = tape.gradient(loss, self.q_network.trainable_variables)
         self.q_optimizer.apply_gradients(zip(grad, self.q_network.trainable_variables))
         info = dict(
@@ -118,7 +118,7 @@ class DQNRunner(TFRunner):
                             update_horizon,
                             frame_stack
                             ):
-        self.replay_buffer = ReverbTransitionReplayBuffer(
+        self.replay_buffer = PyUniformParallelEnvReplayBufferFrame(
             num_parallel_env=num_parallel_env,
             obs_spec=tf.TensorSpec(shape=[84, 84], dtype=tf.uint8),
             act_spec=tf.TensorSpec(shape=(), dtype=tf.int32),
@@ -149,11 +149,13 @@ class DQNRunner(TFRunner):
                     start_steps,
                     update_after,
                     update_every,
-                    update_per_step):
+                    update_per_step,
+                    target_update):
         self.start_steps = start_steps
         self.update_after = update_after
         self.update_every = update_every
         self.update_per_step = update_per_step
+        self.target_update = target_update
         # epsilon scheduler
         self.epsilon_scheduler = PiecewiseSchedule(
             [
@@ -167,7 +169,7 @@ class DQNRunner(TFRunner):
         return self.agent.act_batch(tf.convert_to_tensor(o, dtype=tf.float32),
                                     tf.convert_to_tensor(deterministic, dtype=tf.bool)).numpy()
 
-    def run_one_step(self):
+    def run_one_step(self, t):
         global_env_steps = self.global_step * self.num_parallel_env
         if global_env_steps >= self.start_steps:
             a = self.get_action_batch(self.o, deterministic=False)
@@ -210,6 +212,9 @@ class DQNRunner(TFRunner):
                 batch = self.replay_buffer.sample()
                 self.agent.update(**batch)
 
+        if global_env_steps % self.target_update == 0:
+            self.agent.update_target()
+
     def on_train_begin(self):
         self.start_time = time.time()
         self.o = self.env.reset()
@@ -248,6 +253,7 @@ def dqn(env_name,
         q_lr=1e-4,
         gamma=0.99,
         huber_delta=1.0,
+        target_update=1000,
         # replay
         update_horizon=1,
         replay_size=int(1e6)
@@ -270,7 +276,8 @@ def dqn(env_name,
     runner.setup_extra(start_steps=start_steps,
                        update_after=update_after,
                        update_every=update_every,
-                       update_per_step=update_per_step)
+                       update_per_step=update_per_step,
+                       target_update=target_update)
     runner.setup_replay_buffer(num_parallel_env=num_parallel_env,
                                replay_capacity=replay_size,
                                batch_size=batch_size,

@@ -15,7 +15,7 @@ from rlutils.runner import TFRunner
 from rlutils.tf.nn.functional import hard_update, build_mlp
 from rlutils.replay_buffers import PyUniformParallelEnvReplayBuffer, ReverbTransitionReplayBuffer
 from rlutils.runner import run_func_as_main
-from rlutils.schedulers import PiecewiseSchedule
+from rlutils.np.schedulers import PiecewiseSchedule
 
 
 def gather_q_values(q_values, actions):
@@ -178,7 +178,7 @@ class DQNRunner(TFRunner):
         return self.agent.act_batch(tf.convert_to_tensor(o, dtype=tf.float32),
                                     tf.convert_to_tensor(deterministic, dtype=tf.bool)).numpy()
 
-    def run_one_step(self):
+    def run_one_step(self, t):
         global_env_steps = self.global_step * self.num_parallel_env
         if global_env_steps >= self.start_steps:
             a = self.get_action_batch(self.o, deterministic=False)
