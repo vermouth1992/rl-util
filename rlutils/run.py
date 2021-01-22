@@ -1,8 +1,8 @@
-from rlutils.algos.tf.mf import a2c, a2c_q, ddpg, ppo, sac, td3, trpo
-from rlutils.algos.tf.offline import cql, bracp
+from rlutils.algos.tf.mf import a2c, a2c_q, ddpg, ppo, sac, td3, trpo, dqn
+from rlutils.algos.tf.offline import cql, bracp, plas
 from rlutils.runner import get_argparser_from_func
 
-__all__ = ['ppo', 'td3', 'trpo', 'sac', 'a2c', 'a2c_q', 'ddpg', 'cql', 'bracp']
+__all__ = ['ppo', 'td3', 'trpo', 'sac', 'a2c', 'a2c_q', 'ddpg', 'cql', 'bracp', 'plas', 'dqn']
 
 
 def main():

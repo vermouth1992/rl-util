@@ -25,7 +25,14 @@ def get_argparser_from_func(func, parser):
                     action = 'store_false'
                 parser.add_argument('--' + k, action=action, help=params.get(k, ' '))
             else:
-                parser.add_argument('--' + k, type=type(v.default), default=v.default, help=params.get(k, ' '))
+                if v.default is not None:
+                    arg_type = type(v.default)
+                elif type(v.annotation) != inspect.Signature.empty:
+                    # get from annotation
+                    arg_type = v.annotation
+                else:
+                    raise ValueError('Argument with default value None must be annotated with type.')
+                parser.add_argument('--' + k, type=arg_type, default=v.default, help=params.get(k, ' '))
     return parser
 
 
