@@ -3,7 +3,7 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 from rlutils.tf.distributions import make_independent_normal_from_params, make_independent_beta_from_params, \
     apply_squash_log_prob
-from rlutils.tf.functional import clip_atanh
+from rlutils.tf.functional import clip_atanh, expand_ensemble_dim
 from rlutils.tf.nn.functional import build_mlp
 
 from .base import ConditionalBetaVAE
@@ -120,9 +120,7 @@ class EnsembleBehaviorPolicy(BehaviorPolicy):
 
     def expand_ensemble_dim(self, x):
         """ functionality for outer class to expand before passing into the ensemble model. """
-        multiples = tf.concat(([self.num_ensembles], tf.ones_like(tf.shape(x))), axis=0)
-        x = tf.tile(tf.expand_dims(x, axis=0), multiples=multiples)
-        return x
+        return expand_ensemble_dim(x, self.num_ensembles)
 
     def select_random_ensemble(self, x):
         """ x: (num_ensembles, None) """

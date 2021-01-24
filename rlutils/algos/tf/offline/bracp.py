@@ -13,12 +13,12 @@ import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
 from rlutils.future.optimizer import get_adam_optimizer, minimize
-from rlutils.generative_models.vae import EnsembleBehaviorPolicy
 from rlutils.logx import EpochLogger
 from rlutils.replay_buffers import PyUniformParallelEnvReplayBuffer
 from rlutils.runner import TFRunner
 from rlutils.tf.distributions import apply_squash_log_prob
 from rlutils.tf.functional import soft_update, hard_update, to_numpy_or_python_type
+from rlutils.tf.generative_models.vae import EnsembleBehaviorPolicy
 from rlutils.tf.nn import SquashedGaussianMLPActor, EnsembleMinQNet, LagrangeLayer, CenteredBetaMLPActor
 from tqdm.auto import tqdm, trange
 
