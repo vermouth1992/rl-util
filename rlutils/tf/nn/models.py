@@ -206,7 +206,10 @@ class EnsembleDynamicsModel(tf.keras.Model):
 
     def update(self, inputs, sample_weights=None, batch_size=64, num_epochs=60, patience=None,
                validation_split=0.1, shuffle=True):
-        obs, actions, next_obs, rewards = inputs
+        obs = inputs['obs']
+        actions = inputs['act']
+        next_obs = inputs['next_obs']
+        rewards = inputs['rew']
         # get data statistic
         self.set_statistics(obs, actions, next_obs, rewards)
 
@@ -240,6 +243,10 @@ class EnsembleDynamicsModel(tf.keras.Model):
 
         model = tf.keras.Model(inputs=[initial_states_ph, action_seq_ph],
                                outputs=[next_obs, rewards, dones])
+        model.sample_action = lambda shape: tf.random.uniform(shape=list(shape) + [self.act_dim],
+                                                              minval=-1., maxval=1.,
+                                                              dtype=tf.float32)
+        model.num_particles = num_particles
         return model
 
     def call(self, inputs, training=None, mask=None):

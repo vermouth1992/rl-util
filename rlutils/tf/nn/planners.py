@@ -1,4 +1,5 @@
 import numpy as np
+import tensorflow as tf
 
 
 class Planner(object):
@@ -19,6 +20,7 @@ class RandomShooter(Planner):
         super(RandomShooter, self).__init__(inference_model=inference_model,
                                             horizon=horizon)
 
+    @tf.function
     def act_batch(self, obs):
         """
 
@@ -28,11 +30,17 @@ class RandomShooter(Planner):
         Returns:
 
         """
-
-        obs = np.tile(np.expand_dims(obs, axis=0), (self.num_actions, 1)).astype(np.float32)
-        act_seq = np.random.uniform(low=-1., high=1.,
-                                    size=(self.num_actions, self.horizon, self.act_dim)).astype(np.float32)
-        _, reward_seq, _ = self.model.predict_obs_seq(obs, act_seq)
-        reward = np.sum(reward_seq, axis=-1)  # (None)
-        best_index = np.argmax(reward)
-        return act_seq[best_index][0]
+        batch_size = tf.shape(obs)[0]
+        obs = tf.tile(obs, (self.num_actions, 1))  # (num_actions * None, obs_dim)
+        obs = tf.tile(tf.expand_dims(obs, axis=1), (1, self.inference_model.num_particles, 1))
+        act_seq = self.inference_model.sample_action(shape=[self.num_actions * batch_size, self.horizon])
+        _, reward_seq, _ = self.inference_model(inputs=(obs, act_seq),
+                                                training=False)  # (num_actions * None, horizon, num_particles)
+        reward_seq = tf.reduce_mean(reward_seq, axis=-1)
+        reward = tf.reduce_sum(reward_seq, axis=-1)  # (num_actions, None)
+        reward = tf.reshape(reward, shape=(self.num_actions, batch_size))
+        best_index = tf.argmax(reward, axis=0, output_type=tf.int32)
+        best_index = tf.stack([best_index, tf.range(batch_size)], axis=-1)
+        act_seq = tf.reshape(act_seq, shape=(self.num_actions, batch_size, self.horizon, -1))
+        act_seq = tf.gather_nd(act_seq, indices=best_index)
+        return act_seq[:, 0]
