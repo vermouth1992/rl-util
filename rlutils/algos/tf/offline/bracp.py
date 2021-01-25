@@ -13,12 +13,12 @@ import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
 from rlutils.future.optimizer import get_adam_optimizer, minimize
-from rlutils.generative_models.vae import EnsembleBehaviorPolicy
 from rlutils.logx import EpochLogger
 from rlutils.replay_buffers import PyUniformParallelEnvReplayBuffer
 from rlutils.runner import TFRunner
 from rlutils.tf.distributions import apply_squash_log_prob
 from rlutils.tf.functional import soft_update, hard_update, to_numpy_or_python_type
+from rlutils.tf.generative_models.vae import EnsembleBehaviorPolicy
 from rlutils.tf.nn import SquashedGaussianMLPActor, EnsembleMinQNet, LagrangeLayer, CenteredBetaMLPActor
 from tqdm.auto import tqdm, trange
 
@@ -31,38 +31,46 @@ class BRACPAgent(tf.keras.Model):
     def __init__(self,
                  ob_dim,
                  ac_dim,
-                 num_ensembles=5,
+                 num_ensembles=3,
                  behavior_mlp_hidden=256,
-                 behavior_lr=1e-4,
-                 policy_mlp_hidden=128,
+                 behavior_lr=1e-3,
+                 policy_lr=5e-6,
+                 policy_behavior_lr=1e-3,
+                 policy_mlp_hidden=256,
                  q_mlp_hidden=256,
                  q_lr=3e-4,
                  alpha_lr=1e-3,
                  alpha=1.0,
-                 tau=5e-3,
+                 tau=1e-3,
                  gamma=0.99,
                  target_entropy=None,
                  use_gp=True,
+                 gp_type='softplus',
                  reg_type='kl',
                  sigma=10,
                  n=5,
                  gp_weight=0.1,
                  entropy_reg=True,
                  kl_backup=False,
+                 max_ood_grad_norm=0.01,
                  ):
         super(BRACPAgent, self).__init__()
         self.reg_type = reg_type
+        self.gp_type = gp_type
         assert self.reg_type in ['kl', 'mmd', 'cross_entropy']
 
         self.ob_dim = ob_dim
         self.ac_dim = ac_dim
         self.q_mlp_hidden = q_mlp_hidden
+        self.policy_lr = policy_lr
+        self.policy_behavior_lr = policy_behavior_lr
         self.behavior_policy = EnsembleBehaviorPolicy(num_ensembles=num_ensembles, out_dist='normal',
                                                       obs_dim=self.ob_dim, act_dim=self.ac_dim,
                                                       mlp_hidden=behavior_mlp_hidden)
         self.behavior_lr = behavior_lr
         self.policy_net = SquashedGaussianMLPActor(ob_dim, ac_dim, policy_mlp_hidden)
         self.target_policy_net = SquashedGaussianMLPActor(ob_dim, ac_dim, policy_mlp_hidden)
+        self.policy_net.optimizer = get_adam_optimizer(lr=self.policy_lr)
         hard_update(self.target_policy_net, self.policy_net)
         self.q_network = EnsembleMinQNet(ob_dim, ac_dim, q_mlp_hidden)
         self.q_network.compile(optimizer=get_adam_optimizer(q_lr))
@@ -90,7 +98,7 @@ class BRACPAgent(tf.keras.Model):
         self.kl_backup = kl_backup
         self.gradient_clipping = False
         self.sensitivity = 1.0
-        self.max_ood_grad_norm = 0.01
+        self.max_ood_grad_norm = max_ood_grad_norm
         self.use_gp = use_gp
         self.sigma = sigma
 
@@ -140,6 +148,10 @@ class BRACPAgent(tf.keras.Model):
         soft_update(self.target_q_network, self.q_network, self.tau)
         soft_update(self.target_policy_net, self.policy_net, self.tau)
 
+    @tf.function
+    def hard_update_policy_target(self):
+        hard_update(self.target_policy_net, self.policy_net)
+
     @tf.function(experimental_relax_shapes=True)
     def compute_pi_pib_distance(self, obs):
         if self.reg_type in ['kl', 'cross_entropy']:
@@ -183,12 +195,13 @@ class BRACPAgent(tf.keras.Model):
 
         obs_expand = self.behavior_policy.expand_ensemble_dim(obs)
         samples_pi_b = self.behavior_policy.sample(
-            obs_expand, full_path=tf.convert_to_tensor(True))  # (num_ensembles, n * batch_size, d)
+            obs_expand, full_path=tf.convert_to_tensor(False))  # (num_ensembles, n * batch_size, d)
         samples_pi_b = tf.reshape(samples_pi_b, shape=(self.behavior_policy.num_ensembles, self.n,
                                                        batch_size, self.ac_dim))
         samples_pi_b = tf.transpose(samples_pi_b, perm=[1, 0, 2, 3])
         samples_pi_b = tf.reshape(samples_pi_b, shape=(self.n, self.behavior_policy.num_ensembles * batch_size,
                                                        self.ac_dim))
+
         samples_pi = self.policy_net.transform_raw_action(samples_pi)
         samples_pi_b = self.behavior_policy.transform_raw_action(samples_pi_b)
         mmd_loss = self.mmd_loss_laplacian(samples_pi, samples_pi_b, sigma=self.sigma)
@@ -397,9 +410,13 @@ class BRACPAgent(tf.keras.Model):
             penalty = tf.reduce_mean(penalty, axis=0)
         # TODO: consider using soft constraints instead of hard clip
         # weights = tf.nn.sigmoid((kl - self.delta_behavior * 2.) * self.sensitivity)
-        weights = tf.nn.softplus((kl - self.delta_gp) * self.sensitivity)
-        weights = weights / tf.reduce_max(weights)
-        # weights = tf.cast((kl - self.delta_gp) > 0, dtype=tf.float32)
+        if self.gp_type == 'softplus':
+            weights = tf.nn.softplus((kl - self.delta_gp) * self.sensitivity)
+            weights = weights / tf.reduce_max(weights)
+        elif self.gp_type == 'hard':
+            weights = tf.cast((kl - self.delta_gp) > 0, dtype=tf.float32)
+        else:
+            raise NotImplementedError
         penalty = penalty * tf.stop_gradient(weights)
         return penalty
 
@@ -450,10 +467,10 @@ class BRACPAgent(tf.keras.Model):
         return self._update_q_nets(obs, actions, q_target)
 
     @tf.function
-    def _update(self, obs, act, obs2, done, rew):
+    def _update(self, obs, act, next_obs, done, rew):
         raw_act = self.behavior_policy.inverse_transform_action(act)
         behavior_loss = self.behavior_policy.train_on_batch(x=(raw_act, obs))['loss']
-        info = self.update_q_nets(obs, act, obs2, done, rew)
+        info = self.update_q_nets(obs, act, next_obs, done, rew)
         actor_info = self.update_actor_first_order(obs)
         self.update_target()
         # we only update alpha when policy is updated
@@ -502,6 +519,59 @@ class BRACPAgent(tf.keras.Model):
         else:
             raise NotImplementedError
 
+    def get_decayed_lr_schedule(self, lr, interval):
+        lr_schedule = tf.keras.optimizers.schedules.PiecewiseConstantDecay(
+            boundaries=[interval, interval * 2, interval * 3, interval * 4],
+            values=[lr, 0.5 * lr, 0.1 * lr, 0.05 * lr, 0.01 * lr])
+        return lr_schedule
+
+    def pretrain_cloning(self, epochs, steps_per_epoch, replay_buffer):
+        # set learning rate decay
+        interval = epochs * steps_per_epoch // 5
+        self.policy_net.optimizer = get_adam_optimizer(lr=self.get_decayed_lr_schedule(lr=self.policy_behavior_lr,
+                                                                                       interval=interval))
+        EpochLogger.log(f'Training cloning policy')
+        t = trange(epochs)
+        for epoch in t:
+            kl, log_pi = [], []
+            for _ in trange(steps_per_epoch, desc=f'Epoch {epoch + 1}/{epochs}', leave=False):
+                # update q_b, pi_0, pi_b
+                data = replay_buffer.sample()
+                obs = data['obs']
+                actor_info = self.update_actor_cloning(obs)
+                kl.append(actor_info['KL'])
+                log_pi.append(actor_info['LogPi'])
+            kl = tf.reduce_mean(kl).numpy()
+            log_pi = tf.reduce_mean(log_pi).numpy()
+            t.set_description(desc=f'KL: {kl:.2f}, LogPi: {log_pi:.2f}')
+
+        # reset learning rate
+        self.hard_update_policy_target()
+        # reset policy net learning rate
+        self.policy_net.optimizer = get_adam_optimizer(lr=self.policy_lr)
+        self.log_beta.optimizer = get_adam_optimizer(lr=1e-3)
+
+    def set_behavior_policy_lr(self, interval):
+        self.behavior_policy.optimizer = get_adam_optimizer(lr=self.get_decayed_lr_schedule(lr=self.behavior_lr,
+                                                                                            interval=interval))
+
+    def pretrain_behavior_policy(self, epochs, steps_per_epoch, replay_buffer):
+        interval = epochs * steps_per_epoch // 5
+        self.set_behavior_policy_lr(interval)
+        EpochLogger.log(f'Training behavior policy')
+        t = trange(epochs)
+        for epoch in t:
+            loss = []
+            for _ in trange(steps_per_epoch, desc=f'Epoch {epoch + 1}/{epochs}', leave=False):
+                # update q_b, pi_0, pi_b
+                data = replay_buffer.sample()
+                obs = data['obs']
+                raw_act = self.behavior_policy.inverse_transform_action(data['act'])
+                behavior_loss = self.behavior_policy.train_on_batch(x=(raw_act, obs))['loss']
+                loss.append(behavior_loss)
+            loss = tf.reduce_mean(loss).numpy()
+            t.set_description(desc=f'Loss: {loss:.2f}')
+
 
 class BRACPRunner(TFRunner):
     def get_action_batch(self, o, deterministic=False):
@@ -547,7 +617,7 @@ class BRACPRunner(TFRunner):
         # modify keys
         dataset['obs'] = dataset.pop('observations').astype(np.float32)
         dataset['act'] = dataset.pop('actions').astype(np.float32)
-        dataset['obs2'] = dataset.pop('next_observations').astype(np.float32)
+        dataset['next_obs'] = dataset.pop('next_observations').astype(np.float32)
         dataset['rew'] = dataset.pop('rewards').astype(np.float32)
         dataset['done'] = dataset.pop('terminals').astype(np.float32)
         replay_size = dataset['obs'].shape[0]
@@ -581,11 +651,11 @@ class BRACPRunner(TFRunner):
                     ):
         obs_dim = self.env.single_observation_space.shape[-1]
         act_dim = self.env.single_action_space.shape[-1]
-        self.policy_lr = policy_lr
-        self.policy_behavior_lr = policy_behavior_lr
         self.agent = BRACPAgent(ob_dim=obs_dim, ac_dim=act_dim,
                                 num_ensembles=num_ensembles,
                                 behavior_mlp_hidden=behavior_mlp_hidden,
+                                policy_lr=policy_lr,
+                                policy_behavior_lr=policy_behavior_lr,
                                 behavior_lr=behavior_lr,
                                 policy_mlp_hidden=policy_mlp_hidden, q_mlp_hidden=q_mlp_hidden,
                                 q_lr=q_lr, alpha_lr=alpha_lr, alpha=alpha, tau=tau, gamma=gamma,
@@ -640,27 +710,14 @@ class BRACPRunner(TFRunner):
         if self.save_freq is not None and (epoch + 1) % self.save_freq == 0:
             self.agent.save_weights(filepath=os.path.join(self.logger.output_dir, f'agent_final_{epoch + 1}.ckpt'))
 
-    def get_decayed_lr_schedule(self, lr, interval):
-        lr_schedule = tf.keras.optimizers.schedules.PiecewiseConstantDecay(
-            boundaries=[interval, interval * 2, interval * 3, interval * 4],
-            values=[lr, 0.5 * lr, 0.1 * lr, 0.05 * lr, 0.01 * lr])
-        return lr_schedule
-
     def on_train_begin(self):
-        interval = self.pretrain_epochs * self.steps_per_epoch // 5
-        behavior_lr = self.agent.behavior_lr
-        self.agent.policy_net.optimizer = get_adam_optimizer(lr=self.get_decayed_lr_schedule(lr=self.policy_behavior_lr,
-                                                                                             interval=interval))
-        self.agent.behavior_policy.optimizer = get_adam_optimizer(lr=self.get_decayed_lr_schedule(lr=behavior_lr,
-                                                                                                  interval=interval))
-
         try:
             if self.force_pretrain_behavior:
                 raise tf.errors.NotFoundError(None, None, None)
             self.agent.behavior_policy.load_weights(filepath=self.behavior_filepath).assert_consumed()
             EpochLogger.log(f'Successfully load behavior policy from {self.behavior_filepath}')
         except tf.errors.NotFoundError:
-            self.pretrain_behavior_policy(self.pretrain_epochs)
+            self.agent.pretrain_behavior_policy(self.pretrain_epochs, self.steps_per_epoch, self.replay_buffer)
             self.agent.behavior_policy.save_weights(filepath=self.behavior_filepath)
         except AssertionError as e:
             print(e)
@@ -688,25 +745,16 @@ class BRACPRunner(TFRunner):
                 raise tf.errors.NotFoundError(None, None, None)
             self.agent.policy_net.load_weights(filepath=self.policy_behavior_filepath).assert_consumed()
             self.agent.log_beta.load_weights(filepath=self.log_beta_behavior_filepath).assert_consumed()
+            self.agent.hard_update_policy_target()
             EpochLogger.log(f'Successfully load initial policy from {self.policy_behavior_filepath}')
         except tf.errors.NotFoundError:
-            self.pretrain_cloning(self.pretrain_epochs)
+            self.agent.pretrain_cloning(self.pretrain_epochs, self.steps_per_epoch, self.replay_buffer)
             self.agent.policy_net.save_weights(filepath=self.policy_behavior_filepath)
             self.agent.log_beta.save_weights(filepath=self.log_beta_behavior_filepath)
         except AssertionError as e:
             print(e)
             EpochLogger.log('The structure of model is altered. Add --pretrain_cloning flag', color='red')
             raise
-
-        hard_update(self.agent.target_policy_net, self.agent.policy_net)
-        # reset policy net learning rate
-        self.agent.policy_net.optimizer = get_adam_optimizer(lr=self.policy_lr)
-        self.agent.log_beta.optimizer = get_adam_optimizer(lr=1e-3)
-
-        # test behavior policy
-        # self.test_agent(self.agent.behavior_policy, name='vae policy')
-        # self.test_agent(self.agent, deterministic=True, name='behavior cloning')
-        # compute the current KL between pi and pi_b
 
         distance = []
         for obs, act in obs_act_dataset:
@@ -725,37 +773,6 @@ class BRACPRunner(TFRunner):
 
     def on_train_end(self):
         self.agent.save_weights(filepath=self.final_filepath)
-
-    def pretrain_cloning(self, epochs):
-        EpochLogger.log(f'Training cloning policy for {self.env_name}')
-        t = trange(epochs)
-        for epoch in t:
-            kl, log_pi = [], []
-            for _ in trange(self.steps_per_epoch, desc=f'Epoch {epoch + 1}/{epochs}', leave=False):
-                # update q_b, pi_0, pi_b
-                data = self.replay_buffer.sample()
-                obs = data['obs']
-                actor_info = self.agent.update_actor_cloning(obs)
-                kl.append(actor_info['KL'])
-                log_pi.append(actor_info['LogPi'])
-            kl = tf.reduce_mean(kl).numpy()
-            log_pi = tf.reduce_mean(log_pi).numpy()
-            t.set_description(desc=f'KL: {kl:.2f}, LogPi: {log_pi:.2f}')
-
-    def pretrain_behavior_policy(self, epochs):
-        EpochLogger.log(f'Training behavior policy for {self.env_name}')
-        t = trange(epochs)
-        for epoch in t:
-            loss = []
-            for _ in trange(self.steps_per_epoch, desc=f'Epoch {epoch + 1}/{epochs}', leave=False):
-                # update q_b, pi_0, pi_b
-                data = self.replay_buffer.sample()
-                obs = data['obs']
-                raw_act = self.agent.behavior_policy.inverse_transform_action(data['act'])
-                behavior_loss = self.agent.behavior_policy.train_on_batch(x=(raw_act, obs))['loss']
-                loss.append(behavior_loss)
-            loss = tf.reduce_mean(loss).numpy()
-            t.set_description(desc=f'Loss: {loss:.2f}')
 
 
 def bracp(env_name,

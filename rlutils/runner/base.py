@@ -125,8 +125,27 @@ class BaseRunner(ABC):
         self.asynchronous = asynchronous
         self.frame_stack = frame_stack
         self.env_name = env_name
-        self.wrappers = _add_frame_stack(wrappers, frame_stack)
+        self.dummy_env = gym.make(self.env_name)
+        # set max_ep_len
+        if isinstance(self.dummy_env, gym.wrappers.TimeLimit):
+            self.max_ep_len = self.dummy_env._max_episode_steps
+        else:
+            self.max_ep_len = -1
 
+        # set wrappers
+        if wrappers is None:
+            wrappers = []
+        elif not isinstance(wrappers, list):
+            wrappers = [wrappers]
+        if frame_stack is not None:
+            wrappers.append(lambda env: FrameStack(env, num_stack=frame_stack))
+        if isinstance(self.dummy_env.action_space, gym.spaces.Box):
+            high_all = np.all(self.dummy_env.action_space.high == 1)
+            low_all = np.all(self.dummy_env.action_space.low == -1)
+            if not (high_all and low_all):
+                wrappers.append(lambda env: gym.wrappers.RescaleAction(env, a=-1., b=1.))
+
+        self.wrappers = wrappers
         self.env = rlutils.gym.vector.make(self.env_name, wrappers=self.wrappers, num_envs=self.num_parallel_env,
                                            asynchronous=self.asynchronous)
         self.is_discrete_env = isinstance(self.env.single_action_space, gym.spaces.Discrete)
