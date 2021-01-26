@@ -28,10 +28,11 @@ class PLASAgent(tf.keras.Model):
                  ac_dim,
                  behavior_mlp_hidden=256,
                  behavior_lr=1e-4,
-                 policy_mlp_hidden=128,
+                 policy_lr=5e-6,
+                 policy_mlp_hidden=256,
                  q_mlp_hidden=256,
-                 q_lr=3e-4,
-                 tau=5e-3,
+                 q_lr=1e-4,
+                 tau=1e-3,
                  gamma=0.99,
                  ):
         super(PLASAgent, self).__init__()
@@ -41,11 +42,13 @@ class PLASAgent(tf.keras.Model):
         self.q_mlp_hidden = q_mlp_hidden
         self.behavior_policy = BehaviorPolicy(out_dist='normal', obs_dim=self.ob_dim, act_dim=self.ac_dim,
                                               mlp_hidden=behavior_mlp_hidden)
-        self.behavior_lr = behavior_lr
+        self.behavior_policy.optimizer = get_adam_optimizer(lr=behavior_lr)
         self.policy_net = build_mlp(self.ob_dim, self.behavior_policy.latent_dim,
                                     mlp_hidden=policy_mlp_hidden, num_layers=3, out_activation='tanh')
         self.target_policy_net = build_mlp(self.ob_dim, self.behavior_policy.latent_dim,
                                            mlp_hidden=policy_mlp_hidden, num_layers=3, out_activation='tanh')
+        # reset policy net learning rate
+        self.policy_net.optimizer = get_adam_optimizer(lr=policy_lr)
         hard_update(self.target_policy_net, self.policy_net)
         self.q_network = EnsembleMinQNet(ob_dim, ac_dim, q_mlp_hidden)
         self.q_network.compile(optimizer=get_adam_optimizer(q_lr))
@@ -141,10 +144,10 @@ class PLASAgent(tf.keras.Model):
         return self._update_q_nets(obs, actions, q_target)
 
     @tf.function
-    def _update(self, obs, act, obs2, done, rew):
+    def _update(self, obs, act, next_obs, done, rew):
         raw_act = self.behavior_policy.inverse_transform_action(act)
         behavior_loss = self.behavior_policy.train_on_batch(x=(raw_act, obs))['loss']
-        info = self.update_q_nets(obs, act, obs2, done, rew)
+        info = self.update_q_nets(obs, act, next_obs, done, rew)
         info['BehaviorLoss'] = behavior_loss
         return info
 
@@ -164,6 +167,21 @@ class PLASAgent(tf.keras.Model):
     @tf.function
     def act_batch(self, obs):
         return self.get_action(obs)
+
+    def pretrain_behavior_policy(self, epochs, steps_per_epoch, replay_buffer):
+        EpochLogger.log(f'Training behavior policy')
+        t = trange(epochs)
+        for epoch in t:
+            loss = []
+            for _ in trange(steps_per_epoch, desc=f'Epoch {epoch + 1}/{epochs}', leave=False):
+                # update q_b, pi_0, pi_b
+                data = replay_buffer.sample()
+                obs = data['obs']
+                raw_act = self.behavior_policy.inverse_transform_action(data['act'])
+                behavior_loss = self.behavior_policy.train_on_batch(x=(raw_act, obs))['loss']
+                loss.append(behavior_loss)
+            loss = tf.reduce_mean(loss).numpy()
+            t.set_description(desc=f'Loss: {loss:.2f}')
 
 
 class PLASRunner(TFRunner):
@@ -228,7 +246,6 @@ class PLASRunner(TFRunner):
                     ):
         obs_dim = self.env.single_observation_space.shape[-1]
         act_dim = self.env.single_action_space.shape[-1]
-        self.policy_lr = policy_lr
         self.agent = PLASAgent(ob_dim=obs_dim, ac_dim=act_dim,
                                behavior_mlp_hidden=behavior_mlp_hidden,
                                behavior_lr=behavior_lr,
@@ -285,36 +302,17 @@ class PLASRunner(TFRunner):
             self.agent.behavior_policy.load_weights(filepath=self.behavior_filepath).assert_consumed()
             EpochLogger.log(f'Successfully load behavior policy from {self.behavior_filepath}')
         except tf.errors.NotFoundError:
-            self.pretrain_behavior_policy(self.pretrain_epochs)
+            self.agent.pretrain_behavior_policy(self.pretrain_epochs, self.steps_per_epoch, self.replay_buffer)
             self.agent.behavior_policy.save_weights(filepath=self.behavior_filepath)
         except AssertionError as e:
             print(e)
             EpochLogger.log('The structure of model is altered. Add --pretrain_behavior flag.', color='red')
             raise
 
-        hard_update(self.agent.target_policy_net, self.agent.policy_net)
-        # reset policy net learning rate
-        self.agent.policy_net.optimizer = get_adam_optimizer(lr=self.policy_lr)
-
         self.start_time = time.time()
 
     def on_train_end(self):
         self.agent.save_weights(filepath=self.final_filepath)
-
-    def pretrain_behavior_policy(self, epochs):
-        EpochLogger.log(f'Training behavior policy for {self.env_name}')
-        t = trange(epochs)
-        for epoch in t:
-            loss = []
-            for _ in trange(self.steps_per_epoch, desc=f'Epoch {epoch + 1}/{epochs}', leave=False):
-                # update q_b, pi_0, pi_b
-                data = self.replay_buffer.sample()
-                obs = data['obs']
-                raw_act = self.agent.behavior_policy.inverse_transform_action(data['act'])
-                behavior_loss = self.agent.behavior_policy.train_on_batch(x=(raw_act, obs))['loss']
-                loss.append(behavior_loss)
-            loss = tf.reduce_mean(loss).numpy()
-            t.set_description(desc=f'Loss: {loss:.2f}')
 
 
 def plas(env_name,
