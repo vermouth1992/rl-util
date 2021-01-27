@@ -18,12 +18,12 @@ EPS = 1e-3
 
 
 class BehaviorPolicy(ConditionalBetaVAE):
-    def __init__(self, out_dist, obs_dim, act_dim, mlp_hidden=256):
+    def __init__(self, out_dist, obs_dim, act_dim, mlp_hidden=256, beta=1.):
         self.out_dist = out_dist
         self.obs_dim = obs_dim
         self.act_dim = act_dim
         self.mlp_hidden = mlp_hidden
-        super(BehaviorPolicy, self).__init__(latent_dim=self.act_dim * 2, beta=1.0)
+        super(BehaviorPolicy, self).__init__(latent_dim=-(-act_dim // 2), beta=beta)
 
     def call(self, inputs, training=None, mask=None):
         x, cond = inputs

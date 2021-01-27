@@ -17,9 +17,11 @@ from rlutils.tf.functional import soft_update, hard_update, to_numpy_or_python_t
 from rlutils.tf.generative_models.vae import BehaviorPolicy
 from rlutils.tf.nn import EnsembleMinQNet
 from rlutils.tf.nn.functional import build_mlp
+from rlutils.tf.distributions import make_independent_normal_from_params
 from tqdm.auto import tqdm, trange
 
 tfd = tfp.distributions
+tfl = tfp.layers
 
 
 class PLASAgent(tf.keras.Model):
@@ -27,13 +29,15 @@ class PLASAgent(tf.keras.Model):
                  ob_dim,
                  ac_dim,
                  behavior_mlp_hidden=256,
-                 behavior_lr=1e-4,
+                 behavior_lr=1e-3,
                  policy_lr=5e-6,
                  policy_mlp_hidden=256,
                  q_mlp_hidden=256,
                  q_lr=1e-4,
                  tau=1e-3,
                  gamma=0.99,
+                 beta=1.,
+                 latent_threshold=2.0
                  ):
         super(PLASAgent, self).__init__()
 
@@ -41,12 +45,18 @@ class PLASAgent(tf.keras.Model):
         self.ac_dim = ac_dim
         self.q_mlp_hidden = q_mlp_hidden
         self.behavior_policy = BehaviorPolicy(out_dist='normal', obs_dim=self.ob_dim, act_dim=self.ac_dim,
-                                              mlp_hidden=behavior_mlp_hidden)
+                                              mlp_hidden=behavior_mlp_hidden, beta=beta)
         self.behavior_policy.optimizer = get_adam_optimizer(lr=behavior_lr)
-        self.policy_net = build_mlp(self.ob_dim, self.behavior_policy.latent_dim,
-                                    mlp_hidden=policy_mlp_hidden, num_layers=3, out_activation='tanh')
-        self.target_policy_net = build_mlp(self.ob_dim, self.behavior_policy.latent_dim,
-                                           mlp_hidden=policy_mlp_hidden, num_layers=3, out_activation='tanh')
+        self.policy_net = build_mlp(self.ob_dim, self.behavior_policy.latent_dim * 2,
+                                    mlp_hidden=policy_mlp_hidden, num_layers=3)
+        self.policy_net.add(tfl.DistributionLambda(
+            make_distribution_fn=lambda t: make_independent_normal_from_params(t, min_log_scale=-10,
+                                                                               max_log_scale=5)))
+        self.target_policy_net = build_mlp(self.ob_dim, self.behavior_policy.latent_dim * 2,
+                                           mlp_hidden=policy_mlp_hidden, num_layers=3)
+        self.target_policy_net.add(tfl.DistributionLambda(
+            make_distribution_fn=lambda t: make_independent_normal_from_params(t, min_log_scale=-10,
+                                                                               max_log_scale=5)))
         # reset policy net learning rate
         self.policy_net.optimizer = get_adam_optimizer(lr=policy_lr)
         hard_update(self.target_policy_net, self.policy_net)
@@ -57,18 +67,14 @@ class PLASAgent(tf.keras.Model):
 
         self.tau = tau
         self.gamma = gamma
+        self.latent_threshold = latent_threshold
 
-    def get_action(self, obs):
-        z = self.policy_net(obs) * 3
+    def get_action(self, policy_net, obs):
+        z = policy_net(obs).sample()
+        z = tf.tanh(z) * self.latent_threshold
         raw_action = self.behavior_policy.decode_mean(z=(z, obs))
         action = tf.tanh(raw_action)
-        return action
-
-    def get_target_action(self, obs):
-        z = self.target_policy_net(obs) * 3
-        raw_action = self.behavior_policy.decode_mean(z=(z, obs))
-        action = tf.tanh(raw_action)
-        return action
+        return action, z
 
     def call(self, inputs, training=None, mask=None):
         obs, deterministic = inputs
@@ -84,6 +90,7 @@ class PLASAgent(tf.keras.Model):
         self.logger.log_tabular('LossPi', average_only=True)
         self.logger.log_tabular('LossQ', average_only=True)
         self.logger.log_tabular('BehaviorLoss', average_only=True)
+        self.logger.log_tabular('Z', with_min_and_max=True)
 
     @tf.function
     def update_target(self):
@@ -94,28 +101,39 @@ class PLASAgent(tf.keras.Model):
     def update_actor(self, obs):
         # TODO: maybe we just follow behavior policy and keep a minimum entropy instead of the optimal one.
         # policy loss
+        n = 10
+        batch_size = tf.shape(obs)[0]
+        obs = tf.tile(obs, (n, 1))
         with tf.GradientTape() as policy_tape:
             """ Compute the loss function of the policy that maximizes the Q function """
             print(f'Tracing _compute_surrogate_loss_pi with obs={obs}')
 
             policy_tape.watch(self.policy_net.trainable_variables)
 
-            action = self.get_action(obs)
+            action, z = self.get_action(self.policy_net, obs)
             q_values_pi_min = self.q_network((obs, action), training=False)
+            q_values_pi_min = tf.reshape(q_values_pi_min, (n, batch_size))
+            q_values_pi_min = tf.reduce_mean(q_values_pi_min, axis=0)
             policy_loss = -tf.reduce_mean(q_values_pi_min, axis=0)
 
         minimize(policy_loss, policy_tape, self.policy_net)
 
         info = dict(
             LossPi=policy_loss,
+            Z=tf.reshape(z, shape=(-1,))
         )
 
         return info
 
     def _compute_target_q(self, next_obs, reward, done):
-        next_action = self.get_target_action(next_obs)
+        n = 10
+        batch_size = tf.shape(next_obs)[0]
+        next_obs = tf.tile(next_obs, (n, 1))
+        next_action, _ = self.get_action(self.target_policy_net, next_obs)
         # maybe add noise?
         target_q_values = self.target_q_network((next_obs, next_action), training=False)
+        target_q_values = tf.reshape(target_q_values, (n, batch_size))
+        target_q_values = tf.reduce_max(target_q_values, axis=0)
         q_target = reward + self.gamma * (1.0 - done) * target_q_values
         return q_target
 
@@ -166,7 +184,18 @@ class PLASAgent(tf.keras.Model):
 
     @tf.function
     def act_batch(self, obs):
-        return self.get_action(obs)
+        n = 20
+        batch_size = tf.shape(obs)[0]
+        obs_tile = tf.tile(obs, (n, 1))
+        action, _ = self.get_action(self.policy_net, obs_tile)
+        q_values_pi_min = self.q_network((obs_tile, action), training=True)
+        q_values_pi_min = tf.reduce_mean(q_values_pi_min, axis=0)
+        idx = tf.argmax(tf.reshape(q_values_pi_min, shape=(n, batch_size)), axis=0,
+                        output_type=tf.int32)  # (batch_size)
+        idx = tf.stack([idx, tf.range(batch_size)], axis=-1)
+        samples = tf.reshape(action, shape=(n, batch_size, self.ac_dim))
+        pi_final = tf.gather_nd(samples, idx)
+        return pi_final
 
     def pretrain_behavior_policy(self, epochs, steps_per_epoch, replay_buffer):
         EpochLogger.log(f'Training behavior policy')

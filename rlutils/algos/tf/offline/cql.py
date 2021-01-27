@@ -78,6 +78,7 @@ class CQLAgent(tf.keras.Model):
         self.logger.log_tabular('AlphaCQLLoss', average_only=True)
         self.logger.log_tabular('DeltaQ', with_min_and_max=True)
 
+    @tf.function
     def update_target(self):
         soft_update(self.target_q_network, self.q_network, self.tau)
 
@@ -162,7 +163,7 @@ class CQLAgent(tf.keras.Model):
             # the out-of-distribution Q should not be greater than in-distribution Q by threshold
             delta_q = (tf.reduce_mean(tf.reduce_sum(q, axis=0), axis=0) -
                        tf.reduce_mean(tf.reduce_sum(q_values, axis=0))) * self.min_q_weight \
-                      - self.cql_threshold  # scalar
+                      - self.cql_threshold * self.q_network.num_ensembles  # scalar
 
             q_values_loss = mse_q_values_loss + alpha_cql * delta_q
 
@@ -222,7 +223,7 @@ class CQLAgent(tf.keras.Model):
             self.update_target()
 
     @tf.function
-    def act_batch(self, obs, deterministic):
+    def act_batch(self, obs, deterministic=False):
         print(f'Tracing sac act_batch with obs {obs}')
         if deterministic:
             pi_final = self.policy_net((obs, deterministic))[0]
