@@ -3,6 +3,7 @@ import tensorflow_probability as tfp
 
 tfd = tfp.distributions
 
+
 class GAN(tf.keras.Model):
     def __init__(self, noise_dim=128, lr=1e-4):
         super(GAN, self).__init__()
@@ -10,8 +11,8 @@ class GAN(tf.keras.Model):
         self.generator = self._make_generator()
         self.discriminator = self._make_discriminator()
         self.prior = self._make_prior()
-        self.generator_optimizer = tf.keras.optimizers.Adam(lr=lr, beta_1=0.5, beta_2=0.9)
-        self.discriminator_optimizer = tf.keras.optimizers.Adam(lr=lr, beta_1=0.5, beta_2=0.9)
+        self.generator_optimizer = tf.keras.optimizers.Adam(lr=lr, beta_1=0, beta_2=0.9)
+        self.discriminator_optimizer = tf.keras.optimizers.Adam(lr=lr, beta_1=0, beta_2=0.9)
         self.cross_entropy = tf.keras.losses.BinaryCrossentropy(from_logits=True)
         self.logger = None
         self.compile()
@@ -56,6 +57,7 @@ class GAN(tf.keras.Model):
     def _generator_loss(self, fake_output):
         return self.cross_entropy(tf.ones_like(fake_output), fake_output)
 
+    @tf.function
     def _train_generator(self, real_images):
         batch_size = tf.shape(real_images)[0]
         noise = self.prior.sample(batch_size)
@@ -67,6 +69,7 @@ class GAN(tf.keras.Model):
         self.generator_optimizer.apply_gradients(zip(grads, self.generator.trainable_variables))
         return gen_loss
 
+    @tf.function
     def _train_discriminator(self, real_images):
         batch_size = tf.shape(real_images)[0]
         noise = self.prior.sample(batch_size)

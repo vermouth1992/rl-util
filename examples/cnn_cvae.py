@@ -10,7 +10,7 @@ import tensorflow_probability as tfp
 tfl = tfp.layers
 tfd = tfp.distributions
 
-from .base import ConditionalBetaVAE
+from rlutils.tf.generative_models.vae.base import ConditionalBetaVAE
 from rlutils.tf.distributions import make_independent_normal_from_params
 from rlutils.future.optimizer import get_adam_optimizer
 from rlutils.runner import run_func_as_main

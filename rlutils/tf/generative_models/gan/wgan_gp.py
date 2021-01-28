@@ -3,10 +3,13 @@ Improved Training of Wasserstein GANs
 """
 
 import tensorflow as tf
+from tqdm.auto import tqdm
 from .base import GAN
 
+
 class WGAN_GP(GAN):
-    def __init__(self, gp_weight=10, *args, **kwargs):
+    def __init__(self, n_critic=5, gp_weight=10, *args, **kwargs):
+        self.n_critic = n_critic
         self.gp_weight = gp_weight
         super(WGAN_GP, self).__init__(*args, **kwargs)
 
@@ -31,6 +34,7 @@ class WGAN_GP(GAN):
         grads = tf.square(tf.norm(grads, axis=-1) - 1)
         return tf.reduce_mean(grads, axis=0)
 
+    @tf.function
     def _train_discriminator(self, real_images):
         batch_size = tf.shape(real_images)[0]
         noise = self.prior.sample(batch_size)
@@ -44,3 +48,27 @@ class WGAN_GP(GAN):
         grads = tape.gradient(disc_loss, self.discriminator.trainable_variables)
         self.discriminator_optimizer.apply_gradients(zip(grads, self.discriminator.trainable_variables))
         return disc_loss
+
+    def train(self,
+              x=None,
+              batch_size=None,
+              epochs=1,
+              callbacks=None):
+        for callback in callbacks:
+            callback.set_model(self)
+        t = 0
+        dataset = tf.data.Dataset.from_tensor_slices(x).shuffle(buffer_size=x.shape[0]).batch(batch_size)
+        for i in range(1, epochs + 1):
+            bar = tqdm(total=-(-x.shape[0] // batch_size))
+            gen_loss = 0
+            for images in dataset:
+                disc_loss = self._train_discriminator(images)
+                if (t == self.n_critic - 1):
+                    gen_loss = self._train_generator(images)
+                t = (t + 1) % self.n_critic
+                bar.update(1)
+                bar.set_description(f'Epoch {i}/{epochs}, disc_loss: {disc_loss:.4f}, gen_loss: {gen_loss:.4f}')
+            bar.close()
+
+            for callback in callbacks:
+                callback.on_epoch_end(i)
