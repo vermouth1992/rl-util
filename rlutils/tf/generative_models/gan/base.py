@@ -1,12 +1,15 @@
 import tensorflow as tf
 import tensorflow_probability as tfp
 
+from rlutils.tf.functional import compute_accuracy
+
 tfd = tfp.distributions
 
 
 class GAN(tf.keras.Model):
-    def __init__(self, noise_dim=128, lr=1e-4):
+    def __init__(self, n_critics=5, noise_dim=128, lr=1e-4):
         super(GAN, self).__init__()
+        self.n_critics = n_critics
         self.noise_dim = noise_dim
         self.generator = self._make_generator()
         self.discriminator = self._make_discriminator()
@@ -48,14 +51,15 @@ class GAN(tf.keras.Model):
         print(f'Tracing predict_real_fake with x={x}')
         return tf.sigmoid(self.discriminator(x, training=False))
 
-    def _discriminator_loss(self, real_output, fake_output):
+    def _discriminator_loss(self, outputs):
+        real_output, fake_output = outputs
         real_loss = self.cross_entropy(tf.ones_like(real_output), real_output)
         fake_loss = self.cross_entropy(tf.zeros_like(fake_output), fake_output)
         total_loss = real_loss + fake_loss
         return total_loss
 
-    def _generator_loss(self, fake_output):
-        return self.cross_entropy(tf.ones_like(fake_output), fake_output)
+    def _generator_loss(self, outputs):
+        return self.cross_entropy(tf.ones_like(outputs), outputs)
 
     @tf.function
     def _train_generator(self, real_images):
@@ -73,11 +77,11 @@ class GAN(tf.keras.Model):
     def _train_discriminator(self, real_images):
         batch_size = tf.shape(real_images)[0]
         noise = self.prior.sample(batch_size)
+        generated_images = self.generator(noise, training=True)
         with tf.GradientTape() as tape:
-            generated_images = self.generator(noise, training=True)
             real_output = self.discriminator(real_images, training=True)
             fake_output = self.discriminator(generated_images, training=True)
-            disc_loss = self._discriminator_loss(real_output, fake_output)
+            disc_loss = self._discriminator_loss(outputs=(real_output, fake_output))
         grads = tape.gradient(disc_loss, self.discriminator.trainable_variables)
         self.discriminator_optimizer.apply_gradients(zip(grads, self.discriminator.trainable_variables))
         return disc_loss
@@ -89,4 +93,74 @@ class GAN(tf.keras.Model):
         return {
             'gen_loss': gen_loss,
             'disc_loss': disc_loss
+        }
+
+
+class ACGAN(GAN):
+    def __init__(self, num_classes, class_loss_weight=1., *args, **kwargs):
+        self.num_classes = num_classes
+        self.class_loss_weight = class_loss_weight
+        super(ACGAN, self).__init__(*args, **kwargs)
+
+    def _compute_classification_loss(self, logits, labels):
+        loss = tf.keras.losses.sparse_categorical_crossentropy(labels, logits, from_logits=True)
+        return tf.reduce_mean(loss, axis=0)
+
+    def _generator_loss(self, outputs):
+        fake_output, fake_logits, fake_labels = outputs
+        validity_loss = super(ACGAN, self)._generator_loss(fake_output)
+        classification_loss = self._compute_classification_loss(fake_logits, fake_labels)
+        loss = validity_loss + classification_loss * self.class_loss_weight
+        return loss
+
+    def _discriminator_loss(self, outputs):
+        real_output, fake_output, real_logits, real_labels = outputs
+        validity_loss = super(ACGAN, self)._discriminator_loss(outputs=(real_output, fake_output))
+        classification_loss = self._compute_classification_loss(real_logits, real_labels)
+        loss = validity_loss + classification_loss * self.class_loss_weight
+        return loss
+
+    @tf.function
+    def _train_generator(self, data):
+        real_images, real_labels = data
+        batch_size = tf.shape(real_images)[0]
+        noise = self.prior.sample(batch_size)
+        with tf.GradientTape() as tape:
+            generated_images = self.generator(inputs=(noise, real_labels), training=True)
+            fake_output, fake_logits = self.discriminator(generated_images, training=True)
+            gen_loss = self._generator_loss(outputs=(fake_output, fake_logits, real_labels))
+        grads = tape.gradient(gen_loss, self.generator.trainable_variables)
+        self.generator_optimizer.apply_gradients(zip(grads, self.generator.trainable_variables))
+        accuracy = compute_accuracy(fake_logits, real_labels) * 100
+        return gen_loss, accuracy
+
+    @tf.function
+    def _train_discriminator(self, data):
+        real_images, real_labels = data
+        batch_size = tf.shape(real_images)[0]
+        noise = self.prior.sample(batch_size)
+        generated_images = self.generator(inputs=(noise, real_labels), training=True)
+        with tf.GradientTape() as tape:
+            real_output, real_logits = self.discriminator(real_images, training=True)
+            fake_output, _ = self.discriminator(generated_images, training=True)
+            disc_loss = self._discriminator_loss(outputs=(real_output, fake_output,
+                                                          real_logits,
+                                                          real_labels))
+        grads = tape.gradient(disc_loss, self.discriminator.trainable_variables)
+        self.discriminator_optimizer.apply_gradients(zip(grads, self.discriminator.trainable_variables))
+        # compute accuracy
+        accuracy = compute_accuracy(real_logits, real_labels) * 100
+        return disc_loss, accuracy
+
+    def train_step(self, data):
+        x, y, sample_weight = tf.keras.utils.unpack_x_y_sample_weight(data)
+        for _ in range(self.n_critics - 1):
+            self._train_discriminator(data=(x, y))
+        disc_loss, disc_accuracy = self._train_discriminator(data=(x, y))
+        gen_loss, gen_accuracy = self._train_generator(data=(x, y))
+        return {
+            'gen_loss': gen_loss,
+            'gen_accuracy': gen_accuracy,
+            'disc_loss': disc_loss,
+            'disc_accuracy': disc_accuracy
         }

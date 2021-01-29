@@ -4,11 +4,18 @@ import tensorflow as tf
 EPS = 1e-6
 
 
+def compute_accuracy(logits, labels):
+    num = tf.cast(tf.argmax(logits, axis=-1, output_type=tf.int32) == labels, dtype=tf.float32)
+    accuracy = tf.reduce_mean(num)
+    return accuracy
+
+
 def expand_ensemble_dim(x, num_ensembles):
     """ functionality for outer class to expand before passing into the ensemble model. """
     multiples = tf.concat(([num_ensembles], tf.ones_like(tf.shape(x))), axis=0)
     x = tf.tile(tf.expand_dims(x, axis=0), multiples=multiples)
     return x
+
 
 def clip_by_value(t, clip_value_min=None, clip_value_max=None):
     if clip_value_min is not None:
