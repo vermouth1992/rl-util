@@ -4,8 +4,9 @@ Improved Training of Wasserstein GANs
 
 import tensorflow as tf
 from rlutils.tf.functional import compute_accuracy
-from .base import GAN, ACGAN
 from tqdm.auto import tqdm
+
+from .base import GAN, ACGAN
 
 
 class WassersteinGANGradientPenalty(GAN):
@@ -81,6 +82,20 @@ class ACWassersteinGANGradientPenalty(ACGAN, WassersteinGANGradientPenalty):
         real_class_loss = self._compute_classification_loss(real_logits, real_labels)
         loss = validity_loss + self.class_loss_weight * real_class_loss
         return loss
+
+    def _compute_gp(self, real_images, fake_images, training):
+        batch_size = tf.shape(real_images)[0]
+        alpha = tf.random.uniform(shape=[batch_size], minval=0., maxval=1.)
+        for _ in range(len(real_images.shape) - 1):
+            alpha = tf.expand_dims(alpha, axis=-1)
+        interpolate = real_images * alpha + fake_images * (1 - alpha)
+        with tf.GradientTape() as tape:
+            tape.watch(interpolate)
+            validity, _ = self.discriminator(interpolate, training=training)  # the GP should only be in validity path
+        grads = tape.gradient(validity, interpolate)
+        grads = tf.reshape(grads, shape=(batch_size, -1))
+        grads = tf.square(tf.norm(grads, axis=-1) - 1)
+        return tf.reduce_mean(grads, axis=0)
 
     @tf.function
     def _train_discriminator(self, data):

@@ -7,18 +7,20 @@ tfd = tfp.distributions
 
 
 class GAN(tf.keras.Model):
-    def __init__(self, n_critics=5, noise_dim=128, lr=1e-4):
+    def __init__(self, n_critics=5, noise_dim=100):
         super(GAN, self).__init__()
         self.n_critics = n_critics
         self.noise_dim = noise_dim
         self.generator = self._make_generator()
         self.discriminator = self._make_discriminator()
         self.prior = self._make_prior()
-        self.generator_optimizer = tf.keras.optimizers.Adam(lr=lr, beta_1=0, beta_2=0.9)
-        self.discriminator_optimizer = tf.keras.optimizers.Adam(lr=lr, beta_1=0, beta_2=0.9)
         self.cross_entropy = tf.keras.losses.BinaryCrossentropy(from_logits=True)
         self.logger = None
-        self.compile()
+
+    def compile(self, generator_optimizer, discriminator_optimizer):
+        self.generator_optimizer = generator_optimizer
+        self.discriminator_optimizer = discriminator_optimizer
+        super(GAN, self).compile()
 
     @tf.function
     def generate(self, z):
@@ -160,7 +162,7 @@ class ACGAN(GAN):
         gen_loss, gen_accuracy = self._train_generator(data=(x, y))
         return {
             'gen_loss': gen_loss,
-            'gen_accuracy': gen_accuracy,
+            'gen_acc': gen_accuracy,
             'disc_loss': disc_loss,
-            'disc_accuracy': disc_accuracy
+            'disc_acc': disc_accuracy
         }
