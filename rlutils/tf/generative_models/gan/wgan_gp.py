@@ -116,7 +116,7 @@ class ACWassersteinGANGradientPenalty(ACGAN, WassersteinGANGradientPenalty):
         grads = tape.gradient(disc_loss, self.discriminator.trainable_variables)
         self.discriminator_optimizer.apply_gradients(zip(grads, self.discriminator.trainable_variables))
         # compute accuracy
-        accuracy = compute_accuracy(real_logits, real_labels) * 100
+        accuracy = compute_accuracy(real_logits, real_labels)
         return disc_loss, accuracy
 
     def train(self,

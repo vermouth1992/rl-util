@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 import tensorflow as tf
 import tensorflow_addons as tfa
@@ -14,7 +16,6 @@ class CNNACWassersteinGANGradientPenalty(ACWassersteinGANGradientPenalty):
         self.data_format = 'channels_last'
         if self.data_format == 'channels_first':
             self.data_format_ = 'NCHW'
-
             self.channel, self.height, self.width = image_size
         else:
             self.data_format_ = 'NHWC'
@@ -125,14 +126,14 @@ class ShowImage(tf.keras.callbacks.Callback):
         images = self.model.generate(self.x).numpy()
         images = np.transpose(images, (0, 3, 1, 2))
         out_images = torch.as_tensor(images)
-        images = torchvision.utils.make_grid(out_images, nrow=10)
+        images = torchvision.utils.make_grid(out_images, nrow=10, normalize=True)
         self.writer.add_image(tag='data/image', img_tensor=images, global_step=epoch)
 
 
 def cnn_cvae(dataset,
              lr=1e-4,
              class_loss_weight=5,
-             epochs=150,
+             epochs=200,
              batch_size=128,
              n_critics=2,
              seed=1):
@@ -148,11 +149,17 @@ def cnn_cvae(dataset,
     print(model.discriminator.summary())
     print(model.generator.summary())
     logdir = f'data/{dataset}_cnn_wgan_gp/seed{seed}'
-    shutil.rmtree(logdir)
-    callback = ShowImage(logdir=logdir)
+    if os.path.exists(logdir):
+        shutil.rmtree(logdir)
+    callbacks = [ShowImage(logdir=logdir)]
     model.compile(generator_optimizer=tf.keras.optimizers.Adam(lr=lr, beta_1=0., beta_2=0.9),
                   discriminator_optimizer=tf.keras.optimizers.Adam(lr=lr, beta_1=0., beta_2=0.9))
-    model.fit(x=x_train, y=y_train, epochs=epochs, batch_size=batch_size, callbacks=[callback])
+
+    # maybe image augmentation?
+
+    # fitting
+    model.fit(x=x_train, y=y_train, epochs=epochs, batch_size=batch_size, callbacks=callbacks, shuffle=True,
+              validation_data=(x_test, y_test), verbose=True)
 
 
 if __name__ == '__main__':

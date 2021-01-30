@@ -133,7 +133,7 @@ class ACGAN(GAN):
             gen_loss = self._generator_loss(outputs=(fake_output, fake_logits, real_labels))
         grads = tape.gradient(gen_loss, self.generator.trainable_variables)
         self.generator_optimizer.apply_gradients(zip(grads, self.generator.trainable_variables))
-        accuracy = compute_accuracy(fake_logits, real_labels) * 100
+        accuracy = compute_accuracy(fake_logits, real_labels)
         return gen_loss, accuracy
 
     @tf.function
@@ -151,7 +151,7 @@ class ACGAN(GAN):
         grads = tape.gradient(disc_loss, self.discriminator.trainable_variables)
         self.discriminator_optimizer.apply_gradients(zip(grads, self.discriminator.trainable_variables))
         # compute accuracy
-        accuracy = compute_accuracy(real_logits, real_labels) * 100
+        accuracy = compute_accuracy(real_logits, real_labels)
         return disc_loss, accuracy
 
     def train_step(self, data):
@@ -164,5 +164,13 @@ class ACGAN(GAN):
             'gen_loss': gen_loss,
             'gen_acc': gen_accuracy,
             'disc_loss': disc_loss,
+            'disc_acc': disc_accuracy
+        }
+
+    def test_step(self, data):
+        x, y, sample_weight = tf.keras.utils.unpack_x_y_sample_weight(data)
+        _, real_logits = self.discriminator(x, training=False)
+        disc_accuracy = compute_accuracy(real_logits, y)
+        return {
             'disc_acc': disc_accuracy
         }
