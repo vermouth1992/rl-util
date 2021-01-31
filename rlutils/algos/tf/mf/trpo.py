@@ -316,7 +316,7 @@ class TRPORunner(TFRunner):
         self.logger.dump_tabular()
 
 
-def trpo(env_name, mlp_hidden=128, seed=0, num_parallel_envs=5,
+def trpo(env_name, env_fn=None, mlp_hidden=128, seed=0, num_parallel_envs=5,
          batch_size=5000, epochs=200, gamma=0.99, delta=0.01, vf_lr=1e-3,
          train_vf_iters=80, damping_coeff=0.1, cg_iters=10, backtrack_iters=10,
          backtrack_coeff=0.8, lam=0.97, algo='trpo', logger_path='data'):
@@ -328,8 +328,8 @@ def trpo(env_name, mlp_hidden=128, seed=0, num_parallel_envs=5,
     config = locals()
     runner = TRPORunner(seed=seed, steps_per_epoch=steps_per_epoch,
                         epochs=epochs, exp_name=None, logger_path=logger_path)
-    runner.setup_env(env_name=env_name, num_parallel_env=num_parallel_envs,
-                     frame_stack=None, wrappers=None, asynchronous=False, num_test_episodes=None)
+    runner.setup_env(env_name=env_name, env_fn=env_fn, num_parallel_env=num_parallel_envs,
+                     asynchronous=False, num_test_episodes=None)
     runner.setup_logger(config)
     runner.setup_agent(mlp_hidden,
                        delta,

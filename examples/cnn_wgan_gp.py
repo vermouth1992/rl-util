@@ -134,7 +134,7 @@ def cnn_cvae(dataset,
              lr=1e-4,
              class_loss_weight=5,
              epochs=200,
-             batch_size=128,
+             batch_size=64,
              n_critics=2,
              seed=1):
     import shutil
