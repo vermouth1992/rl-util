@@ -1,7 +1,7 @@
 from typing import Dict
 
+import gym.spaces
 import numpy as np
-from rlutils.np import DataSpec
 from rlutils.np.functional import flatten_leading_dims
 
 from .base import BaseReplayBuffer
@@ -14,7 +14,7 @@ class PyUniformParallelEnvReplayBuffer(BaseReplayBuffer):
     """
 
     def __init__(self,
-                 data_spec: Dict[str, DataSpec],
+                 data_spec: Dict[str, gym.spaces.Space],
                  capacity,
                  batch_size,
                  num_parallel_env):

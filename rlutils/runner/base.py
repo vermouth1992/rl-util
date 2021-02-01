@@ -7,15 +7,14 @@ Common in the runner:
 """
 
 import random
-import sys
 import time
 from abc import abstractmethod, ABC
 
 import gym
+import gym.spaces
 import numpy as np
 import rlutils.gym
 from rlutils.logx import EpochLogger, setup_logger_kwargs
-from rlutils.np import DataSpec
 from rlutils.replay_buffers import PyUniformParallelEnvReplayBuffer
 from tqdm.auto import trange, tqdm
 
@@ -28,7 +27,7 @@ class BaseRunner(ABC):
         self.epochs = epochs
         self.seed = seed
         self.global_step = 0
-        self.max_seed = sys.maxsize
+        self.max_seed = 10000
         self.setup_seed(seed)
 
     def setup_logger(self, config, tensorboard=False):
@@ -114,19 +113,48 @@ class BaseRunner(ABC):
         self.asynchronous = asynchronous
         self.env_name = env_name
         if env_fn is not None:
-            self.env_fn = env_fn
+            self.original_env_fn = env_fn
         else:
-            self.env_fn = lambda: gym.make(self.env_name)
+            self.original_env_fn = lambda: gym.make(self.env_name)
 
-        self.dummy_env = self.env_fn()
+        self.dummy_env = self.original_env_fn()
+
+        wrappers = []
+        # convert to 32-bit observation and action space
+        if isinstance(self.dummy_env.observation_space, gym.spaces.Box):
+            if self.dummy_env.observation_space.dtype == np.float64:
+                print('Truncating observation_space dtype from np.float64 to np.float32')
+                fn = lambda env: gym.wrappers.TransformObservation(env, f=lambda x: x.astype(np.float32))
+                wrappers.append(fn)
+        elif isinstance(self.dummy_env.observation_space, gym.spaces.Discrete):
+            if self.dummy_env.observation_space.dtype == np.int64:
+                print('Truncating observation_space dtype from np.int64 to np.int32')
+                fn = lambda env: gym.wrappers.TransformObservation(env, f=lambda x: x.astype(np.int32))
+                wrappers.append(fn)
+        else:
+            raise NotImplementedError
 
         if isinstance(self.dummy_env.action_space, gym.spaces.Box):
-            high_all = np.all(self.dummy_env.action_space.high == 1)
-            low_all = np.all(self.dummy_env.action_space.low == -1)
+            assert self.dummy_env.action_space.dtype == np.float32
+        elif isinstance(self.dummy_env.action_space, gym.spaces.Discrete):
+            assert self.dummy_env.action_space.dtype == np.int32
+
+        if isinstance(self.dummy_env.action_space, gym.spaces.Box):
+            high_all = np.all(self.dummy_env.action_space.high == 1.)
+            low_all = np.all(self.dummy_env.action_space.low == -1.)
+            print(self.dummy_env.action_space.high, self.dummy_env.action_space.low)
             if not (high_all and low_all):
                 print('Rescale action space to [-1, 1]')
                 fn = lambda env: gym.wrappers.RescaleAction(env, a=-1., b=1.)
-                self.env_fn = lambda env: fn(self.env_fn(env))
+                wrappers.append(fn)
+
+        def _make_env():
+            env = self.original_env_fn()
+            for wrapper in wrappers:
+                env = wrapper(env)
+            return env
+
+        self.env_fn = _make_env
 
         VecEnv = rlutils.gym.vector.AsyncVectorEnv if asynchronous else rlutils.gym.vector.SyncVectorEnv
 
@@ -154,28 +182,11 @@ class BaseRunner(ABC):
 
     @property
     def obs_data_spec(self):
-        if isinstance(self.env.single_observation_space, gym.spaces.Box):
-            obs_data_spec = DataSpec(shape=self.env.single_observation_space.shape,
-                                     dtype=np.float32)
-        elif isinstance(self.env.single_observation_space, gym.spaces.Discrete):
-            obs_data_spec = DataSpec(shape=None,
-                                     dtype=np.int32)
-        else:
-            raise NotImplementedError
-        return obs_data_spec
+        return self.env.single_observation_space
 
     @property
     def act_data_spec(self):
-        if isinstance(self.env.single_action_space, gym.spaces.Box):
-            act_data_spec = DataSpec(shape=self.env.single_action_space.shape,
-                                     dtype=np.float32,
-                                     minval=self.env.single_action_space.low,
-                                     maxval=self.env.single_action_space.high)
-        elif isinstance(self.env.single_action_space, gym.spaces.Discrete):
-            act_data_spec = DataSpec(shape=None, dtype=np.int32, minval=0, maxval=self.env.single_action_space.n)
-        else:
-            raise NotImplementedError
-        return act_data_spec
+        return self.env.single_action_space
 
     def save_checkpoint(self, path=None):
         pass
@@ -193,8 +204,8 @@ class OffPolicyRunner(BaseRunner):
             'obs': self.obs_data_spec,
             'act': self.act_data_spec,
             'next_obs': self.obs_data_spec,
-            'rew': DataSpec(shape=None, dtype=np.float32),
-            'done': DataSpec(shape=None, dtype=np.float32)
+            'rew': gym.spaces.Space(shape=None, dtype=np.float32),
+            'done': gym.spaces.Space(shape=None, dtype=np.float32)
         }
         self.replay_buffer = PyUniformParallelEnvReplayBuffer(data_spec=data_spec,
                                                               capacity=replay_size,
@@ -260,7 +271,8 @@ class OffPolicyRunner(BaseRunner):
         if global_env_steps >= self.update_after and global_env_steps % self.update_every == 0:
             for j in range(self.update_every * self.update_per_step):
                 batch = self.replay_buffer.sample()
-                self.agent.update(**batch, update_target=j % self.policy_delay == 0)
+                self.agent.update(**batch, update_target=self.update_target == self.policy_delay - 1)
+                self.update_target = (self.update_target + 1) % self.policy_delay
 
     def on_epoch_end(self, epoch):
         self.test_agent()
@@ -281,3 +293,4 @@ class OffPolicyRunner(BaseRunner):
         self.o = self.env.reset()
         self.ep_ret = np.zeros(shape=self.num_parallel_env)
         self.ep_len = np.zeros(shape=self.num_parallel_env, dtype=np.int64)
+        self.update_target = 0

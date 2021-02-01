@@ -1,88 +1,49 @@
+import numpy as np
+import torch
 import torch.nn as nn
-
-from rlutils.pytorch.nn.layers import EnsembleDense, SqueezeLayer
-
-str_to_activation = {
-    'relu': nn.ReLU,
-    'leaky_relu': nn.LeakyReLU,
-    'tanh': nn.Tanh,
-    'sigmoid': nn.Sigmoid,
-    'softplus': nn.Softplus,
-}
-
-
-def decode_activation(activation):
-    if isinstance(activation, str):
-        act_fn = str_to_activation.get(activation)
-    elif callable(activation):
-        act_fn = activation
-    elif activation is None:
-        act_fn = nn.Identity
-    else:
-        raise ValueError('activation must be a string or callable.')
-    return act_fn
-
-
-def build_mlp(input_dim, output_dim, mlp_hidden, num_ensembles=None, num_layers=3,
-              activation='relu', out_activation=None, squeeze=False, dropout=None,
-              batch_norm=False):
-    assert not batch_norm, 'BatchNorm is not supported yet.'
-    activation_fn = decode_activation(activation)
-    output_activation_fn = decode_activation(out_activation)
-    layers = []
-    if num_layers == 1:
-        if num_ensembles is not None:
-            layers.append(EnsembleDense(num_ensembles, input_dim, output_dim))
-        else:
-            layers.append(nn.Linear(input_dim, output_dim))
-    else:
-        # first layer
-        if num_ensembles is not None:
-            layers.append(EnsembleDense(num_ensembles, input_dim, mlp_hidden))
-        else:
-            layers.append(nn.Linear(input_dim, mlp_hidden))
-        layers.append(activation_fn())
-        if dropout is not None:
-            layers.append(nn.Dropout(p=dropout))
-
-        # intermediate layers
-        for _ in range(num_layers - 2):
-            if num_ensembles is not None:
-                layers.append(EnsembleDense(num_ensembles, mlp_hidden, mlp_hidden))
-            else:
-                layers.append(nn.Linear(mlp_hidden, mlp_hidden))
-            layers.append(activation_fn())
-            if dropout is not None:
-                layers.append(nn.Dropout(p=dropout))
-
-        # final dense layer
-        if num_ensembles is not None:
-            layers.append(EnsembleDense(num_ensembles, mlp_hidden, output_dim))
-        else:
-            layers.append(nn.Linear(mlp_hidden, output_dim))
-
-    if out_activation is not None:
-        layers.append(output_activation_fn())
-    if output_dim == 1 and squeeze is True:
-        layers.append(SqueezeLayer(dim=-1))
-    model = nn.Sequential(*layers)
-    return model
 
 
 def soft_update(target: nn.Module, source: nn.Module, tau):
-    for target_param, param in zip(target.parameters(), source.parameters()):
-        target_param.data.copy_(target_param.data * (1.0 - tau) + param.data * tau)
+    with torch.no_grad():
+        for target_param, param in zip(target.parameters(), source.parameters()):
+            target_param.data.copy_(target_param.data * (1.0 - tau) + param.data * tau)
 
 
 def hard_update(target: nn.Module, source: nn.Module):
-    for target_param, param in zip(target.parameters(), source.parameters()):
-        target_param.data.copy_(param.data)
+    with torch.no_grad():
+        for target_param, param in zip(target.parameters(), source.parameters()):
+            target_param.data.copy_(param.data)
 
 
-if __name__ == '__main__':
-    model = build_mlp(input_dim=10, output_dim=2, mlp_hidden=64, num_layers=1)
-    print(model)
-    model = build_mlp(input_dim=10, output_dim=2, mlp_hidden=64, num_layers=2, dropout=0.2)
-    print(model)
-    model = build_mlp(input_dim=10, output_dim=2, mlp_hidden=64, num_layers=3, out_activation='tanh')
-    print(model)
+def compute_target_value(reward, gamma, done, next_q):
+    q_target = reward + gamma * (1.0 - done) * next_q
+    return q_target
+
+
+def to_numpy_or_python_type(tensors):
+    """Converts a structure of `Tensor`s to `NumPy` arrays or Python scalar types.
+
+    For each tensor, it calls `tensor.numpy()`. If the result is a scalar value,
+    it converts it to a Python type, such as a float or int, by calling
+    `result.item()`.
+
+    Numpy scalars are converted, as Python types are often more convenient to deal
+    with. This is especially useful for bfloat16 Numpy scalars, which don't
+    support as many operations as other Numpy values.
+
+    Args:
+      tensors: A structure of tensors.
+
+    Returns:
+      `tensors`, but scalar tensors are converted to Python types and non-scalar
+      tensors are converted to Numpy arrays.
+    """
+
+    def _to_single_numpy_or_python_type(t):
+        if isinstance(t, torch.Tensor):
+            x = t.detach().cpu().numpy()
+            return x.item() if np.ndim(x) == 0 else x
+        return t  # Don't turn ragged or sparse tensors to NumPy.
+
+    import tensorflow as tf
+    return tf.nest.map_structure(_to_single_numpy_or_python_type, tensors)

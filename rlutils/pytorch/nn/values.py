@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from rlutils.pytorch.functional import build_mlp
+from rlutils.pytorch.nn.functional import build_mlp
 
 
 class EnsembleMinQNet(nn.Module):
@@ -19,6 +19,7 @@ class EnsembleMinQNet(nn.Module):
                                squeeze=True)
 
     def forward(self, inputs, training=None):
+        assert training is not None
         obs, act = inputs
         inputs = torch.cat((obs, act), dim=-1)
         inputs = torch.unsqueeze(inputs, dim=0)  # (1, None, obs_dim + act_dim)

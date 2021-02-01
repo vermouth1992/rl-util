@@ -3,7 +3,6 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 from rlutils.np.functional import inverse_softplus
 
 
@@ -26,9 +25,15 @@ class EnsembleDense(nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self) -> None:
-        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        fan = self.in_features
+        gain = nn.init.calculate_gain('leaky_relu', param=math.sqrt(5))
+        std = gain / math.sqrt(fan)
+        bound = math.sqrt(3.0) * std  # Calculate uniform bounds from standard deviation
+        with torch.no_grad():
+            nn.init.uniform_(self.weight, -bound, bound)
+
         if self.bias is not None:
-            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+            fan_in = self.in_features
             bound = 1 / math.sqrt(fan_in)
             nn.init.uniform_(self.bias, -bound, bound)
 

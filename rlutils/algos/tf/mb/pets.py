@@ -1,8 +1,8 @@
 import time
 
+import gym.spaces
 import numpy as np
 import tensorflow as tf
-from rlutils.np import DataSpec
 from rlutils.replay_buffers import PyUniformParallelEnvReplayBuffer
 from rlutils.runner import TFRunner, run_func_as_main
 from rlutils.tf.nn.models import EnsembleDynamicsModel
@@ -39,14 +39,14 @@ class PETSRunner(TFRunner):
     def setup_replay_buffer(self,
                             replay_size):
         data_spec = {
-            'obs': DataSpec(shape=self.env.single_observation_space.shape,
-                            dtype=np.float32),
-            'act': DataSpec(shape=self.env.single_action_space.shape,
-                            dtype=np.float32),
-            'next_obs': DataSpec(shape=self.env.single_observation_space.shape,
-                                 dtype=np.float32),
-            'rew': DataSpec(shape=None, dtype=np.float32),
-            'done': DataSpec(shape=None, dtype=np.float32)
+            'obs': gym.spaces.Space(shape=self.env.single_observation_space.shape,
+                                    dtype=np.float32),
+            'act': gym.spaces.Space(shape=self.env.single_action_space.shape,
+                                    dtype=np.float32),
+            'next_obs': gym.spaces.Space(shape=self.env.single_observation_space.shape,
+                                         dtype=np.float32),
+            'rew': gym.spaces.Space(shape=None, dtype=np.float32),
+            'done': gym.spaces.Space(shape=None, dtype=np.float32)
         }
         self.replay_buffer = PyUniformParallelEnvReplayBuffer(data_spec=data_spec,
                                                               capacity=replay_size,
