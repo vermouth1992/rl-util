@@ -35,15 +35,12 @@ class TD3Agent(tf.keras.Model):
         self.noise_clip = noise_clip
         self.tau = tau
         self.gamma = gamma
-        out_kernel_initializer = tf.keras.initializers.RandomUniform(minval=-3e-3, maxval=3e-3)
-        out_bias_initializer = tf.keras.initializers.Zeros()
         if len(self.obs_spec.shape) == 1:  # 1D observation
             self.obs_dim = self.obs_spec.shape[0]
             self.policy_net = build_mlp(self.obs_dim, self.act_dim, mlp_hidden=policy_mlp_hidden, num_layers=3,
-                                        out_activation='tanh', out_kernel_initializer=out_kernel_initializer,
-                                        out_bias_initializer=out_bias_initializer)
+                                        out_activation=tf.math.sin)
             self.target_policy_net = build_mlp(self.obs_dim, self.act_dim, mlp_hidden=policy_mlp_hidden,
-                                               num_layers=3, out_activation='tanh')
+                                               num_layers=3, out_activation=tf.math.sin)
             hard_update(self.target_policy_net, self.policy_net)
             self.q_network = EnsembleMinQNet(self.obs_dim, self.act_dim, q_mlp_hidden, num_ensembles=num_q_ensembles)
             self.target_q_network = EnsembleMinQNet(self.obs_dim, self.act_dim, q_mlp_hidden,
