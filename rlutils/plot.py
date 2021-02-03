@@ -108,11 +108,13 @@ def get_datasets(logdir, condition=None):
             elif 'AverageEpRet' in exp_data:
                 performance = 'AverageEpRet'
             else:
-                raise ValueError('Unable to interpret Performance')
+                performance = None
+
+            if performance is not None:
+                exp_data.insert(len(exp_data.columns), 'Performance', exp_data[performance])
             exp_data.insert(len(exp_data.columns), 'Unit', unit)
             exp_data.insert(len(exp_data.columns), 'Condition1', condition1)
             exp_data.insert(len(exp_data.columns), 'Condition2', condition2)
-            exp_data.insert(len(exp_data.columns), 'Performance', exp_data[performance])
             datasets.append(exp_data)
     return datasets
 

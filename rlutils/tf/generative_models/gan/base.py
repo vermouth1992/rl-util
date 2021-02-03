@@ -43,6 +43,7 @@ class GAN(tf.keras.Model):
         self.logger.log_tabular('GenLoss', average_only=True)
         self.logger.log_tabular('DiscLoss', average_only=True)
 
+    @tf.function
     def sample(self, n):
         print(f'Tracing sample with n={n}')
         noise = self.prior.sample(n)
@@ -103,6 +104,16 @@ class ACGAN(GAN):
         self.num_classes = num_classes
         self.class_loss_weight = class_loss_weight
         super(ACGAN, self).__init__(*args, **kwargs)
+
+    @tf.function
+    def sample_with_labels(self, labels):
+        noise = self.prior.sample(labels.shape[0])
+        return self.generate(z=(noise, labels))
+
+    @tf.function
+    def sample(self, n):
+        labels = tf.random.uniform(shape=(n,), minval=0, maxval=self.num_classes, dtype=tf.int32)
+        return self.sample_with_labels(labels=labels)
 
     def _compute_classification_loss(self, logits, labels):
         loss = tf.keras.losses.sparse_categorical_crossentropy(labels, logits, from_logits=True)
