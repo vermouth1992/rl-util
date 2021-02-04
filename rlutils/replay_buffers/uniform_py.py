@@ -39,7 +39,7 @@ class PyUniformParallelEnvReplayBuffer(BaseReplayBuffer):
 
     @classmethod
     def from_data_dict(cls, data: Dict[str, np.ndarray], batch_size):
-        data_spec = {key: DataSpec(shape=item.shape[1:], dtype=item.dtype) for key, item in data.items()}
+        data_spec = {key: gym.spaces.Space(shape=item.shape[1:], dtype=item.dtype) for key, item in data.items()}
         capacity = list(data.values())[0].shape[0]
         replay_buffer = cls(data_spec=data_spec, capacity=capacity, batch_size=batch_size, num_parallel_env=1)
         replay_buffer.load(data=data)
