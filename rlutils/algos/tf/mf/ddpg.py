@@ -3,9 +3,7 @@ Twin Delayed DDPG. https://arxiv.org/abs/1802.09477.
 To obtain DDPG, set target smooth to zero and Q network ensembles to 1.
 """
 
-import tensorflow as tf
 from rlutils.runner import run_func_as_main
-from rlutils.tf.functional import compute_target_value
 
 from .td3 import TD3Agent, TD3Runner
 
@@ -33,34 +31,6 @@ class DDPGAgent(TD3Agent):
                                         actor_noise=0.1,
                                         target_noise=0,
                                         noise_clip=0)
-
-    def log_tabular(self):
-        self.logger.log_tabular('QVals', with_min_and_max=True)
-        self.logger.log_tabular('LossPi', average_only=True)
-        self.logger.log_tabular('LossQ', average_only=True)
-
-    @tf.function
-    def _update_q_nets(self, obs, actions, next_obs, done, reward):
-        print(f'Tracing _update_nets with obs={obs}, actions={actions}')
-        # compute target q
-        next_q_value = self._compute_next_obs_q(next_obs)
-        q_target = compute_target_value(reward, self.gamma, done, next_q_value)
-        # q loss
-        with tf.GradientTape() as q_tape:
-            q_values = self.q_network((obs, actions), training=True)  # (num_ensembles, None)
-            q_values_loss = 0.5 * tf.square(tf.expand_dims(q_target, axis=0) - q_values)
-            # (num_ensembles, None)
-            q_values_loss = tf.reduce_sum(q_values_loss, axis=0)  # (None,)
-            # apply importance weights
-            q_values_loss = tf.reduce_mean(q_values_loss)
-        q_gradients = q_tape.gradient(q_values_loss, self.q_network.trainable_variables)
-        self.q_optimizer.apply_gradients(zip(q_gradients, self.q_network.trainable_variables))
-
-        info = dict(
-            QVals=q_values[0],
-            LossQ=q_values_loss,
-        )
-        return info
 
 
 def ddpg(env_name,

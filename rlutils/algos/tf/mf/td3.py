@@ -56,8 +56,8 @@ class TD3Agent(tf.keras.Model):
         self.logger = logger
 
     def log_tabular(self):
-        self.logger.log_tabular('Q1Vals', with_min_and_max=True)
-        self.logger.log_tabular('Q2Vals', with_min_and_max=True)
+        for i in range(self.q_network.num_ensembles):
+            self.logger.log_tabular(f'Q{i + 1}Vals', with_min_and_max=True)
         self.logger.log_tabular('LossPi', average_only=True)
         self.logger.log_tabular('LossQ', average_only=True)
 
@@ -94,10 +94,10 @@ class TD3Agent(tf.keras.Model):
         self.q_optimizer.apply_gradients(zip(q_gradients, self.q_network.trainable_variables))
 
         info = dict(
-            Q1Vals=q_values[0],
-            Q2Vals=q_values[1],
             LossQ=q_values_loss,
         )
+        for i in range(self.q_network.num_ensembles):
+            info[f'Q{i + 1}Vals'] = q_values[i]
         return info
 
     @tf.function
