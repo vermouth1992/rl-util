@@ -40,7 +40,7 @@ class DDPGAgent(TD3Agent):
         self.logger.log_tabular('LossQ', average_only=True)
 
     @tf.function
-    def _update_nets(self, obs, actions, next_obs, done, reward):
+    def _update_q_nets(self, obs, actions, next_obs, done, reward):
         print(f'Tracing _update_nets with obs={obs}, actions={actions}')
         # compute target q
         next_q_value = self._compute_next_obs_q(next_obs)

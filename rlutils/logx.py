@@ -127,8 +127,11 @@ def setup_logger_kwargs(exp_name, seed=None, data_dir=None, datestamp=False):
             subfolder = ''.join([exp_name, '_s', str(seed)])
         relpath = osp.join(relpath, subfolder)
 
-    data_dir = data_dir or DEFAULT_DATA_DIR
-    logger_kwargs = dict(output_dir=osp.join(data_dir, relpath),
+    if data_dir is not None:
+        output_dir = osp.join(data_dir, relpath)
+    else:
+        output_dir = None
+    logger_kwargs = dict(output_dir=output_dir,
                          exp_name=exp_name)
     return logger_kwargs
 
@@ -160,12 +163,19 @@ class Logger:
                 hyperparameter configuration with multiple random seeds, you
                 should give them all the same ``exp_name``.)
         """
-        self.output_dir = output_dir or "/tmp/experiments/%i" % int(time.time())
-        if osp.exists(self.output_dir):
-            print("Warning: Log dir %s already exists! Storing info there anyway." % self.output_dir)
+        self.output_dir = output_dir
+
+        if self.output_dir is not None:
+            if osp.exists(self.output_dir):
+                print("Warning: Log dir %s already exists! Storing info there anyway." % self.output_dir)
+            else:
+                os.makedirs(self.output_dir)
+            self.output_file = open(osp.join(self.output_dir, output_fname), 'w')
+            atexit.register(self.output_file.close)
+            print(colorize("Logging data to %s" % self.output_file.name, 'green', bold=True))
         else:
-            os.makedirs(self.output_dir)
-        self.output_file = open(osp.join(self.output_dir, output_fname), 'w')
+            self.output_file = None
+
         if tensorboard:
             tensorboard_dir = osp.join(self.output_dir, 'tensorboard')
             if os.path.exists(tensorboard_dir) and os.path.isdir(tensorboard_dir):
@@ -173,9 +183,6 @@ class Logger:
             self.tensorboard_file = SummaryWriter(logdir=tensorboard_dir)
         else:
             self.tensorboard_file = None
-
-        atexit.register(self.output_file.close)
-        print(colorize("Logging data to %s" % self.output_file.name, 'green', bold=True))
 
         self.first_row = True
         self.log_headers = []
@@ -226,8 +233,9 @@ class Logger:
         output = json.dumps(config_json, separators=(',', ':\t'), indent=4, sort_keys=True)
         print(colorize('Saving config:\n', color='cyan', bold=True))
         print(output)
-        with open(osp.join(self.output_dir, "config.json"), 'w') as out:
-            out.write(output)
+        if self.output_dir is not None:
+            with open(osp.join(self.output_dir, "config.json"), 'w') as out:
+                out.write(output)
 
     def dump_tabular(self):
         """

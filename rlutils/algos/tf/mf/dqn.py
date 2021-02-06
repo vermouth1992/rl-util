@@ -10,7 +10,7 @@ from rlutils.tf.nn.functional import build_mlp
 
 def gather_q_values(q_values, actions):
     batch_size = tf.shape(actions)[0]
-    idx = tf.stack([tf.range(batch_size), actions], axis=-1)  # (None, 2)
+    idx = tf.stack([tf.range(batch_size, dtype=actions.dtype), actions], axis=-1)  # (None, 2)
     q_values = tf.gather_nd(q_values, indices=idx)
     return q_values
 
@@ -27,8 +27,10 @@ class DQN(tf.keras.Model):
                  tau=5e-3,
                  huber_delta=None):
         super(DQN, self).__init__()
+        self.obs_spec = obs_spec
+        self.act_spec = act_spec
         obs_dim = obs_spec.shape[0]
-        act_dim = act_spec.maxval
+        act_dim = act_spec.n
         self.q_network = build_mlp(obs_dim, act_dim, mlp_hidden=mlp_hidden, num_layers=3)
         self.target_q_network = build_mlp(obs_dim, act_dim, mlp_hidden=mlp_hidden, num_layers=3)
         self.q_optimizer = tf.keras.optimizers.Adam(lr=q_lr)
@@ -67,7 +69,7 @@ class DQN(tf.keras.Model):
         target_q_values = self.target_q_network(next_obs)
         if self.double_q:
             # select action using Q network instead of target Q network
-            target_actions = tf.argmax(self.q_network(next_obs), axis=-1, output_type=tf.int32)
+            target_actions = tf.argmax(self.q_network(next_obs), axis=-1, output_type=self.act_spec.dtype)
             target_q_values = gather_q_values(target_q_values, target_actions)
         else:
             target_q_values = tf.reduce_max(target_q_values, axis=-1)
@@ -83,13 +85,18 @@ class DQN(tf.keras.Model):
         )
         return info
 
-    def update(self, obs, act, next_obs, rew, done, update_target=True):
+    @tf.function
+    def train_step(self, data):
+        obs = data['obs']
+        act = data['act']
+        next_obs = data['next_obs']
+        done = data['done']
+        rew = data['rew']
+        update_target = data['update_target']
         info = self._update_nets(obs, act, next_obs, done, rew)
-        for key, item in info.items():
-            info[key] = item.numpy()
-        self.logger.store(**info)
         if update_target:
             self.update_target()
+        return info
 
     @tf.function
     def act_batch(self, obs, deterministic):
@@ -97,8 +104,9 @@ class DQN(tf.keras.Model):
         batch_size = tf.shape(obs)[0]
         epsilon = tf.random.uniform(shape=(batch_size,), minval=0., maxval=1., dtype=tf.float32)
         epsilon_indicator = tf.cast(epsilon > self.epsilon, dtype=tf.int32)  # (None,)
-        random_actions = tf.random.uniform(shape=(batch_size,), minval=0, maxval=self.act_dim, dtype=tf.int32)
-        deterministic_actions = tf.argmax(self.q_network(obs), axis=-1, output_type=tf.int32)
+        random_actions = tf.random.uniform(shape=(batch_size,), minval=0, maxval=self.act_dim,
+                                           dtype=self.act_spec.dtype)
+        deterministic_actions = tf.argmax(self.q_network(obs), axis=-1, output_type=self.act_spec.dtype)
         epsilon_greedy_actions = tf.stack([random_actions, deterministic_actions], axis=-1)  # (None, 2)
         epsilon_greedy_actions = gather_q_values(epsilon_greedy_actions, epsilon_indicator)
         final_actions = tf.cond(deterministic, true_fn=lambda: deterministic_actions,
@@ -137,7 +145,7 @@ def dqn(env_name,
         epsilon=0.1,
         # replay
         replay_size=int(1e6),
-        logger_path='data'
+        logger_path=None
         ):
     config = locals()
     runner = DQNRunner(seed=seed, steps_per_epoch=steps_per_epoch, epochs=epochs, logger_path=logger_path)

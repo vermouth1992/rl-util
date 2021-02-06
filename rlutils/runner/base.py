@@ -16,6 +16,7 @@ import numpy as np
 import rlutils.gym
 from rlutils.logx import EpochLogger, setup_logger_kwargs
 from rlutils.replay_buffers import PyUniformParallelEnvReplayBuffer
+from rlutils.tf.functional import to_numpy_or_python_type
 from tqdm.auto import trange, tqdm
 
 
@@ -134,10 +135,10 @@ class BaseRunner(ABC):
         else:
             raise NotImplementedError
 
-        if isinstance(self.dummy_env.action_space, gym.spaces.Box):
-            assert self.dummy_env.action_space.dtype == np.float32
-        elif isinstance(self.dummy_env.action_space, gym.spaces.Discrete):
-            assert self.dummy_env.action_space.dtype == np.int32
+        # if isinstance(self.dummy_env.action_space, gym.spaces.Box):
+        #     assert self.dummy_env.action_space.dtype == np.float32
+        # elif isinstance(self.dummy_env.action_space, gym.spaces.Discrete):
+        #     assert self.dummy_env.action_space.dtype == np.int32
 
         if isinstance(self.dummy_env.action_space, gym.spaces.Box):
             high_all = np.all(self.dummy_env.action_space.high == 1.)
@@ -271,7 +272,9 @@ class OffPolicyRunner(BaseRunner):
         if global_env_steps >= self.update_after and global_env_steps % self.update_every == 0:
             for j in range(self.update_every * self.update_per_step):
                 batch = self.replay_buffer.sample()
-                self.agent.update(**batch, update_target=self.update_target == self.policy_delay - 1)
+                batch['update_target'] = self.update_target == self.policy_delay - 1
+                info = self.agent.train_step(data=batch)
+                self.logger.store(**to_numpy_or_python_type(info))
                 self.update_target = (self.update_target + 1) % self.policy_delay
 
     def on_epoch_end(self, epoch):

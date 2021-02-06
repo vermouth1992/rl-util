@@ -5,7 +5,7 @@ To obtain DDPG, set target smooth to zero and Q network ensembles to 1.
 
 import tensorflow as tf
 from rlutils.runner import OffPolicyRunner, TFRunner, run_func_as_main
-from rlutils.tf.functional import soft_update, hard_update, compute_target_value, to_numpy_or_python_type
+from rlutils.tf.functional import soft_update, hard_update, compute_target_value
 from rlutils.tf.nn import EnsembleMinQNet
 from rlutils.tf.nn.functional import build_mlp
 
@@ -77,7 +77,7 @@ class TD3Agent(tf.keras.Model):
         return next_q_value
 
     @tf.function
-    def _update_nets(self, obs, actions, next_obs, done, reward):
+    def _update_q_nets(self, obs, actions, next_obs, done, reward):
         print(f'Tracing _update_nets with obs={obs}, actions={actions}')
         # compute target q
         next_q_value = self._compute_next_obs_q(next_obs)
@@ -115,21 +115,21 @@ class TD3Agent(tf.keras.Model):
         )
         return info
 
-    def update(self, obs, act, next_obs, done, rew, update_target=True):
-        obs = tf.convert_to_tensor(obs, dtype=tf.float32)
-        act = tf.convert_to_tensor(act, dtype=tf.float32)
-        next_obs = tf.convert_to_tensor(next_obs, dtype=tf.float32)
-        done = tf.convert_to_tensor(done, dtype=tf.float32)
-        rew = tf.convert_to_tensor(rew, dtype=tf.float32)
-
-        info = self._update_nets(obs, act, next_obs, done, rew)
-
+    @tf.function
+    def train_step(self, data):
+        obs = data['obs']
+        act = data['act']
+        next_obs = data['next_obs']
+        done = data['done']
+        rew = data['rew']
+        update_target = data['update_target']
+        print(f'Tracing train_step with {update_target}')
+        info = self._update_q_nets(obs, act, next_obs, done, rew)
         if update_target:
             actor_info = self._update_actor(obs)
             info.update(actor_info)
             self.update_target()
-
-        self.logger.store(**to_numpy_or_python_type(info))
+        return info
 
     @tf.function
     def act_batch_test(self, obs):
@@ -176,7 +176,7 @@ def td3(env_name,
         gamma=0.99,
         # replay
         replay_size=int(1e6),
-        logger_path='data'
+        logger_path=None
         ):
     config = locals()
 
