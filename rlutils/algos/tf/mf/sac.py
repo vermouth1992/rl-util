@@ -2,10 +2,9 @@
 Implement soft actor critic agent here
 """
 
+import rlutils.tf as rlu
 import tensorflow as tf
 from rlutils.runner import OffPolicyRunner, run_func_as_main, TFRunner
-from rlutils.tf.functional import soft_update, hard_update, compute_target_value
-from rlutils.tf.nn import LagrangeLayer, SquashedGaussianMLPActor, EnsembleMinQNet, CenteredBetaMLPActor
 
 
 class SACAgent(tf.keras.Model):
@@ -30,21 +29,21 @@ class SACAgent(tf.keras.Model):
         if len(self.obs_spec.shape) == 1:  # 1D observation
             self.obs_dim = self.obs_spec.shape[0]
             if policy_type == 'gaussian':
-                self.policy_net = SquashedGaussianMLPActor(self.obs_dim, self.act_dim, policy_mlp_hidden)
+                self.policy_net = rlu.nn.SquashedGaussianMLPActor(self.obs_dim, self.act_dim, policy_mlp_hidden)
             elif policy_type == 'beta':
-                self.policy_net = CenteredBetaMLPActor(self.obs_dim, self.act_dim, policy_mlp_hidden)
+                self.policy_net = rlu.nn.CenteredBetaMLPActor(self.obs_dim, self.act_dim, policy_mlp_hidden)
             else:
                 raise NotImplementedError
-            self.q_network = EnsembleMinQNet(self.obs_dim, self.act_dim, q_mlp_hidden)
-            self.target_q_network = EnsembleMinQNet(self.obs_dim, self.act_dim, q_mlp_hidden)
+            self.q_network = rlu.nn.EnsembleMinQNet(self.obs_dim, self.act_dim, q_mlp_hidden)
+            self.target_q_network = rlu.nn.EnsembleMinQNet(self.obs_dim, self.act_dim, q_mlp_hidden)
         else:
             raise NotImplementedError
-        hard_update(self.target_q_network, self.q_network)
+        rlu.functional.hard_update(self.target_q_network, self.q_network)
 
         self.policy_optimizer = tf.keras.optimizers.Adam(lr=policy_lr)
         self.q_optimizer = tf.keras.optimizers.Adam(lr=q_lr)
 
-        self.log_alpha = LagrangeLayer(initial_value=alpha)
+        self.log_alpha = rlu.nn.LagrangeLayer(initial_value=alpha)
         self.alpha_optimizer = tf.keras.optimizers.Adam(lr=alpha_lr)
         self.target_entropy = -self.act_dim if target_entropy is None else target_entropy
 
@@ -65,7 +64,7 @@ class SACAgent(tf.keras.Model):
 
     @tf.function
     def update_target(self):
-        soft_update(self.target_q_network, self.q_network, self.tau)
+        rlu.functional.soft_update(self.target_q_network, self.q_network, self.tau)
 
     def _compute_next_obs_q(self, next_obs):
         alpha = self.log_alpha()
@@ -77,7 +76,7 @@ class SACAgent(tf.keras.Model):
     def _update_q_nets(self, obs, act, next_obs, done, rew):
         # compute target Q values
         next_q_values = self._compute_next_obs_q(next_obs)
-        q_target = compute_target_value(rew, self.gamma, done, next_q_values)
+        q_target = rlu.functional.compute_target_value(rew, self.gamma, done, next_q_values)
 
         # q loss
         with tf.GradientTape() as q_tape:

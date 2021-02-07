@@ -2,10 +2,9 @@
 Deep Q Network for low-dimensional observation space
 """
 
+import rlutils.tf as rlu
 import tensorflow as tf
 from rlutils.runner import OffPolicyRunner, TFRunner, run_func_as_main
-from rlutils.tf.functional import hard_update, soft_update
-from rlutils.tf.nn.functional import build_mlp
 
 
 def gather_q_values(q_values, actions):
@@ -31,8 +30,8 @@ class DQN(tf.keras.Model):
         self.act_spec = act_spec
         obs_dim = obs_spec.shape[0]
         act_dim = act_spec.n
-        self.q_network = build_mlp(obs_dim, act_dim, mlp_hidden=mlp_hidden, num_layers=3)
-        self.target_q_network = build_mlp(obs_dim, act_dim, mlp_hidden=mlp_hidden, num_layers=3)
+        self.q_network = rlu.nn.build_mlp(obs_dim, act_dim, mlp_hidden=mlp_hidden, num_layers=3)
+        self.target_q_network = rlu.nn.build_mlp(obs_dim, act_dim, mlp_hidden=mlp_hidden, num_layers=3)
         self.q_optimizer = tf.keras.optimizers.Adam(lr=q_lr)
         self.epsilon = tf.Variable(initial_value=epsilon, dtype=tf.float32, trainable=False)
         self.act_dim = act_dim
@@ -45,7 +44,7 @@ class DQN(tf.keras.Model):
             self.loss_fn = tf.keras.losses.MeanSquaredError(reduction=reduction)
         else:
             self.loss_fn = tf.keras.losses.Huber(delta=huber_delta, reduction=reduction)
-        hard_update(self.target_q_network, self.q_network)
+        rlu.functional.hard_update(self.target_q_network, self.q_network)
 
     def set_logger(self, logger):
         self.logger = logger
@@ -60,7 +59,7 @@ class DQN(tf.keras.Model):
 
     @tf.function
     def update_target(self):
-        soft_update(self.target_q_network, self.q_network, tau=self.tau)
+        rlu.functional.soft_update(self.target_q_network, self.q_network, tau=self.tau)
 
     @tf.function
     def _update_nets(self, obs, act, next_obs, done, rew):

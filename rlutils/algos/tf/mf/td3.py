@@ -3,11 +3,9 @@ Twin Delayed DDPG. https://arxiv.org/abs/1802.09477.
 To obtain DDPG, set target smooth to zero and Q network ensembles to 1.
 """
 
+import rlutils.tf as rlu
 import tensorflow as tf
 from rlutils.runner import OffPolicyRunner, TFRunner, run_func_as_main
-from rlutils.tf.functional import soft_update, hard_update, compute_target_value
-from rlutils.tf.nn import EnsembleMinQNet
-from rlutils.tf.nn.functional import build_mlp
 
 
 class TD3Agent(tf.keras.Model):
@@ -37,15 +35,17 @@ class TD3Agent(tf.keras.Model):
         self.gamma = gamma
         if len(self.obs_spec.shape) == 1:  # 1D observation
             self.obs_dim = self.obs_spec.shape[0]
-            self.policy_net = build_mlp(self.obs_dim, self.act_dim, mlp_hidden=policy_mlp_hidden, num_layers=3,
-                                        out_activation=tf.math.sin)
-            self.target_policy_net = build_mlp(self.obs_dim, self.act_dim, mlp_hidden=policy_mlp_hidden,
+            self.policy_net = rlu.nn.build_mlp(self.obs_dim, self.act_dim, mlp_hidden=policy_mlp_hidden,
                                                num_layers=3, out_activation=tf.math.sin)
-            hard_update(self.target_policy_net, self.policy_net)
-            self.q_network = EnsembleMinQNet(self.obs_dim, self.act_dim, q_mlp_hidden, num_ensembles=num_q_ensembles)
-            self.target_q_network = EnsembleMinQNet(self.obs_dim, self.act_dim, q_mlp_hidden,
+            self.target_policy_net = rlu.nn.build_mlp(self.obs_dim, self.act_dim,
+                                                      mlp_hidden=policy_mlp_hidden,
+                                                      num_layers=3, out_activation=tf.math.sin)
+            rlu.functional.hard_update(self.target_policy_net, self.policy_net)
+            self.q_network = rlu.nn.EnsembleMinQNet(self.obs_dim, self.act_dim, q_mlp_hidden,
                                                     num_ensembles=num_q_ensembles)
-            hard_update(self.target_q_network, self.q_network)
+            self.target_q_network = rlu.nn.EnsembleMinQNet(self.obs_dim, self.act_dim, q_mlp_hidden,
+                                                           num_ensembles=num_q_ensembles)
+            rlu.functional.hard_update(self.target_q_network, self.q_network)
         else:
             raise NotImplementedError
 
@@ -63,8 +63,8 @@ class TD3Agent(tf.keras.Model):
 
     @tf.function
     def update_target(self):
-        soft_update(self.target_q_network, self.q_network, self.tau)
-        soft_update(self.target_policy_net, self.policy_net, self.tau)
+        rlu.functional.soft_update(self.target_q_network, self.q_network, self.tau)
+        rlu.functional.soft_update(self.target_policy_net, self.policy_net, self.tau)
 
     def _compute_next_obs_q(self, next_obs):
         next_action = self.target_policy_net(next_obs)
@@ -81,7 +81,7 @@ class TD3Agent(tf.keras.Model):
         print(f'Tracing _update_nets with obs={obs}, actions={actions}')
         # compute target q
         next_q_value = self._compute_next_obs_q(next_obs)
-        q_target = compute_target_value(reward, self.gamma, done, next_q_value)
+        q_target = rlu.functional.compute_target_value(reward, self.gamma, done, next_q_value)
         # q loss
         with tf.GradientTape() as q_tape:
             q_values = self.q_network((obs, actions), training=True)  # (num_ensembles, None)
