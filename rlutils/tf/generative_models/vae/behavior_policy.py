@@ -34,9 +34,7 @@ class BehaviorPolicy(ConditionalBetaVAE):
         log_likelihood = out.log_prob(x)  # (None,)
         log_likelihood = self.transform_raw_log_prob(log_likelihood, x)
         kl_divergence = tfd.kl_divergence(posterior, self.prior)
-        nll = -tf.reduce_mean(log_likelihood, axis=0)
-        kld = tf.reduce_mean(kl_divergence, axis=0)
-        return nll, kld
+        return -log_likelihood, kl_divergence
 
     def transform_raw_action(self, action):
         if self.out_dist == 'normal':
@@ -192,8 +190,8 @@ class EnsembleBehaviorPolicy(BehaviorPolicy):
         log_likelihood = out.log_prob(x)  # (num_ensembles, None)
         log_likelihood = self.transform_raw_log_prob(log_likelihood, x)
         kl_divergence = tfd.kl_divergence(posterior, self.prior)
-        nll = -tf.reduce_mean(tf.reduce_sum(log_likelihood, axis=0), axis=0)
-        kld = tf.reduce_mean(tf.reduce_sum(kl_divergence, axis=0), axis=0)
+        nll = -tf.reduce_sum(log_likelihood, axis=0)
+        kld = tf.reduce_sum(kl_divergence, axis=0)
         return nll, kld
 
     def train_step(self, data):

@@ -17,7 +17,6 @@ from rlutils.tf.functional import soft_update, hard_update, to_numpy_or_python_t
 from rlutils.tf.generative_models.vae import BehaviorPolicy
 from rlutils.tf.nn import EnsembleMinQNet
 from rlutils.tf.nn.functional import build_mlp
-from rlutils.tf.distributions import make_independent_normal_from_params
 from tqdm.auto import tqdm, trange
 
 tfd = tfp.distributions
@@ -47,16 +46,10 @@ class PLASAgent(tf.keras.Model):
         self.behavior_policy = BehaviorPolicy(out_dist='normal', obs_dim=self.ob_dim, act_dim=self.ac_dim,
                                               mlp_hidden=behavior_mlp_hidden, beta=beta)
         self.behavior_policy.optimizer = get_adam_optimizer(lr=behavior_lr)
-        self.policy_net = build_mlp(self.ob_dim, self.behavior_policy.latent_dim * 2,
+        self.policy_net = build_mlp(self.ob_dim, self.behavior_policy.latent_dim,
                                     mlp_hidden=policy_mlp_hidden, num_layers=3)
-        self.policy_net.add(tfl.DistributionLambda(
-            make_distribution_fn=lambda t: make_independent_normal_from_params(t, min_log_scale=-10,
-                                                                               max_log_scale=5)))
-        self.target_policy_net = build_mlp(self.ob_dim, self.behavior_policy.latent_dim * 2,
+        self.target_policy_net = build_mlp(self.ob_dim, self.behavior_policy.latent_dim,
                                            mlp_hidden=policy_mlp_hidden, num_layers=3)
-        self.target_policy_net.add(tfl.DistributionLambda(
-            make_distribution_fn=lambda t: make_independent_normal_from_params(t, min_log_scale=-10,
-                                                                               max_log_scale=5)))
         # reset policy net learning rate
         self.policy_net.optimizer = get_adam_optimizer(lr=policy_lr)
         hard_update(self.target_policy_net, self.policy_net)
@@ -70,9 +63,9 @@ class PLASAgent(tf.keras.Model):
         self.latent_threshold = latent_threshold
 
     def get_action(self, policy_net, obs):
-        z = policy_net(obs).sample()
+        z = policy_net(obs)
         z = tf.tanh(z) * self.latent_threshold
-        raw_action = self.behavior_policy.decode_mean(z=(z, obs))
+        raw_action = self.behavior_policy.decode_sample(z=(z, obs))
         action = tf.tanh(raw_action)
         return action, z
 
@@ -169,13 +162,12 @@ class PLASAgent(tf.keras.Model):
         info['BehaviorLoss'] = behavior_loss
         return info
 
-    def update(self, replay_buffer: PyUniformParallelEnvReplayBuffer, update_target=True):
+    def update(self, obs, act, next_obs, done, rew, update_target=True):
         # TODO: use different batches to update q and actor to break correlation
-        data = replay_buffer.sample()
-        info = self._update(**data)
+        info = self._update(obs, act, next_obs, done, rew)
 
         if update_target:
-            actor_info = self.update_actor(data['obs'])
+            actor_info = self.update_actor(obs)
             # we only update alpha when policy is updated
             info.update(actor_info)
             self.update_target()

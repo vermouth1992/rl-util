@@ -51,9 +51,10 @@ class BetaVAE(tf.keras.Model):
         decode_sample = decode_distribution.mean()
         return decode_sample
 
-    def elbo(self, inputs, training=False):
+    @tf.function
+    def elbo(self, inputs):
         assert self.beta == 1., 'Only Beta=1.0 has ELBO'
-        nll, kld = self(inputs, training=training)
+        nll, kld = self(inputs, training=False)
         elbo = -nll - kld
         return elbo
 
@@ -70,16 +71,15 @@ class BetaVAE(tf.keras.Model):
         out = self.decoder(encode_sample, training=training)
         log_likelihood = out.log_prob(inputs)  # (None,)
         kl_divergence = tfd.kl_divergence(posterior, self.prior)
-        print(f'Shape of nll: {log_likelihood.shape}, kld: {kl_divergence.shape}')
-        nll = -tf.reduce_mean(log_likelihood, axis=0)
-        kld = tf.reduce_mean(kl_divergence, axis=0)
-        return nll, kld
+        # print(f'Shape of nll: {log_likelihood.shape}, kld: {kl_divergence.shape}')
+        return -log_likelihood, kl_divergence
 
     def train_step(self, data):
         data = data[0]
         with tf.GradientTape() as tape:
             nll, kld = self(data, training=True)
             loss = nll + kld * self.beta
+            loss = tf.reduce_mean(loss, axis=0)
         gradients = tape.gradient(loss, self.trainable_variables)
         self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
         return {
@@ -92,6 +92,7 @@ class BetaVAE(tf.keras.Model):
         data = data[0]
         nll, kld = self(data, training=False)
         loss = nll + kld * self.beta
+        loss = tf.reduce_mean(loss, axis=0)
         return {
             'loss': loss,
             'nll': nll,
@@ -132,9 +133,7 @@ class ConditionalBetaVAE(BetaVAE):
         out = self.decoder((encode_sample, cond), training=training)
         log_likelihood = out.log_prob(x)  # (None,)
         kl_divergence = tfd.kl_divergence(posterior, self.prior)
-        nll = -tf.reduce_mean(log_likelihood, axis=0)
-        kld = tf.reduce_mean(kl_divergence, axis=0)
-        return nll, kld
+        return -log_likelihood, kl_divergence
 
     def sample(self, cond, full_path=True):
         print(f'Tracing sample with cond={cond}')
