@@ -35,7 +35,7 @@ class PETSAgent(tf.keras.Model):
         return self.planner.act_batch(obs)
 
 
-class PETSRunner(TFRunner):
+class Runner(TFRunner):
     def setup_replay_buffer(self,
                             replay_size):
         data_spec = {
@@ -134,45 +134,45 @@ class PETSRunner(TFRunner):
         self.ep_ret = np.zeros(shape=self.num_parallel_env)
         self.ep_len = np.zeros(shape=self.num_parallel_env, dtype=np.int64)
 
-
-def pets(env_name,
-         steps_per_epoch=400,
-         epochs=200,
-         start_steps=2000,
-         num_parallel_env=2,
-         seed=1,
-         # sac args
-         mlp_hidden=256,
-         num_ensembles=3,
-         learning_rate=1e-3,
-         horizon=10,
-         num_particles=5,
-         num_actions=1024,
-         batch_size=256,
-         num_model_epochs=60,
-         patience=10,
-         validation_split=0.1,
-         # replay
-         replay_size=int(1e6),
-         logger_path='data'
-         ):
-    config = locals()
-    runner = PETSRunner(seed=seed, steps_per_epoch=steps_per_epoch // num_parallel_env, epochs=epochs,
+    @staticmethod
+    def main(env_name,
+             steps_per_epoch=400,
+             epochs=200,
+             start_steps=2000,
+             num_parallel_env=2,
+             seed=1,
+             # sac args
+             mlp_hidden=256,
+             num_ensembles=3,
+             learning_rate=1e-3,
+             horizon=10,
+             num_particles=5,
+             num_actions=1024,
+             batch_size=256,
+             num_model_epochs=60,
+             patience=10,
+             validation_split=0.1,
+             # replay
+             replay_size=int(1e6),
+             logger_path='data'
+             ):
+        config = locals()
+        runner = Runner(seed=seed, steps_per_epoch=steps_per_epoch // num_parallel_env, epochs=epochs,
                         exp_name=None, logger_path=logger_path)
-    runner.setup_env(env_name=env_name, num_parallel_env=num_parallel_env, frame_stack=None, wrappers=None,
-                     asynchronous=False, num_test_episodes=None)
-    runner.setup_logger(config=config)
-    runner.setup_agent(mlp_hidden=mlp_hidden, num_ensembles=num_ensembles, lr=learning_rate,
-                       horizon=horizon, num_particles=num_particles, num_actions=num_actions)
-    runner.setup_extra(start_steps=start_steps,
-                       batch_size=batch_size,
-                       num_model_epochs=num_model_epochs,
-                       patience=patience,
-                       validation_split=validation_split)
-    runner.setup_replay_buffer(replay_size=replay_size)
+        runner.setup_env(env_name=env_name, num_parallel_env=num_parallel_env, frame_stack=None, wrappers=None,
+                         asynchronous=False, num_test_episodes=None)
+        runner.setup_logger(config=config)
+        runner.setup_agent(mlp_hidden=mlp_hidden, num_ensembles=num_ensembles, lr=learning_rate,
+                           horizon=horizon, num_particles=num_particles, num_actions=num_actions)
+        runner.setup_extra(start_steps=start_steps,
+                           batch_size=batch_size,
+                           num_model_epochs=num_model_epochs,
+                           patience=patience,
+                           validation_split=validation_split)
+        runner.setup_replay_buffer(replay_size=replay_size)
 
-    runner.run()
+        runner.run()
 
 
 if __name__ == '__main__':
-    run_func_as_main(pets)
+    run_func_as_main(Runner.main)

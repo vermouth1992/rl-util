@@ -181,6 +181,10 @@ class BaseRunner(ABC):
             self.on_epoch_end(i)
         self.on_train_end()
 
+    @staticmethod
+    def main(*args, **kwargs):
+        raise NotImplementedError
+
     @property
     def obs_data_spec(self):
         return self.env.single_observation_space

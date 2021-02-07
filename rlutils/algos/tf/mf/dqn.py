@@ -113,7 +113,7 @@ class DQN(tf.keras.Model):
         return final_actions
 
 
-class DQNRunner(OffPolicyRunner, TFRunner):
+class Runner(OffPolicyRunner, TFRunner):
     def get_action_batch_test(self, obs):
         return self.agent.act_batch(tf.convert_to_tensor(obs, dtype=tf.float32),
                                     tf.convert_to_tensor(True, dtype=tf.bool)).numpy()
@@ -121,57 +121,57 @@ class DQNRunner(OffPolicyRunner, TFRunner):
     def get_action_batch_explore(self, obs):
         return self.agent.act_batch(self.o, deterministic=tf.convert_to_tensor(False)).numpy()
 
-
-def dqn(env_name,
-        env_fn=None,
-        steps_per_epoch=1000,
-        epochs=500,
-        start_steps=2000,
-        update_after=500,
-        update_every=1,
-        update_per_step=1,
-        batch_size=256,
-        num_parallel_env=1,
-        num_test_episodes=20,
-        seed=1,
-        # agent args
-        mlp_hidden=256,
-        double_q=True,
-        q_lr=1e-4,
-        gamma=0.99,
-        huber_delta=None,
-        tau=5e-3,
-        epsilon=0.1,
-        # replay
-        replay_size=int(1e6),
-        logger_path=None
-        ):
-    config = locals()
-    runner = DQNRunner(seed=seed, steps_per_epoch=steps_per_epoch, epochs=epochs, logger_path=logger_path)
-    runner.setup_env(env_name=env_name, num_parallel_env=num_parallel_env, asynchronous=False,
-                     num_test_episodes=num_test_episodes, env_fn=env_fn)
-    runner.setup_seed(seed)
-    runner.setup_logger(config=config)
-    agent_kwargs = dict(
-        mlp_hidden=mlp_hidden,
-        double_q=double_q,
-        q_lr=q_lr,
-        gamma=gamma,
-        huber_delta=huber_delta,
-        tau=tau,
-        epsilon=epsilon
-    )
-    runner.setup_agent(DQN, **agent_kwargs)
-    runner.setup_extra(start_steps=start_steps,
-                       update_after=update_after,
-                       update_every=update_every,
-                       update_per_step=update_per_step,
-                       policy_delay=1)
-    runner.setup_replay_buffer(replay_size=replay_size,
-                               batch_size=batch_size,
-                               )
-    runner.run()
+    @staticmethod
+    def main(env_name,
+             env_fn=None,
+             steps_per_epoch=1000,
+             epochs=500,
+             start_steps=2000,
+             update_after=500,
+             update_every=1,
+             update_per_step=1,
+             batch_size=256,
+             num_parallel_env=1,
+             num_test_episodes=20,
+             seed=1,
+             # agent args
+             mlp_hidden=256,
+             double_q=True,
+             q_lr=1e-4,
+             gamma=0.99,
+             huber_delta=None,
+             tau=5e-3,
+             epsilon=0.1,
+             # replay
+             replay_size=int(1e6),
+             logger_path=None
+             ):
+        config = locals()
+        runner = Runner(seed=seed, steps_per_epoch=steps_per_epoch, epochs=epochs, logger_path=logger_path)
+        runner.setup_env(env_name=env_name, num_parallel_env=num_parallel_env, asynchronous=False,
+                         num_test_episodes=num_test_episodes, env_fn=env_fn)
+        runner.setup_seed(seed)
+        runner.setup_logger(config=config)
+        agent_kwargs = dict(
+            mlp_hidden=mlp_hidden,
+            double_q=double_q,
+            q_lr=q_lr,
+            gamma=gamma,
+            huber_delta=huber_delta,
+            tau=tau,
+            epsilon=epsilon
+        )
+        runner.setup_agent(DQN, **agent_kwargs)
+        runner.setup_extra(start_steps=start_steps,
+                           update_after=update_after,
+                           update_every=update_every,
+                           update_per_step=update_per_step,
+                           policy_delay=1)
+        runner.setup_replay_buffer(replay_size=replay_size,
+                                   batch_size=batch_size,
+                                   )
+        runner.run()
 
 
 if __name__ == '__main__':
-    run_func_as_main(dqn)
+    run_func_as_main(Runner.main)

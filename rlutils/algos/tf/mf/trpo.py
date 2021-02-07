@@ -219,7 +219,7 @@ class TRPOAgent(tf.keras.Model):
         self.logger.store(**to_numpy_or_python_type(info))
 
 
-class TRPORunner(TFRunner):
+class Runner(TFRunner):
     def setup_agent(self,
                     mlp_hidden,
                     delta,
@@ -315,34 +315,34 @@ class TRPORunner(TFRunner):
         self.agent.log_tabular()
         self.logger.dump_tabular()
 
+    @staticmethod
+    def main(env_name, env_fn=None, mlp_hidden=128, seed=0, num_parallel_envs=5,
+             batch_size=5000, epochs=200, gamma=0.99, delta=0.01, vf_lr=1e-3,
+             train_vf_iters=80, damping_coeff=0.1, cg_iters=10, backtrack_iters=10,
+             backtrack_coeff=0.8, lam=0.97, algo='trpo', logger_path=None):
+        # Instantiate environment
+        assert batch_size % num_parallel_envs == 0
 
-def trpo(env_name, env_fn=None, mlp_hidden=128, seed=0, num_parallel_envs=5,
-         batch_size=5000, epochs=200, gamma=0.99, delta=0.01, vf_lr=1e-3,
-         train_vf_iters=80, damping_coeff=0.1, cg_iters=10, backtrack_iters=10,
-         backtrack_coeff=0.8, lam=0.97, algo='trpo', logger_path='data'):
-    # Instantiate environment
-    assert batch_size % num_parallel_envs == 0
+        steps_per_epoch = batch_size // num_parallel_envs
 
-    steps_per_epoch = batch_size // num_parallel_envs
-
-    config = locals()
-    runner = TRPORunner(seed=seed, steps_per_epoch=steps_per_epoch,
+        config = locals()
+        runner = Runner(seed=seed, steps_per_epoch=steps_per_epoch,
                         epochs=epochs, exp_name=None, logger_path=logger_path)
-    runner.setup_env(env_name=env_name, env_fn=env_fn, num_parallel_env=num_parallel_envs,
-                     asynchronous=False, num_test_episodes=None)
-    runner.setup_logger(config)
-    runner.setup_agent(mlp_hidden,
-                       delta,
-                       vf_lr,
-                       damping_coeff,
-                       cg_iters,
-                       backtrack_iters,
-                       backtrack_coeff,
-                       train_vf_iters,
-                       algo)
-    runner.setup_replay_buffer(max_length=steps_per_epoch, gamma=gamma, lam=lam)
-    runner.run()
+        runner.setup_env(env_name=env_name, env_fn=env_fn, num_parallel_env=num_parallel_envs,
+                         asynchronous=False, num_test_episodes=None)
+        runner.setup_logger(config)
+        runner.setup_agent(mlp_hidden,
+                           delta,
+                           vf_lr,
+                           damping_coeff,
+                           cg_iters,
+                           backtrack_iters,
+                           backtrack_coeff,
+                           train_vf_iters,
+                           algo)
+        runner.setup_replay_buffer(max_length=steps_per_epoch, gamma=gamma, lam=lam)
+        runner.run()
 
 
 if __name__ == '__main__':
-    run_func_as_main(trpo)
+    run_func_as_main(Runner.main)

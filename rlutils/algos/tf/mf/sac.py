@@ -159,7 +159,7 @@ class SACAgent(tf.keras.Model):
         return pi_final
 
 
-class SACRunner(OffPolicyRunner, TFRunner):
+class Runner(OffPolicyRunner, TFRunner):
     def get_action_batch_explore(self, obs):
         return self.agent.act_batch(tf.convert_to_tensor(obs, tf.float32),
                                     tf.convert_to_tensor(False)).numpy()
@@ -167,61 +167,61 @@ class SACRunner(OffPolicyRunner, TFRunner):
     def get_action_batch_test(self, obs):
         return self.agent.act_batch_test(tf.convert_to_tensor(obs, dtype=tf.float32)).numpy()
 
+    @staticmethod
+    def main(env_name,
+             env_fn=None,
+             steps_per_epoch=5000,
+             epochs=200,
+             start_steps=10000,
+             update_after=4000,
+             update_every=1,
+             update_per_step=1,
+             policy_delay=1,
+             batch_size=256,
+             num_parallel_env=1,
+             num_test_episodes=20,
+             seed=1,
+             # sac args
+             nn_size=256,
+             learning_rate=3e-4,
+             alpha=0.2,
+             tau=5e-3,
+             gamma=0.99,
+             # replay
+             replay_size=int(1e6),
+             logger_path=None
+             ):
+        config = locals()
 
-def sac(env_name,
-        env_fn=None,
-        steps_per_epoch=5000,
-        epochs=200,
-        start_steps=10000,
-        update_after=4000,
-        update_every=1,
-        update_per_step=1,
-        policy_delay=1,
-        batch_size=256,
-        num_parallel_env=1,
-        num_test_episodes=20,
-        seed=1,
-        # sac args
-        nn_size=256,
-        learning_rate=3e-4,
-        alpha=0.2,
-        tau=5e-3,
-        gamma=0.99,
-        # replay
-        replay_size=int(1e6),
-        logger_path=None
-        ):
-    config = locals()
+        runner = Runner(seed=seed, steps_per_epoch=steps_per_epoch // num_parallel_env, epochs=epochs,
+                        exp_name=None, logger_path=logger_path)
+        runner.setup_env(env_name=env_name, env_fn=env_fn, num_parallel_env=num_parallel_env,
+                         asynchronous=False, num_test_episodes=num_test_episodes)
+        runner.setup_logger(config=config)
 
-    runner = SACRunner(seed=seed, steps_per_epoch=steps_per_epoch // num_parallel_env, epochs=epochs,
-                       exp_name=None, logger_path=logger_path)
-    runner.setup_env(env_name=env_name, env_fn=env_fn, num_parallel_env=num_parallel_env,
-                     asynchronous=False, num_test_episodes=num_test_episodes)
-    runner.setup_logger(config=config)
+        agent_kwargs = dict(
+            policy_mlp_hidden=nn_size,
+            policy_lr=learning_rate,
+            q_mlp_hidden=nn_size,
+            q_lr=learning_rate,
+            alpha=alpha,
+            alpha_lr=learning_rate,
+            tau=tau,
+            gamma=gamma,
+            target_entropy=None
+        )
 
-    agent_kwargs = dict(
-        policy_mlp_hidden=nn_size,
-        policy_lr=learning_rate,
-        q_mlp_hidden=nn_size,
-        q_lr=learning_rate,
-        alpha=alpha,
-        alpha_lr=learning_rate,
-        tau=tau,
-        gamma=gamma,
-        target_entropy=None
-    )
+        runner.setup_agent(agent_cls=SACAgent, **agent_kwargs)
+        runner.setup_extra(start_steps=start_steps,
+                           update_after=update_after,
+                           update_every=update_every,
+                           update_per_step=update_per_step,
+                           policy_delay=policy_delay)
+        runner.setup_replay_buffer(replay_size=replay_size,
+                                   batch_size=batch_size)
 
-    runner.setup_agent(agent_cls=SACAgent, **agent_kwargs)
-    runner.setup_extra(start_steps=start_steps,
-                       update_after=update_after,
-                       update_every=update_every,
-                       update_per_step=update_per_step,
-                       policy_delay=policy_delay)
-    runner.setup_replay_buffer(replay_size=replay_size,
-                               batch_size=batch_size)
-
-    runner.run()
+        runner.run()
 
 
 if __name__ == '__main__':
-    run_func_as_main(sac)
+    run_func_as_main(Runner.main)

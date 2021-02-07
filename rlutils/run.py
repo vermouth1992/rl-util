@@ -13,11 +13,11 @@ def main():
     algorithm_parsers = parser.add_subparsers(title='algorithm', help='algorithm specific parser', dest='algo')
     for algo in __all__:
         algo_parser = algorithm_parsers.add_parser(algo, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-        get_argparser_from_func(eval(f'{algo}.{algo}'), algo_parser)
+        get_argparser_from_func(eval(f'{algo}.Runner.main'), algo_parser)
 
     kwargs = vars(parser.parse_args())
     algo = kwargs.pop('algo')
-    eval(f'{algo}.{algo}')(**kwargs)
+    eval(f'{algo}.Runner.main')(**kwargs)
 
 
 if __name__ == '__main__':
