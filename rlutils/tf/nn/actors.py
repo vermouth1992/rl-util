@@ -1,8 +1,7 @@
-import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
 from rlutils.tf.distributions import make_independent_normal_from_params, apply_squash_log_prob, \
-    make_independent_beta_from_params, make_independent_truncated_normal, make_independent_normal
+    make_independent_centered_beta_from_params, make_independent_truncated_normal, make_independent_normal
 from rlutils.tf.functional import clip_atanh
 
 from .functional import build_mlp
@@ -23,15 +22,34 @@ def get_pi_action(deterministic, pi_distribution):
 def get_pi_action_categorical(deterministic, pi_distribution):
     # print(f'Tracing get_pi_action with deterministic={deterministic}')
     return tf.cond(pred=deterministic,
-                   true_fn=lambda: tf.argmax(pi_distribution.probs_parameter(), axis=-1, output_type=tf.int32),
+                   true_fn=lambda: tf.argmax(pi_distribution.probs_parameter(), axis=-1,
+                                             output_type=pi_distribution.dtype),
                    false_fn=lambda: pi_distribution.sample())
 
 
-class CategoricalActor(tf.keras.Model):
+class StochasticActor(tf.keras.Model):
+    @property
+    def pi_dist_layer(self):
+        raise NotImplementedError
+
+    def transform_raw_action(self, raw_actions):
+        return raw_actions
+
+    def inverse_transform_action(self, action):
+        return action
+
+    def transform_raw_log_prob(self, raw_log_prob, raw_action):
+        return raw_log_prob
+
+
+class CategoricalActor(StochasticActor):
     def __init__(self, obs_dim, act_dim, mlp_hidden):
         super(CategoricalActor, self).__init__()
         self.net = build_mlp(input_dim=obs_dim, output_dim=act_dim, mlp_hidden=mlp_hidden)
-        self.pi_dist_layer = tfp.layers.DistributionLambda(
+
+    @property
+    def pi_dist_layer(self):
+        return tfp.layers.DistributionLambda(
             make_distribution_fn=lambda t: tfd.Categorical(logits=t)
         )
 
@@ -45,7 +63,7 @@ class CategoricalActor(tf.keras.Model):
         return pi_action_final, logp_pi, pi_action, pi_distribution
 
 
-class NormalActor(tf.keras.Model):
+class NormalActor(StochasticActor):
     def __init__(self, obs_dim, act_dim, mlp_hidden, global_std=True):
         super(NormalActor, self).__init__()
         self.global_std = global_std
@@ -55,9 +73,9 @@ class NormalActor(tf.keras.Model):
         else:
             self.net = build_mlp(input_dim=obs_dim, output_dim=act_dim * 2, mlp_hidden=mlp_hidden)
             self.log_std = None
-        self.pi_dist_layer = self._get_pi_dist_layer()
 
-    def _get_pi_dist_layer(self):
+    @property
+    def pi_dist_layer(self):
         return tfp.layers.DistributionLambda(
             make_distribution_fn=lambda t: make_independent_normal(t[0], t[1]))
 
@@ -77,32 +95,25 @@ class NormalActor(tf.keras.Model):
 
 
 class TruncatedNormalActor(NormalActor):
-    def _get_pi_dist_layer(self):
+    @property
+    def pi_dist_layer(self):
         return tfp.layers.DistributionLambda(
             make_distribution_fn=lambda t: make_independent_truncated_normal(t[0], t[1]))
 
 
-class CenteredBetaMLPActor(tf.keras.Model):
+class CenteredBetaMLPActor(StochasticActor):
     """ Note that Beta distribution is 2x slower than SquashedGaussian"""
 
     def __init__(self, ob_dim, ac_dim, mlp_hidden):
         super(CenteredBetaMLPActor, self).__init__()
         self.net = build_mlp(ob_dim, ac_dim * 2, mlp_hidden)
         self.ac_dim = ac_dim
-        self.pi_dist_layer = tfp.layers.DistributionLambda(
-            make_distribution_fn=lambda t: make_independent_beta_from_params(t))
         self.build(input_shape=[(None, ob_dim), (None,)])
 
-    def transform_raw_action(self, raw_action):
-        return (raw_action - 0.5) * 2
-
-    def inverse_transform_action(self, action):
-        raw_action = (action + 1) / 2
-        raw_action = tf.clip_by_value(raw_action, EPS, 1. - EPS)
-        return raw_action
-
-    def transform_raw_log_prob(self, raw_log_prob, raw_action):
-        return raw_log_prob - np.log(2.)
+    @property
+    def pi_dist_layer(self):
+        return tfp.layers.DistributionLambda(
+            make_distribution_fn=lambda t: make_independent_centered_beta_from_params(t))
 
     def call(self, inputs, **kwargs):
         inputs, deterministic = inputs
@@ -112,20 +123,21 @@ class CenteredBetaMLPActor(tf.keras.Model):
         pi_action = get_pi_action(deterministic, pi_distribution)
         pi_action = tf.clip_by_value(pi_action, EPS, 1. - EPS)
         logp_pi = pi_distribution.log_prob(pi_action)
-        pi_action_final = self.transform_raw_action(pi_action)
-        logp_pi = self.transform_raw_log_prob(logp_pi, pi_action)
-        return pi_action_final, logp_pi, pi_action, pi_distribution
+        return pi_action, logp_pi, pi_action, pi_distribution
 
 
-class SquashedGaussianMLPActor(tf.keras.Model):
+class SquashedGaussianMLPActor(StochasticActor):
     def __init__(self, ob_dim, ac_dim, mlp_hidden):
         super(SquashedGaussianMLPActor, self).__init__()
         self.net = build_mlp(ob_dim, ac_dim * 2, mlp_hidden)
         self.ac_dim = ac_dim
-        self.pi_dist_layer = tfp.layers.DistributionLambda(
+        self.build(input_shape=[(None, ob_dim), (None,)])
+
+    @property
+    def pi_dist_layer(self):
+        return tfp.layers.DistributionLambda(
             make_distribution_fn=lambda t: make_independent_normal_from_params(t, min_log_scale=LOG_STD_RANGE[0],
                                                                                max_log_scale=LOG_STD_RANGE[1]))
-        self.build(input_shape=[(None, ob_dim), (None,)])
 
     def transform_raw_action(self, action):
         return tf.tanh(action)

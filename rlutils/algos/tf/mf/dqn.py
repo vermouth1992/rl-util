@@ -2,15 +2,14 @@
 Deep Q Network for low-dimensional observation space
 """
 
+import rlutils.tf as rlu
 import tensorflow as tf
 from rlutils.runner import OffPolicyRunner, TFRunner, run_func_as_main
-from rlutils.tf.functional import hard_update, soft_update
-from rlutils.tf.nn.functional import build_mlp
 
 
 def gather_q_values(q_values, actions):
     batch_size = tf.shape(actions)[0]
-    idx = tf.stack([tf.range(batch_size), actions], axis=-1)  # (None, 2)
+    idx = tf.stack([tf.range(batch_size, dtype=actions.dtype), actions], axis=-1)  # (None, 2)
     q_values = tf.gather_nd(q_values, indices=idx)
     return q_values
 
@@ -27,10 +26,12 @@ class DQN(tf.keras.Model):
                  tau=5e-3,
                  huber_delta=None):
         super(DQN, self).__init__()
+        self.obs_spec = obs_spec
+        self.act_spec = act_spec
         obs_dim = obs_spec.shape[0]
-        act_dim = act_spec.maxval
-        self.q_network = build_mlp(obs_dim, act_dim, mlp_hidden=mlp_hidden, num_layers=3)
-        self.target_q_network = build_mlp(obs_dim, act_dim, mlp_hidden=mlp_hidden, num_layers=3)
+        act_dim = act_spec.n
+        self.q_network = rlu.nn.build_mlp(obs_dim, act_dim, mlp_hidden=mlp_hidden, num_layers=3)
+        self.target_q_network = rlu.nn.build_mlp(obs_dim, act_dim, mlp_hidden=mlp_hidden, num_layers=3)
         self.q_optimizer = tf.keras.optimizers.Adam(lr=q_lr)
         self.epsilon = tf.Variable(initial_value=epsilon, dtype=tf.float32, trainable=False)
         self.act_dim = act_dim
@@ -43,7 +44,7 @@ class DQN(tf.keras.Model):
             self.loss_fn = tf.keras.losses.MeanSquaredError(reduction=reduction)
         else:
             self.loss_fn = tf.keras.losses.Huber(delta=huber_delta, reduction=reduction)
-        hard_update(self.target_q_network, self.q_network)
+        rlu.functional.hard_update(self.target_q_network, self.q_network)
 
     def set_logger(self, logger):
         self.logger = logger
@@ -58,7 +59,7 @@ class DQN(tf.keras.Model):
 
     @tf.function
     def update_target(self):
-        soft_update(self.target_q_network, self.q_network, tau=self.tau)
+        rlu.functional.soft_update(self.target_q_network, self.q_network, tau=self.tau)
 
     @tf.function
     def _update_nets(self, obs, act, next_obs, done, rew):
@@ -67,7 +68,7 @@ class DQN(tf.keras.Model):
         target_q_values = self.target_q_network(next_obs)
         if self.double_q:
             # select action using Q network instead of target Q network
-            target_actions = tf.argmax(self.q_network(next_obs), axis=-1, output_type=tf.int32)
+            target_actions = tf.argmax(self.q_network(next_obs), axis=-1, output_type=self.act_spec.dtype)
             target_q_values = gather_q_values(target_q_values, target_actions)
         else:
             target_q_values = tf.reduce_max(target_q_values, axis=-1)
@@ -83,13 +84,18 @@ class DQN(tf.keras.Model):
         )
         return info
 
-    def update(self, obs, act, next_obs, rew, done, update_target=True):
+    @tf.function
+    def train_step(self, data):
+        obs = data['obs']
+        act = data['act']
+        next_obs = data['next_obs']
+        done = data['done']
+        rew = data['rew']
+        update_target = data['update_target']
         info = self._update_nets(obs, act, next_obs, done, rew)
-        for key, item in info.items():
-            info[key] = item.numpy()
-        self.logger.store(**info)
         if update_target:
             self.update_target()
+        return info
 
     @tf.function
     def act_batch(self, obs, deterministic):
@@ -97,8 +103,9 @@ class DQN(tf.keras.Model):
         batch_size = tf.shape(obs)[0]
         epsilon = tf.random.uniform(shape=(batch_size,), minval=0., maxval=1., dtype=tf.float32)
         epsilon_indicator = tf.cast(epsilon > self.epsilon, dtype=tf.int32)  # (None,)
-        random_actions = tf.random.uniform(shape=(batch_size,), minval=0, maxval=self.act_dim, dtype=tf.int32)
-        deterministic_actions = tf.argmax(self.q_network(obs), axis=-1, output_type=tf.int32)
+        random_actions = tf.random.uniform(shape=(batch_size,), minval=0, maxval=self.act_dim,
+                                           dtype=self.act_spec.dtype)
+        deterministic_actions = tf.argmax(self.q_network(obs), axis=-1, output_type=self.act_spec.dtype)
         epsilon_greedy_actions = tf.stack([random_actions, deterministic_actions], axis=-1)  # (None, 2)
         epsilon_greedy_actions = gather_q_values(epsilon_greedy_actions, epsilon_indicator)
         final_actions = tf.cond(deterministic, true_fn=lambda: deterministic_actions,
@@ -106,7 +113,7 @@ class DQN(tf.keras.Model):
         return final_actions
 
 
-class DQNRunner(OffPolicyRunner, TFRunner):
+class Runner(OffPolicyRunner, TFRunner):
     def get_action_batch_test(self, obs):
         return self.agent.act_batch(tf.convert_to_tensor(obs, dtype=tf.float32),
                                     tf.convert_to_tensor(True, dtype=tf.bool)).numpy()
@@ -114,57 +121,60 @@ class DQNRunner(OffPolicyRunner, TFRunner):
     def get_action_batch_explore(self, obs):
         return self.agent.act_batch(self.o, deterministic=tf.convert_to_tensor(False)).numpy()
 
+    @staticmethod
+    def main(env_name,
+             env_fn=None,
+             steps_per_epoch=1000,
+             epochs=500,
+             start_steps=2000,
+             update_after=500,
+             update_every=1,
+             update_per_step=1,
+             batch_size=256,
+             num_parallel_env=1,
+             num_test_episodes=20,
+             seed=1,
+             # agent args
+             mlp_hidden=256,
+             double_q=True,
+             q_lr=1e-4,
+             gamma=0.99,
+             huber_delta=None,
+             tau=5e-3,
+             epsilon=0.1,
+             # replay
+             replay_size=int(1e6),
+             logger_path=None
+             ):
+        agent_kwargs = dict(
+            mlp_hidden=mlp_hidden,
+            double_q=double_q,
+            q_lr=q_lr,
+            gamma=gamma,
+            huber_delta=huber_delta,
+            tau=tau,
+            epsilon=epsilon
+        )
 
-def dqn(env_name,
-        env_fn=None,
-        steps_per_epoch=1000,
-        epochs=500,
-        start_steps=2000,
-        update_after=500,
-        update_every=1,
-        update_per_step=1,
-        batch_size=256,
-        num_parallel_env=1,
-        num_test_episodes=20,
-        seed=1,
-        # agent args
-        mlp_hidden=256,
-        double_q=True,
-        q_lr=1e-4,
-        gamma=0.99,
-        huber_delta=None,
-        tau=5e-3,
-        epsilon=0.1,
-        # replay
-        replay_size=int(1e6),
-        logger_path='data'
-        ):
-    config = locals()
-    runner = DQNRunner(seed=seed, steps_per_epoch=steps_per_epoch, epochs=epochs, logger_path=logger_path)
-    runner.setup_env(env_name=env_name, num_parallel_env=num_parallel_env, asynchronous=False,
-                     num_test_episodes=num_test_episodes, env_fn=env_fn)
-    runner.setup_seed(seed)
-    runner.setup_logger(config=config)
-    agent_kwargs = dict(
-        mlp_hidden=mlp_hidden,
-        double_q=double_q,
-        q_lr=q_lr,
-        gamma=gamma,
-        huber_delta=huber_delta,
-        tau=tau,
-        epsilon=epsilon
-    )
-    runner.setup_agent(DQN, **agent_kwargs)
-    runner.setup_extra(start_steps=start_steps,
-                       update_after=update_after,
-                       update_every=update_every,
-                       update_per_step=update_per_step,
-                       policy_delay=1)
-    runner.setup_replay_buffer(replay_size=replay_size,
-                               batch_size=batch_size,
-                               )
-    runner.run()
+        OffPolicyRunner.main(env_name=env_name,
+                             env_fn=env_fn,
+                             steps_per_epoch=steps_per_epoch,
+                             epochs=epochs,
+                             start_steps=start_steps,
+                             update_after=update_after,
+                             update_every=update_every,
+                             update_per_step=update_per_step,
+                             policy_delay=1,
+                             batch_size=batch_size,
+                             num_parallel_env=num_parallel_env,
+                             num_test_episodes=num_test_episodes,
+                             seed=seed,
+                             runner_cls=Runner,
+                             agent_cls=DQN,
+                             agent_kwargs=agent_kwargs,
+                             replay_size=replay_size,
+                             logger_path=logger_path)
 
 
 if __name__ == '__main__':
-    run_func_as_main(dqn)
+    run_func_as_main(Runner.main)

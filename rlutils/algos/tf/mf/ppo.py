@@ -8,9 +8,8 @@ import numpy as np
 import tensorflow as tf
 from rlutils.replay_buffers import GAEBuffer
 from rlutils.runner import TFRunner, run_func_as_main
-from rlutils.tf.distributions import apply_squash_log_prob
-from rlutils.tf.functional import to_numpy_or_python_type, clip_atanh
-from rlutils.tf.nn import CategoricalActor, SquashedGaussianMLPActor
+from rlutils.tf.functional import to_numpy_or_python_type
+from rlutils.tf.nn import CategoricalActor, CenteredBetaMLPActor
 from rlutils.tf.nn.functional import build_mlp
 
 
@@ -39,7 +38,7 @@ class PPOAgent(tf.keras.Model):
         if act_dtype == np.int32:
             self.policy_net = CategoricalActor(obs_dim=obs_dim, act_dim=act_dim, mlp_hidden=mlp_hidden)
         else:
-            self.policy_net = SquashedGaussianMLPActor(obs_dim, act_dim, mlp_hidden=mlp_hidden)
+            self.policy_net = CenteredBetaMLPActor(obs_dim, act_dim, mlp_hidden=mlp_hidden)
         self.pi_optimizer = tf.keras.optimizers.Adam(learning_rate=pi_lr)
         self.v_optimizer = tf.keras.optimizers.Adam(learning_rate=vf_lr)
         self.value_net = build_mlp(input_dim=obs_dim, output_dim=1, squeeze=True, mlp_hidden=mlp_hidden)
@@ -127,7 +126,7 @@ class PPOAgent(tf.keras.Model):
         self.logger.store(**to_numpy_or_python_type(info))
 
 
-class PPORunner(TFRunner):
+class Runner(TFRunner):
     def setup_agent(self,
                     mlp_hidden,
                     pi_lr,
@@ -222,33 +221,33 @@ class PPORunner(TFRunner):
         self.agent.log_tabular()
         self.logger.dump_tabular()
 
+    @staticmethod
+    def main(env_name, env_fn=None, mlp_hidden=256, seed=0, batch_size=5000, num_parallel_envs=5,
+             epochs=200, gamma=0.99, clip_ratio=0.2, pi_lr=3e-4, vf_lr=1e-3,
+             train_pi_iters=80, train_vf_iters=80,
+             lam=0.97, max_ep_len=1000, target_kl=0.05, entropy_coef=1e-3, logger_path=None):
+        # Instantiate environment
+        assert batch_size % num_parallel_envs == 0
 
-def ppo(env_name, env_fn=None, mlp_hidden=256, seed=0, batch_size=5000, num_parallel_envs=5,
-        epochs=200, gamma=0.99, clip_ratio=0.2, pi_lr=3e-4, vf_lr=1e-3,
-        train_pi_iters=80, train_vf_iters=80,
-        lam=0.97, max_ep_len=1000, target_kl=0.05, entropy_coef=1e-3, logger_path='data'):
-    # Instantiate environment
-    assert batch_size % num_parallel_envs == 0
+        steps_per_epoch = batch_size // num_parallel_envs
 
-    steps_per_epoch = batch_size // num_parallel_envs
-
-    config = locals()
-    runner = PPORunner(seed=seed, steps_per_epoch=steps_per_epoch,
-                       epochs=epochs, exp_name=None, logger_path=logger_path)
-    runner.setup_env(env_name=env_name, env_fn=env_fn, num_parallel_env=num_parallel_envs,
-                     asynchronous=False, num_test_episodes=None)
-    runner.setup_logger(config)
-    runner.setup_agent(mlp_hidden=mlp_hidden,
-                       pi_lr=pi_lr,
-                       vf_lr=vf_lr,
-                       clip_ratio=clip_ratio,
-                       entropy_coef=entropy_coef,
-                       target_kl=target_kl,
-                       train_pi_iters=train_pi_iters,
-                       train_vf_iters=train_vf_iters)
-    runner.setup_replay_buffer(max_length=steps_per_epoch, gamma=gamma, lam=lam)
-    runner.run()
+        config = locals()
+        runner = Runner(seed=seed, steps_per_epoch=steps_per_epoch,
+                        epochs=epochs, exp_name=None, logger_path=logger_path)
+        runner.setup_env(env_name=env_name, env_fn=env_fn, num_parallel_env=num_parallel_envs,
+                         asynchronous=False, num_test_episodes=None)
+        runner.setup_logger(config)
+        runner.setup_agent(mlp_hidden=mlp_hidden,
+                           pi_lr=pi_lr,
+                           vf_lr=vf_lr,
+                           clip_ratio=clip_ratio,
+                           entropy_coef=entropy_coef,
+                           target_kl=target_kl,
+                           train_pi_iters=train_pi_iters,
+                           train_vf_iters=train_vf_iters)
+        runner.setup_replay_buffer(max_length=steps_per_epoch, gamma=gamma, lam=lam)
+        runner.run()
 
 
 if __name__ == '__main__':
-    run_func_as_main(ppo)
+    run_func_as_main(Runner.main)

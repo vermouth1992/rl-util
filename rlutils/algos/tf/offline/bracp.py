@@ -573,7 +573,7 @@ class BRACPAgent(tf.keras.Model):
             t.set_description(desc=f'Loss: {loss:.2f}')
 
 
-class BRACPRunner(TFRunner):
+class Runner(TFRunner):
     def get_action_batch(self, o, deterministic=False):
         return self.agent.act_batch(tf.convert_to_tensor(o, dtype=tf.float32),
                                     deterministic).numpy()
@@ -774,117 +774,117 @@ class BRACPRunner(TFRunner):
     def on_train_end(self):
         self.agent.save_weights(filepath=self.final_filepath)
 
+    @staticmethod
+    def main(env_name,
+             steps_per_epoch=2500,
+             pretrain_epochs=200,
+             pretrain_behavior=False,
+             pretrain_cloning=False,
+             epochs=400,
+             batch_size=100,
 
-def bracp(env_name,
-          steps_per_epoch=2500,
-          pretrain_epochs=200,
-          pretrain_behavior=False,
-          pretrain_cloning=False,
-          epochs=400,
-          batch_size=100,
+             num_test_episodes=20,
+             seed=1,
+             # agent args
+             policy_mlp_hidden=256,
+             q_mlp_hidden=256,
+             policy_lr=5e-6,
+             policy_behavior_lr=1e-3,
+             q_lr=3e-4,
+             alpha_lr=1e-3,
+             alpha=10.0,
+             tau=1e-3,
+             gamma=0.99,
+             target_entropy: float = None,
+             max_kl: float = None,
+             use_gp=True,
+             reg_type='kl',
+             sigma=20,
+             n=5,
+             gp_weight=0.1,
+             entropy_reg=True,
+             kl_backup=False,
+             generalization_threshold=0.1,
+             std_scale=4.,
+             # behavior policy
+             num_ensembles=3,
+             behavior_mlp_hidden=256,
+             behavior_lr=1e-3,
+             # others
+             reward_scale=True,
+             save_freq: int = None,
+             tensorboard=False,
+             ):
+        """Main function to run Improved Behavior Regularized Actor Critic (BRAC+)
 
-          num_test_episodes=20,
-          seed=1,
-          # agent args
-          policy_mlp_hidden=256,
-          q_mlp_hidden=256,
-          policy_lr=5e-6,
-          policy_behavior_lr=1e-3,
-          q_lr=3e-4,
-          alpha_lr=1e-3,
-          alpha=10.0,
-          tau=1e-3,
-          gamma=0.99,
-          target_entropy: float = None,
-          max_kl: float = None,
-          use_gp=True,
-          reg_type='kl',
-          sigma=20,
-          n=5,
-          gp_weight=0.1,
-          entropy_reg=True,
-          kl_backup=False,
-          generalization_threshold=0.1,
-          std_scale=4.,
-          # behavior policy
-          num_ensembles=3,
-          behavior_mlp_hidden=256,
-          behavior_lr=1e-3,
-          # others
-          reward_scale=True,
-          save_freq: int = None,
-          tensorboard=False,
-          ):
-    """Main function to run Improved Behavior Regularized Actor Critic (BRAC+)
+        Args:
+            env_name (str): name of the environment
+            steps_per_epoch (int): number of steps per epoch
+            pretrain_epochs (int): number of epochs to pretrain
+            pretrain_behavior (bool): whether to pretrain the behavior policy or load from checkpoint.
+                If load fails, the flag is ignored.
+            pretrain_cloning (bool):whether to pretrain the initial policy or load from checkpoint.
+                If load fails, the flag is ignored.
+            epochs (int): number of epochs to run
+            batch_size (int): batch size of the data sampled from the dataset
+            num_test_episodes (int): number of test episodes to evaluate the policy after each epoch
+            seed (int): random seed
+            policy_mlp_hidden (int): MLP hidden size of the policy network
+            q_mlp_hidden (int): MLP hidden size of the Q network
+            policy_lr (float): learning rate of the policy network
+            policy_behavior_lr (float): learning rate used to train the policy that minimize the distance between the policy
+                and the behavior policy. This is usally larger than policy_lr.
+            q_lr (float): learning rate of the q network
+            alpha_lr (float): learning rate of the alpha
+            alpha (int): initial Lagrange multiplier used to control the maximum distance between the \pi and \pi_b
+            tau (float): polyak average coefficient of the target update
+            gamma (float): discount factor
+            target_entropy (float or None): target entropy of the policy
+            max_kl (float or None): maximum of the distance between \pi and \pi_b
+            use_gp (bool): whether use gradient penalty or not
+            reg_type (str): regularization type
+            sigma (float): sigma of the Laplacian kernel for MMD
+            n (int): number of samples when estimate the expectation for policy evaluation and update
+            gp_weight (float): initial GP weight
+            entropy_reg (bool): whether use entropy regularization or not
+            kl_backup (bool): whether add the KL loss to the backup value of the target Q network
+            generalization_threshold (float): generalization threshold used to compute max_kl when max_kl is None
+            std_scale (float): standard deviation scale when computing target_entropy when it is None.
+            num_ensembles (int): number of ensembles to train the behavior policy
+            behavior_mlp_hidden (int): MLP hidden size of the behavior policy
+            behavior_lr (float): the learning rate of the behavior policy
+            reward_scale (bool): whether to use reward scale or not. By default, it will scale to [0, 1]
+            save_freq (int or None): the frequency to save the model
+            tensorboard (bool): whether to turn on tensorboard logging
+        """
 
-    Args:
-        env_name (str): name of the environment
-        steps_per_epoch (int): number of steps per epoch
-        pretrain_epochs (int): number of epochs to pretrain
-        pretrain_behavior (bool): whether to pretrain the behavior policy or load from checkpoint.
-            If load fails, the flag is ignored.
-        pretrain_cloning (bool):whether to pretrain the initial policy or load from checkpoint.
-            If load fails, the flag is ignored.
-        epochs (int): number of epochs to run
-        batch_size (int): batch size of the data sampled from the dataset
-        num_test_episodes (int): number of test episodes to evaluate the policy after each epoch
-        seed (int): random seed
-        policy_mlp_hidden (int): MLP hidden size of the policy network
-        q_mlp_hidden (int): MLP hidden size of the Q network
-        policy_lr (float): learning rate of the policy network
-        policy_behavior_lr (float): learning rate used to train the policy that minimize the distance between the policy
-            and the behavior policy. This is usally larger than policy_lr.
-        q_lr (float): learning rate of the q network
-        alpha_lr (float): learning rate of the alpha
-        alpha (int): initial Lagrange multiplier used to control the maximum distance between the \pi and \pi_b
-        tau (float): polyak average coefficient of the target update
-        gamma (float): discount factor
-        target_entropy (float or None): target entropy of the policy
-        max_kl (float or None): maximum of the distance between \pi and \pi_b
-        use_gp (bool): whether use gradient penalty or not
-        reg_type (str): regularization type
-        sigma (float): sigma of the Laplacian kernel for MMD
-        n (int): number of samples when estimate the expectation for policy evaluation and update
-        gp_weight (float): initial GP weight
-        entropy_reg (bool): whether use entropy regularization or not
-        kl_backup (bool): whether add the KL loss to the backup value of the target Q network
-        generalization_threshold (float): generalization threshold used to compute max_kl when max_kl is None
-        std_scale (float): standard deviation scale when computing target_entropy when it is None.
-        num_ensembles (int): number of ensembles to train the behavior policy
-        behavior_mlp_hidden (int): MLP hidden size of the behavior policy
-        behavior_lr (float): the learning rate of the behavior policy
-        reward_scale (bool): whether to use reward scale or not. By default, it will scale to [0, 1]
-        save_freq (int or None): the frequency to save the model
-        tensorboard (bool): whether to turn on tensorboard logging
-    """
+        config = locals()
 
-    config = locals()
+        runner = Runner(seed=seed, steps_per_epoch=steps_per_epoch, epochs=epochs,
+                        exp_name=None, logger_path='data')
+        runner.setup_env(env_name=env_name, num_parallel_env=num_test_episodes, frame_stack=None, wrappers=None,
+                         asynchronous=False, num_test_episodes=None)
+        runner.setup_logger(config=config, tensorboard=tensorboard)
+        runner.setup_agent(num_ensembles=num_ensembles,
+                           behavior_mlp_hidden=behavior_mlp_hidden,
+                           behavior_lr=behavior_lr,
+                           policy_mlp_hidden=policy_mlp_hidden, q_mlp_hidden=q_mlp_hidden,
+                           policy_lr=policy_lr, q_lr=q_lr, alpha_lr=alpha_lr, alpha=alpha, tau=tau, gamma=gamma,
+                           target_entropy=target_entropy, use_gp=use_gp,
+                           policy_behavior_lr=policy_behavior_lr,
+                           reg_type=reg_type, sigma=sigma, n=n, gp_weight=gp_weight,
+                           entropy_reg=entropy_reg, kl_backup=kl_backup)
+        runner.setup_extra(pretrain_epochs=pretrain_epochs,
+                           save_freq=save_freq,
+                           max_kl=max_kl,
+                           force_pretrain_behavior=pretrain_behavior,
+                           force_pretrain_cloning=pretrain_cloning,
+                           generalization_threshold=generalization_threshold,
+                           std_scale=std_scale)
+        runner.setup_replay_buffer(batch_size=batch_size,
+                                   reward_scale=reward_scale)
 
-    runner = BRACPRunner(seed=seed, steps_per_epoch=steps_per_epoch, epochs=epochs,
-                         exp_name=None, logger_path='data')
-    runner.setup_env(env_name=env_name, num_parallel_env=num_test_episodes, frame_stack=None, wrappers=None,
-                     asynchronous=False, num_test_episodes=None)
-    runner.setup_logger(config=config, tensorboard=tensorboard)
-    runner.setup_agent(num_ensembles=num_ensembles,
-                       behavior_mlp_hidden=behavior_mlp_hidden,
-                       behavior_lr=behavior_lr,
-                       policy_mlp_hidden=policy_mlp_hidden, q_mlp_hidden=q_mlp_hidden,
-                       policy_lr=policy_lr, q_lr=q_lr, alpha_lr=alpha_lr, alpha=alpha, tau=tau, gamma=gamma,
-                       target_entropy=target_entropy, use_gp=use_gp,
-                       policy_behavior_lr=policy_behavior_lr,
-                       reg_type=reg_type, sigma=sigma, n=n, gp_weight=gp_weight,
-                       entropy_reg=entropy_reg, kl_backup=kl_backup)
-    runner.setup_extra(pretrain_epochs=pretrain_epochs,
-                       save_freq=save_freq,
-                       max_kl=max_kl,
-                       force_pretrain_behavior=pretrain_behavior,
-                       force_pretrain_cloning=pretrain_cloning,
-                       generalization_threshold=generalization_threshold,
-                       std_scale=std_scale)
-    runner.setup_replay_buffer(batch_size=batch_size,
-                               reward_scale=reward_scale)
-
-    runner.run()
+        runner.run()
 
 
 if __name__ == '__main__':
@@ -899,4 +899,4 @@ if __name__ == '__main__':
     args = vars(parser.parse_args())
     env_name = args['env_name']
 
-    bracp(**args)
+    Runner.main(**args)

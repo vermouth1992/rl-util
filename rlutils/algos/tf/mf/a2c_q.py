@@ -128,7 +128,7 @@ class A2CQAgent(tf.keras.Model):
         self.logger.store(**to_numpy_or_python_type(info))
 
 
-class A2CQRunner(TFRunner):
+class Runner(TFRunner):
     def setup_agent(self,
                     mlp_hidden,
                     pi_lr,
@@ -200,31 +200,31 @@ class A2CQRunner(TFRunner):
         self.agent.log_tabular()
         self.logger.dump_tabular()
 
+    @staticmethod
+    def main(env_name, env_fn=None, mlp_hidden=256, seed=0, batch_size=5000, num_parallel_envs=5,
+             epochs=200, gamma=0.99, clip_ratio=0.2, pi_lr=3e-4, vf_lr=1e-3,
+             train_vf_iters=80, lam=0.97, max_ep_len=1000, target_kl=0.05, entropy_coef=1e-3, logger_path=None):
+        # Instantiate environment
+        assert batch_size % num_parallel_envs == 0
 
-def a2c_q(env_name, env_fn=None, mlp_hidden=256, seed=0, batch_size=5000, num_parallel_envs=5,
-          epochs=200, gamma=0.99, clip_ratio=0.2, pi_lr=3e-4, vf_lr=1e-3,
-          train_vf_iters=80, lam=0.97, max_ep_len=1000, target_kl=0.05, entropy_coef=1e-3, logger_path='data'):
-    # Instantiate environment
-    assert batch_size % num_parallel_envs == 0
+        steps_per_epoch = batch_size // num_parallel_envs
 
-    steps_per_epoch = batch_size // num_parallel_envs
-
-    config = locals()
-    runner = A2CQRunner(seed=seed, steps_per_epoch=steps_per_epoch,
+        config = locals()
+        runner = Runner(seed=seed, steps_per_epoch=steps_per_epoch,
                         epochs=epochs, exp_name=None, logger_path=logger_path)
-    runner.setup_env(env_name=env_name, num_parallel_env=num_parallel_envs, env_fn=env_fn,
-                     asynchronous=False, num_test_episodes=None)
-    runner.setup_logger(config)
-    runner.setup_agent(mlp_hidden=mlp_hidden,
-                       pi_lr=pi_lr,
-                       vf_lr=vf_lr,
-                       clip_ratio=clip_ratio,
-                       entropy_coef=entropy_coef,
-                       target_kl=target_kl,
-                       train_vf_iters=train_vf_iters)
-    runner.setup_replay_buffer(max_length=steps_per_epoch, gamma=gamma, lam=lam)
-    runner.run()
+        runner.setup_env(env_name=env_name, num_parallel_env=num_parallel_envs, env_fn=env_fn,
+                         asynchronous=False, num_test_episodes=None)
+        runner.setup_logger(config)
+        runner.setup_agent(mlp_hidden=mlp_hidden,
+                           pi_lr=pi_lr,
+                           vf_lr=vf_lr,
+                           clip_ratio=clip_ratio,
+                           entropy_coef=entropy_coef,
+                           target_kl=target_kl,
+                           train_vf_iters=train_vf_iters)
+        runner.setup_replay_buffer(max_length=steps_per_epoch, gamma=gamma, lam=lam)
+        runner.run()
 
 
 if __name__ == '__main__':
-    run_func_as_main(a2c_q)
+    run_func_as_main(Runner.main)

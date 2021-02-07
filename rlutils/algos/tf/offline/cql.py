@@ -240,7 +240,7 @@ class CQLAgent(tf.keras.Model):
         return pi_final
 
 
-class CQLRunner(TFRunner):
+class Runner(TFRunner):
     def get_action_batch(self, o, deterministic=False):
         return self.agent.act_batch(tf.convert_to_tensor(o, dtype=tf.float32),
                                     deterministic).numpy()
@@ -339,49 +339,49 @@ class CQLRunner(TFRunner):
     def on_train_begin(self):
         self.start_time = time.time()
 
+    @staticmethod
+    def main(env_name,
+             max_ep_len=1000,
+             steps_per_epoch=2000,
+             epochs=500,
+             start_steps=1000 * 10,
+             batch_size=256,
+             num_test_episodes=20,
+             seed=1,
+             # sac args
+             nn_size=256,
+             learning_rate=3e-4,
+             alpha=0.2,
+             tau=5e-3,
+             gamma=0.99,
+             # replay
+             replay_size=int(1e6),
+             ):
+        config = locals()
 
-def cql(env_name,
-        max_ep_len=1000,
-        steps_per_epoch=2000,
-        epochs=500,
-        start_steps=1000 * 10,
-        batch_size=256,
-        num_test_episodes=20,
-        seed=1,
-        # sac args
-        nn_size=256,
-        learning_rate=3e-4,
-        alpha=0.2,
-        tau=5e-3,
-        gamma=0.99,
-        # replay
-        replay_size=int(1e6),
-        ):
-    config = locals()
+        runner = Runner(seed=seed, steps_per_epoch=steps_per_epoch, epochs=epochs,
+                        exp_name=None, logger_path='data')
+        runner.setup_env(env_name=env_name, num_parallel_env=num_test_episodes, frame_stack=None, wrappers=None,
+                         asynchronous=False, num_test_episodes=None)
+        runner.setup_logger(config=config)
+        runner.setup_agent(policy_mlp_hidden=nn_size,
+                           policy_lr=learning_rate,
+                           q_mlp_hidden=nn_size,
+                           q_lr=learning_rate,
+                           alpha=alpha,
+                           alpha_lr=1e-3,
+                           alpha_cql=alpha,
+                           alpha_cql_lr=1e-3,
+                           tau=tau,
+                           gamma=gamma,
+                           num_samples=10,
+                           cql_threshold=-1.,
+                           target_entropy=None)
+        runner.setup_extra(start_steps=start_steps)
+        runner.setup_replay_buffer(batch_size=batch_size)
 
-    runner = CQLRunner(seed=seed, steps_per_epoch=steps_per_epoch, epochs=epochs,
-                       exp_name=None, logger_path='data')
-    runner.setup_env(env_name=env_name, num_parallel_env=num_test_episodes, frame_stack=None, wrappers=None,
-                     asynchronous=False, num_test_episodes=None)
-    runner.setup_logger(config=config)
-    runner.setup_agent(policy_mlp_hidden=nn_size,
-                       policy_lr=learning_rate,
-                       q_mlp_hidden=nn_size,
-                       q_lr=learning_rate,
-                       alpha=alpha,
-                       alpha_lr=1e-3,
-                       alpha_cql=alpha,
-                       alpha_cql_lr=1e-3,
-                       tau=tau,
-                       gamma=gamma,
-                       num_samples=10,
-                       cql_threshold=-1.,
-                       target_entropy=None)
-    runner.setup_extra(start_steps=start_steps)
-    runner.setup_replay_buffer(batch_size=batch_size)
-
-    runner.run()
+        runner.run()
 
 
 if __name__ == '__main__':
-    run_func_as_main(cql)
+    run_func_as_main(Runner.main)

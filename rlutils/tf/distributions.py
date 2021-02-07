@@ -5,6 +5,28 @@ import tensorflow_probability as tfp
 tfd = tfp.distributions
 tfb = tfp.bijectors
 
+EPS = 1e-4
+
+
+class CenteredBeta(tfd.TransformedDistribution):
+    def __init__(self,
+                 concentration1,
+                 concentration0,
+                 validate_args=False,
+                 allow_nan_stats=True,
+                 name='CenteredBeta'):
+        parameters = dict(locals())
+        with tf.name_scope(name) as name:
+            super(CenteredBeta, self).__init__(
+                distribution=tfd.Beta(concentration1=concentration1, concentration0=concentration0),
+                bijector=tfb.Chain(bijectors=[
+                    tfb.Shift(shift=-1.),
+                    tfb.Scale(scale=2.)
+                ]),
+                validate_args=validate_args,
+                parameters=parameters,
+                name=name)
+
 
 def apply_squash_log_prob(raw_log_prob, x):
     """ Compute the log probability after applying tanh on raw_actions
@@ -42,6 +64,20 @@ def make_independent_truncated_normal(loc_params, scale_params, ndims=1):
                                                                        low=-1., high=1.),
                                       reinterpreted_batch_ndims=ndims)
     return pi_distribution
+
+
+def make_independent_centered_beta_from_params(params):
+    params = tf.math.softplus(params) + 1.0
+    c1, c2 = tf.split(params, 2, axis=-1)
+    distribution = make_independent_centered_beta(c1, c2, ndims=1)
+    return distribution
+
+
+def make_independent_centered_beta(c1, c2, ndims=1):
+    beta_distribution = CenteredBeta(concentration1=c1, concentration0=c2, validate_args=False, allow_nan_stats=False)
+    distribution = tfd.Independent(beta_distribution,
+                                   reinterpreted_batch_ndims=ndims)
+    return distribution
 
 
 def make_independent_beta_from_params(params):
