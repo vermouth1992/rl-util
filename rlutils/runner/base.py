@@ -98,6 +98,7 @@ class BaseRunner(ABC):
     def setup_env(self,
                   env_name,
                   env_fn=None,
+                  act_lim=1.,
                   num_parallel_env=1,
                   asynchronous=False,
                   num_test_episodes=None):
@@ -141,12 +142,12 @@ class BaseRunner(ABC):
         #     assert self.dummy_env.action_space.dtype == np.int32
 
         if isinstance(self.dummy_env.action_space, gym.spaces.Box):
-            high_all = np.all(self.dummy_env.action_space.high == 1.)
-            low_all = np.all(self.dummy_env.action_space.low == -1.)
-            print(self.dummy_env.action_space.high, self.dummy_env.action_space.low)
+            high_all = np.all(self.dummy_env.action_space.high == act_lim)
+            low_all = np.all(self.dummy_env.action_space.low == -act_lim)
+            print(f'Original high: {self.dummy_env.action_space.high}, low: {self.dummy_env.action_space.low}')
             if not (high_all and low_all):
-                print('Rescale action space to [-1, 1]')
-                fn = lambda env: gym.wrappers.RescaleAction(env, a=-1., b=1.)
+                print(f'Rescale action space to [-{act_lim}, {act_lim}]')
+                fn = lambda env: gym.wrappers.RescaleAction(env, a=-act_lim, b=act_lim)
                 wrappers.append(fn)
 
         def _make_env():
@@ -301,3 +302,45 @@ class OffPolicyRunner(BaseRunner):
         self.ep_ret = np.zeros(shape=self.num_parallel_env)
         self.ep_len = np.zeros(shape=self.num_parallel_env, dtype=np.int64)
         self.update_target = 0
+
+    @staticmethod
+    def main(env_name,
+             env_fn=None,
+             steps_per_epoch=5000,
+             epochs=200,
+             start_steps=10000,
+             update_after=4000,
+             update_every=1,
+             update_per_step=1,
+             policy_delay=1,
+             batch_size=256,
+             num_parallel_env=1,
+             num_test_episodes=20,
+             seed=1,
+             # runner class
+             runner_cls=None,
+             # agent args
+             agent_cls=None,
+             agent_kwargs={},
+             # replay
+             replay_size=int(1e6),
+             logger_path=None
+             ):
+        config = locals()
+
+        runner = runner_cls(seed=seed, steps_per_epoch=steps_per_epoch // num_parallel_env, epochs=epochs,
+                            exp_name=None, logger_path=logger_path)
+        runner.setup_env(env_name=env_name, env_fn=env_fn, act_lim=1.0, num_parallel_env=num_parallel_env,
+                         asynchronous=False, num_test_episodes=num_test_episodes)
+        runner.setup_logger(config=config)
+
+        runner.setup_agent(agent_cls=agent_cls, **agent_kwargs)
+        runner.setup_extra(start_steps=start_steps,
+                           update_after=update_after,
+                           update_every=update_every,
+                           update_per_step=update_per_step,
+                           policy_delay=policy_delay)
+        runner.setup_replay_buffer(replay_size=replay_size,
+                                   batch_size=batch_size)
+
+        runner.run()

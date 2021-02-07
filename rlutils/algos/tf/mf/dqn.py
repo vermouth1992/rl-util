@@ -146,12 +146,6 @@ class Runner(OffPolicyRunner, TFRunner):
              replay_size=int(1e6),
              logger_path=None
              ):
-        config = locals()
-        runner = Runner(seed=seed, steps_per_epoch=steps_per_epoch, epochs=epochs, logger_path=logger_path)
-        runner.setup_env(env_name=env_name, num_parallel_env=num_parallel_env, asynchronous=False,
-                         num_test_episodes=num_test_episodes, env_fn=env_fn)
-        runner.setup_seed(seed)
-        runner.setup_logger(config=config)
         agent_kwargs = dict(
             mlp_hidden=mlp_hidden,
             double_q=double_q,
@@ -161,16 +155,25 @@ class Runner(OffPolicyRunner, TFRunner):
             tau=tau,
             epsilon=epsilon
         )
-        runner.setup_agent(DQN, **agent_kwargs)
-        runner.setup_extra(start_steps=start_steps,
-                           update_after=update_after,
-                           update_every=update_every,
-                           update_per_step=update_per_step,
-                           policy_delay=1)
-        runner.setup_replay_buffer(replay_size=replay_size,
-                                   batch_size=batch_size,
-                                   )
-        runner.run()
+
+        OffPolicyRunner.main(env_name=env_name,
+                             env_fn=env_fn,
+                             steps_per_epoch=steps_per_epoch,
+                             epochs=epochs,
+                             start_steps=start_steps,
+                             update_after=update_after,
+                             update_every=update_every,
+                             update_per_step=update_per_step,
+                             policy_delay=1,
+                             batch_size=batch_size,
+                             num_parallel_env=num_parallel_env,
+                             num_test_episodes=num_test_episodes,
+                             seed=seed,
+                             runner_cls=Runner,
+                             agent_cls=DQN,
+                             agent_kwargs=agent_kwargs,
+                             replay_size=replay_size,
+                             logger_path=logger_path)
 
 
 if __name__ == '__main__':

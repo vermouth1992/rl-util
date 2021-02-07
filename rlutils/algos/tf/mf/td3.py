@@ -27,19 +27,19 @@ class TD3Agent(tf.keras.Model):
         self.obs_spec = obs_spec
         self.act_spec = act_spec
         self.act_dim = self.act_spec.shape[0]
-        self.act_lim = 1.
-        self.actor_noise = actor_noise
-        self.target_noise = target_noise
-        self.noise_clip = noise_clip
+        self.act_lim = act_spec.high[0]
+        self.actor_noise = actor_noise * self.act_lim
+        self.target_noise = target_noise * self.act_lim
+        self.noise_clip = noise_clip * self.act_lim
         self.tau = tau
         self.gamma = gamma
         if len(self.obs_spec.shape) == 1:  # 1D observation
             self.obs_dim = self.obs_spec.shape[0]
             self.policy_net = rlu.nn.build_mlp(self.obs_dim, self.act_dim, mlp_hidden=policy_mlp_hidden,
-                                               num_layers=3, out_activation=tf.math.sin)
+                                               num_layers=3, out_activation=lambda x: self.act_lim * tf.math.sin(x))
             self.target_policy_net = rlu.nn.build_mlp(self.obs_dim, self.act_dim,
-                                                      mlp_hidden=policy_mlp_hidden,
-                                                      num_layers=3, out_activation=tf.math.sin)
+                                                      mlp_hidden=policy_mlp_hidden, num_layers=3,
+                                                      out_activation=lambda x: self.act_lim * tf.math.sin(x))
             rlu.functional.hard_update(self.target_policy_net, self.policy_net)
             self.q_network = rlu.nn.EnsembleMinQNet(self.obs_dim, self.act_dim, q_mlp_hidden,
                                                     num_ensembles=num_q_ensembles)
@@ -178,14 +178,6 @@ class Runner(OffPolicyRunner, TFRunner):
              replay_size=int(1e6),
              logger_path=None
              ):
-        config = locals()
-
-        runner = Runner(seed=seed, steps_per_epoch=steps_per_epoch // num_parallel_env, epochs=epochs,
-                        exp_name=None, logger_path=logger_path)
-        runner.setup_env(env_name=env_name, num_parallel_env=num_parallel_env, env_fn=env_fn,
-                         asynchronous=False, num_test_episodes=num_test_episodes)
-        runner.setup_logger(config=config)
-
         agent_kwargs = dict(
             policy_mlp_hidden=nn_size,
             policy_lr=learning_rate,
@@ -197,15 +189,25 @@ class Runner(OffPolicyRunner, TFRunner):
             target_noise=target_noise,
             noise_clip=noise_clip
         )
-        runner.setup_agent(agent_cls=TD3Agent, **agent_kwargs)
-        runner.setup_extra(start_steps=start_steps,
-                           update_after=update_after,
-                           update_every=update_every,
-                           update_per_step=update_per_step,
-                           policy_delay=policy_delay)
-        runner.setup_replay_buffer(replay_size=replay_size,
-                                   batch_size=batch_size)
-        runner.run()
+
+        OffPolicyRunner.main(env_name=env_name,
+                             env_fn=env_fn,
+                             steps_per_epoch=steps_per_epoch,
+                             epochs=epochs,
+                             start_steps=start_steps,
+                             update_after=update_after,
+                             update_every=update_every,
+                             update_per_step=update_per_step,
+                             policy_delay=policy_delay,
+                             batch_size=batch_size,
+                             num_parallel_env=num_parallel_env,
+                             num_test_episodes=num_test_episodes,
+                             seed=seed,
+                             runner_cls=Runner,
+                             agent_cls=TD3Agent,
+                             agent_kwargs=agent_kwargs,
+                             replay_size=replay_size,
+                             logger_path=logger_path)
 
 
 if __name__ == '__main__':
