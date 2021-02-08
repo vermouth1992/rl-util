@@ -16,7 +16,6 @@ import numpy as np
 import rlutils.gym
 from rlutils.logx import EpochLogger, setup_logger_kwargs
 from rlutils.replay_buffers import PyUniformParallelEnvReplayBuffer
-from rlutils.tf.functional import to_numpy_or_python_type
 from tqdm.auto import trange, tqdm
 
 
@@ -278,8 +277,7 @@ class OffPolicyRunner(BaseRunner):
             for j in range(self.update_every * self.update_per_step):
                 batch = self.replay_buffer.sample()
                 batch['update_target'] = self.update_target == self.policy_delay - 1
-                info = self.agent.train_step(data=batch)
-                self.logger.store(**to_numpy_or_python_type(info))
+                self.agent.train_on_batch(data=batch)
                 self.update_target = (self.update_target + 1) % self.policy_delay
 
     def on_epoch_end(self, epoch):

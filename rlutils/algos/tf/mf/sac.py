@@ -138,6 +138,10 @@ class SACAgent(tf.keras.Model):
             self.update_target()
         return info
 
+    def train_on_batch(self, data, **kwargs):
+        info = self.train_step(data=data)
+        self.logger.store(**rlu.functional.to_numpy_or_python_type(info))
+
     @tf.function
     def act_batch(self, obs, deterministic):
         print(f'Tracing sac act_batch with obs {obs}')

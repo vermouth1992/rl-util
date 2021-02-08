@@ -13,7 +13,6 @@ from rlutils.future.optimizer import get_adam_optimizer, minimize
 from rlutils.logx import EpochLogger
 from rlutils.replay_buffers import PyUniformParallelEnvReplayBuffer
 from rlutils.runner import TFRunner
-from rlutils.tf.distributions import make_independent_normal_from_params
 from rlutils.tf.functional import soft_update, hard_update, to_numpy_or_python_type
 from rlutils.tf.generative_models.vae import BehaviorPolicy
 from rlutils.tf.nn import EnsembleMinQNet
