@@ -1,7 +1,45 @@
+from typing import Dict, List
+
 import numpy as np
 import scipy.signal
+import sklearn
 
 EPS = 1e-6
+
+
+def gather_dict_key(infos: List[Dict], key, default=None, dtype=None):
+    """ Gather a key from a list of dictionaries and return a numpy array. """
+    if default is not None:
+        output = np.array([info.get(key, default) for info in infos], dtype=dtype)
+    else:
+        output = np.array([info.get(key) for info in infos], dtype=dtype)
+    return output
+
+
+def flatten_dict(data: Dict):
+    """
+
+    Args:
+        data: a dictionary of data
+
+    Returns: list_data, key_to_idx
+
+    """
+    list_data = []
+    key_to_idx = {}
+    for i, (key, item) in enumerate(data.items()):
+        list_data.append(item)
+        key_to_idx[key] = i
+    return list_data, key_to_idx
+
+
+def shuffle_dict_data(data):
+    output = {}
+    list_data, key_to_index = flatten_dict(data)
+    shuffled_data = sklearn.utils.shuffle(*list_data)
+    for key in data:
+        output[key] = shuffled_data[key_to_index[key]]
+    return output
 
 
 def inverse_softplus(x, beta=1.):

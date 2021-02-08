@@ -69,10 +69,11 @@ class TD3Agent(tf.keras.Model):
     def _compute_next_obs_q(self, next_obs):
         next_action = self.target_policy_net(next_obs)
         # Target policy smoothing
-        epsilon = tf.random.normal(shape=[tf.shape(next_obs)[0], self.act_dim]) * self.target_noise
-        epsilon = tf.clip_by_value(epsilon, -self.noise_clip, self.noise_clip)
-        next_action = next_action + epsilon
-        next_action = tf.clip_by_value(next_action, -self.act_lim, self.act_lim)
+        if self.target_noise > 0.:
+            epsilon = tf.random.normal(shape=[tf.shape(next_obs)[0], self.act_dim]) * self.target_noise
+            epsilon = tf.clip_by_value(epsilon, -self.noise_clip, self.noise_clip)
+            next_action = next_action + epsilon
+            next_action = tf.clip_by_value(next_action, -self.act_lim, self.act_lim)
         next_q_value = self.target_q_network((next_obs, next_action), training=False)
         return next_q_value
 
@@ -156,21 +157,9 @@ class Runner(OffPolicyRunner, TFRunner):
     def get_action_batch_explore(self, obs):
         return self.agent.act_batch_explore(tf.convert_to_tensor(obs, dtype=tf.float32)).numpy()
 
-    @staticmethod
-    def main(env_name,
-             env_fn=None,
-             steps_per_epoch=5000,
-             epochs=200,
-             start_steps=10000,
-             update_after=4000,
-             update_every=1,
-             update_per_step=1,
-             policy_delay=2,
-             batch_size=256,
-             num_parallel_env=1,
-             num_test_episodes=20,
-             seed=1,
-             # sac args
+    @classmethod
+    def main(cls,
+             env_name,
              nn_size=256,
              learning_rate=1e-3,
              actor_noise=0.1,
@@ -178,9 +167,7 @@ class Runner(OffPolicyRunner, TFRunner):
              noise_clip=0.5,
              tau=5e-3,
              gamma=0.99,
-             # replay
-             replay_size=int(1e6),
-             logger_path=None
+             **kwargs
              ):
         agent_kwargs = dict(
             policy_mlp_hidden=nn_size,
@@ -194,24 +181,10 @@ class Runner(OffPolicyRunner, TFRunner):
             noise_clip=noise_clip
         )
 
-        OffPolicyRunner.main(env_name=env_name,
-                             env_fn=env_fn,
-                             steps_per_epoch=steps_per_epoch,
-                             epochs=epochs,
-                             start_steps=start_steps,
-                             update_after=update_after,
-                             update_every=update_every,
-                             update_per_step=update_per_step,
-                             policy_delay=policy_delay,
-                             batch_size=batch_size,
-                             num_parallel_env=num_parallel_env,
-                             num_test_episodes=num_test_episodes,
-                             seed=seed,
-                             runner_cls=Runner,
-                             agent_cls=TD3Agent,
-                             agent_kwargs=agent_kwargs,
-                             replay_size=replay_size,
-                             logger_path=logger_path)
+        super(Runner, cls).main(env_name=env_name,
+                                agent_cls=TD3Agent,
+                                agent_kwargs=agent_kwargs,
+                                **kwargs)
 
 
 if __name__ == '__main__':

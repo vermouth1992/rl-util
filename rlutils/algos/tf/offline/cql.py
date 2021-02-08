@@ -339,8 +339,9 @@ class Runner(TFRunner):
     def on_train_begin(self):
         self.start_time = time.time()
 
-    @staticmethod
-    def main(env_name,
+    @classmethod
+    def main(cls,
+             env_name,
              max_ep_len=1000,
              steps_per_epoch=2000,
              epochs=500,
@@ -356,11 +357,12 @@ class Runner(TFRunner):
              gamma=0.99,
              # replay
              replay_size=int(1e6),
+             logger_path: str = None
              ):
         config = locals()
 
-        runner = Runner(seed=seed, steps_per_epoch=steps_per_epoch, epochs=epochs,
-                        exp_name=None, logger_path='data')
+        runner = cls(seed=seed, steps_per_epoch=steps_per_epoch, epochs=epochs,
+                     exp_name=None, logger_path=logger_path)
         runner.setup_env(env_name=env_name, num_parallel_env=num_test_episodes, frame_stack=None, wrappers=None,
                          asynchronous=False, num_test_episodes=None)
         runner.setup_logger(config=config)

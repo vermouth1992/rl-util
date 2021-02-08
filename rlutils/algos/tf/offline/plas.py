@@ -335,8 +335,9 @@ class Runner(TFRunner):
     def on_train_end(self):
         self.agent.save_weights(filepath=self.final_filepath)
 
-    @staticmethod
-    def plas(env_name,
+    @classmethod
+    def main(cls,
+             env_name,
              steps_per_epoch=2500,
              pretrain_epochs=200,
              pretrain_behavior=False,
@@ -405,8 +406,8 @@ class Runner(TFRunner):
 
         config = locals()
 
-        runner = Runner(seed=seed, steps_per_epoch=steps_per_epoch, epochs=epochs,
-                        exp_name=None, logger_path='data')
+        runner = cls(seed=seed, steps_per_epoch=steps_per_epoch, epochs=epochs,
+                     exp_name=None, logger_path='data')
         runner.setup_env(env_name=env_name, num_parallel_env=num_test_episodes, frame_stack=None, wrappers=None,
                          asynchronous=False, num_test_episodes=None)
         runner.setup_logger(config=config, tensorboard=tensorboard)

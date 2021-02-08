@@ -134,8 +134,9 @@ class Runner(TFRunner):
         self.ep_ret = np.zeros(shape=self.num_parallel_env)
         self.ep_len = np.zeros(shape=self.num_parallel_env, dtype=np.int64)
 
-    @staticmethod
-    def main(env_name,
+    @classmethod
+    def main(cls,
+             env_name,
              steps_per_epoch=400,
              epochs=200,
              start_steps=2000,
@@ -154,11 +155,11 @@ class Runner(TFRunner):
              validation_split=0.1,
              # replay
              replay_size=int(1e6),
-             logger_path='data'
+             logger_path: str = None
              ):
         config = locals()
-        runner = Runner(seed=seed, steps_per_epoch=steps_per_epoch // num_parallel_env, epochs=epochs,
-                        exp_name=None, logger_path=logger_path)
+        runner = cls(seed=seed, steps_per_epoch=steps_per_epoch // num_parallel_env, epochs=epochs,
+                     exp_name=None, logger_path=logger_path)
         runner.setup_env(env_name=env_name, num_parallel_env=num_parallel_env, frame_stack=None, wrappers=None,
                          asynchronous=False, num_test_episodes=None)
         runner.setup_logger(config=config)

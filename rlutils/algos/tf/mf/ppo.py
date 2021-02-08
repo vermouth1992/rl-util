@@ -3,6 +3,7 @@ Proximal Policy Optimization
 """
 
 import time
+from typing import Callable
 
 import numpy as np
 import tensorflow as tf
@@ -221,11 +222,11 @@ class Runner(TFRunner):
         self.agent.log_tabular()
         self.logger.dump_tabular()
 
-    @staticmethod
-    def main(env_name, env_fn=None, mlp_hidden=256, seed=0, batch_size=5000, num_parallel_envs=5,
+    @classmethod
+    def main(cls, env_name, env_fn: Callable = None, mlp_hidden=256, seed=0, batch_size=5000, num_parallel_envs=5,
              epochs=200, gamma=0.99, clip_ratio=0.2, pi_lr=3e-4, vf_lr=1e-3,
              train_pi_iters=80, train_vf_iters=80,
-             lam=0.97, max_ep_len=1000, target_kl=0.05, entropy_coef=1e-3, logger_path=None):
+             lam=0.97, max_ep_len=1000, target_kl=0.05, entropy_coef=1e-3, logger_path: str = None):
         # Instantiate environment
         assert batch_size % num_parallel_envs == 0
 

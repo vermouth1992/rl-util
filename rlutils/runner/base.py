@@ -14,6 +14,7 @@ import gym
 import gym.spaces
 import numpy as np
 import rlutils.gym
+import rlutils.np as rln
 from rlutils.logx import EpochLogger, setup_logger_kwargs
 from rlutils.replay_buffers import PyUniformParallelEnvReplayBuffer
 from tqdm.auto import trange, tqdm
@@ -42,13 +43,13 @@ class BaseRunner(ABC):
     def get_action_batch_explore(self, obs):
         raise NotImplementedError
 
-    def test_agent(self):
+    def test_agent(self, get_action, name):
         o, d, ep_ret, ep_len = self.test_env.reset(), np.zeros(shape=self.num_test_episodes, dtype=np.bool), \
                                np.zeros(shape=self.num_test_episodes), \
                                np.zeros(shape=self.num_test_episodes, dtype=np.int64)
-        t = tqdm(total=self.num_test_episodes, desc='Testing')
+        t = tqdm(total=self.num_test_episodes, desc=f'Testing {name}')
         while not np.all(d):
-            a = self.get_action_batch_test(o)
+            a = get_action(o)
             o, r, d_, _ = self.test_env.step(a)
             ep_ret = r * (1 - d) + ep_ret
             ep_len = np.ones(shape=self.num_test_episodes, dtype=np.int64) * (1 - d) + ep_len
@@ -58,7 +59,10 @@ class BaseRunner(ABC):
             if newly_finished > 0:
                 t.update(newly_finished)
         t.close()
-        self.logger.store(TestEpRet=ep_ret, TestEpLen=ep_len)
+        return dict(
+            TestEpRet=ep_ret,
+            TestEpLen=ep_len
+        )
 
     def setup_seed(self, seed):
         # we set numpy seed first and use it to generate other seeds
@@ -89,7 +93,7 @@ class BaseRunner(ABC):
         pass
 
     def on_train_begin(self):
-        pass
+        self.start_time = time.time()
 
     def on_train_end(self):
         pass
@@ -181,8 +185,8 @@ class BaseRunner(ABC):
             self.on_epoch_end(i)
         self.on_train_end()
 
-    @staticmethod
-    def main(*args, **kwargs):
+    @classmethod
+    def main(cls, *args, **kwargs):
         raise NotImplementedError
 
     @property
@@ -242,11 +246,11 @@ class OffPolicyRunner(BaseRunner):
             a = self.env.action_space.sample()
 
         # Step the env
-        o2, r, d, info = self.env.step(a)
+        o2, r, d, infos = self.env.step(a)
         self.ep_ret += r
         self.ep_len += 1
 
-        timeouts = np.array([i.get('TimeLimit.truncated', False) for i in info], dtype=np.bool)
+        timeouts = rln.gather_dict_key(infos=infos, key='TimeLimit.truncated', default=False, dtype=np.bool)
         # Ignore the "done" signal if it comes from hitting the time
         # horizon (that is, when it's an artificial terminal signal
         # that isn't based on the agent's state)
@@ -281,7 +285,8 @@ class OffPolicyRunner(BaseRunner):
                 self.update_target = (self.update_target + 1) % self.policy_delay
 
     def on_epoch_end(self, epoch):
-        self.test_agent()
+        info = self.test_agent(get_action=self.get_action_batch_test, name=self.agent.__class__.__name__)
+        self.logger.store(**info)
 
         # Log info about epoch
         self.logger.log_tabular('Epoch', epoch)
@@ -295,14 +300,15 @@ class OffPolicyRunner(BaseRunner):
         self.logger.dump_tabular()
 
     def on_train_begin(self):
-        self.start_time = time.time()
         self.o = self.env.reset()
         self.ep_ret = np.zeros(shape=self.num_parallel_env)
         self.ep_len = np.zeros(shape=self.num_parallel_env, dtype=np.int64)
         self.update_target = 0
+        super(OffPolicyRunner, self).on_train_begin()
 
-    @staticmethod
-    def main(env_name,
+    @classmethod
+    def main(cls,
+             env_name,
              env_fn=None,
              steps_per_epoch=5000,
              epochs=200,
@@ -313,10 +319,8 @@ class OffPolicyRunner(BaseRunner):
              policy_delay=1,
              batch_size=256,
              num_parallel_env=1,
-             num_test_episodes=20,
+             num_test_episodes=30,
              seed=1,
-             # runner class
-             runner_cls=None,
              # agent args
              agent_cls=None,
              agent_kwargs={},
@@ -326,8 +330,8 @@ class OffPolicyRunner(BaseRunner):
              ):
         config = locals()
 
-        runner = runner_cls(seed=seed, steps_per_epoch=steps_per_epoch // num_parallel_env, epochs=epochs,
-                            exp_name=None, logger_path=logger_path)
+        runner = cls(seed=seed, steps_per_epoch=steps_per_epoch // num_parallel_env, epochs=epochs,
+                     exp_name=None, logger_path=logger_path)
         runner.setup_env(env_name=env_name, env_fn=env_fn, act_lim=1.0, num_parallel_env=num_parallel_env,
                          asynchronous=False, num_test_episodes=num_test_episodes)
         runner.setup_logger(config=config)
@@ -342,3 +346,52 @@ class OffPolicyRunner(BaseRunner):
                                    batch_size=batch_size)
 
         runner.run()
+
+
+class OfflineRunner(BaseRunner):
+    def setup_replay_buffer(self,
+                            batch_size,
+                            dataset=None,
+                            reward_scale=True):
+        def rescale(x):
+            return (x - np.min(x)) / (np.max(x) - np.min(x))
+
+        if dataset is None:
+            # modify d4rl keys
+            import d4rl
+            dataset = d4rl.qlearning_dataset(env=self.dummy_env)
+            dataset['obs'] = dataset.pop('observations').astype(np.float32)
+            dataset['act'] = dataset.pop('actions').astype(np.float32)
+            dataset['next_obs'] = dataset.pop('next_observations').astype(np.float32)
+            dataset['rew'] = dataset.pop('rewards').astype(np.float32)
+            dataset['done'] = dataset.pop('terminals').astype(np.float32)
+
+        if reward_scale:
+            EpochLogger.log('Using reward scale', color='red')
+            self.agent.reward_scale_factor = np.max(dataset['rew'] - np.min(dataset['rew']))
+            EpochLogger.log(f'The scale factor is {self.agent.reward_scale_factor:.2f}')
+            dataset['rew'] = rescale(dataset['rew'])
+
+        replay_size = dataset['obs'].shape[0]
+        EpochLogger.log(f'Dataset size: {replay_size}')
+        self.replay_buffer = PyUniformParallelEnvReplayBuffer.from_data_dict(
+            data=dataset,
+            batch_size=batch_size
+        )
+
+    def setup_agent(self, agent_cls, **kwargs):
+        self.agent = agent_cls(obs_spec=self.obs_data_spec, act_spec=self.act_data_spec, **kwargs)
+        self.agent.set_logger(self.logger)
+
+    def on_epoch_end(self, epoch):
+        info = self.test_agent(get_action=self.get_action_batch_test, name=self.agent.__class__.__name__)
+        self.logger.store(**info)
+
+        # Log info about epoch
+        self.logger.log_tabular('Epoch', epoch)
+        self.logger.log_tabular('TestEpRet', with_min_and_max=True)
+        self.logger.log_tabular('TestEpLen', average_only=True)
+        self.agent.log_tabular()
+        self.logger.log_tabular('GradientSteps', epoch * self.steps_per_epoch)
+        self.logger.log_tabular('Time', time.time() - self.start_time)
+        self.logger.dump_tabular()

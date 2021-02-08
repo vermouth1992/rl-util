@@ -15,6 +15,8 @@ def get_argparser_from_func(func, parser):
     params = {p.arg_name: p.description for p in docstring.params}
 
     for k, v in signature.parameters.items():
+        if k in ['self', 'cls', 'args', 'kwargs']:
+            continue
         if v.default is inspect.Parameter.empty:
             parser.add_argument('--' + k, help=params.get(k, ' '), required=True)
         else:
@@ -27,11 +29,12 @@ def get_argparser_from_func(func, parser):
             else:
                 if v.default is not None:
                     arg_type = type(v.default)
-                elif type(v.annotation) != inspect.Signature.empty:
+                elif v.annotation != inspect.Signature.empty:
                     # get from annotation
                     arg_type = v.annotation
                 else:
-                    raise ValueError('Argument with default value None must be annotated with type.')
+                    raise ValueError(
+                        f'Argument with default value None must be annotated with type in {func}, {k}, {v.annotation}')
                 parser.add_argument('--' + k, type=arg_type, default=v.default, help=params.get(k, ' '))
     return parser
 

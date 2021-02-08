@@ -2,7 +2,7 @@ from typing import Dict
 
 import gym.spaces
 import numpy as np
-from rlutils.np.functional import flatten_leading_dims
+from rlutils.np.functional import flatten_leading_dims, shuffle_dict_data
 
 from .base import BaseReplayBuffer
 from .utils import combined_shape
@@ -38,7 +38,9 @@ class PyUniformParallelEnvReplayBuffer(BaseReplayBuffer):
         return self.max_size
 
     @classmethod
-    def from_data_dict(cls, data: Dict[str, np.ndarray], batch_size):
+    def from_data_dict(cls, data: Dict[str, np.ndarray], batch_size, shuffle=False):
+        if shuffle:
+            data = shuffle_dict_data(data)
         data_spec = {key: gym.spaces.Space(shape=item.shape[1:], dtype=item.dtype) for key, item in data.items()}
         capacity = list(data.values())[0].shape[0]
         replay_buffer = cls(data_spec=data_spec, capacity=capacity, batch_size=batch_size, num_parallel_env=1)

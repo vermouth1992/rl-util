@@ -169,31 +169,19 @@ class Runner(OffPolicyRunner, TFRunner):
                                     tf.convert_to_tensor(False)).numpy()
 
     def get_action_batch_test(self, obs):
-        return self.agent.act_batch_test(tf.convert_to_tensor(obs, dtype=tf.float32)).numpy()
+        return self.agent.act_batch(tf.convert_to_tensor(obs, tf.float32),
+                                    tf.convert_to_tensor(True)).numpy()
 
-    @staticmethod
-    def main(env_name,
-             env_fn=None,
-             steps_per_epoch=5000,
-             epochs=200,
-             start_steps=10000,
-             update_after=4000,
-             update_every=1,
-             update_per_step=1,
-             policy_delay=1,
-             batch_size=256,
-             num_parallel_env=1,
-             num_test_episodes=20,
-             seed=1,
+    @classmethod
+    def main(cls,
+             env_name,
              # sac args
              nn_size=256,
              learning_rate=3e-4,
              alpha=0.2,
              tau=5e-3,
              gamma=0.99,
-             # replay
-             replay_size=int(1e6),
-             logger_path=None
+             **kwargs
              ):
         agent_kwargs = dict(
             policy_mlp_hidden=nn_size,
@@ -206,24 +194,13 @@ class Runner(OffPolicyRunner, TFRunner):
             gamma=gamma,
             target_entropy=None
         )
-        OffPolicyRunner.main(env_name=env_name,
-                             env_fn=env_fn,
-                             steps_per_epoch=steps_per_epoch,
-                             epochs=epochs,
-                             start_steps=start_steps,
-                             update_after=update_after,
-                             update_every=update_every,
-                             update_per_step=update_per_step,
-                             policy_delay=policy_delay,
-                             batch_size=batch_size,
-                             num_parallel_env=num_parallel_env,
-                             num_test_episodes=num_test_episodes,
-                             seed=seed,
-                             runner_cls=Runner,
-                             agent_cls=SACAgent,
-                             agent_kwargs=agent_kwargs,
-                             replay_size=replay_size,
-                             logger_path=logger_path)
+
+        super(Runner, cls).main(
+            env_name=env_name,
+            agent_cls=SACAgent,
+            agent_kwargs=agent_kwargs,
+            **kwargs
+        )
 
 
 if __name__ == '__main__':
