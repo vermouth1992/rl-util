@@ -14,6 +14,14 @@ exp_idx = 0
 units = dict()
 
 
+def smooth_dataframe(dataframe, value, smooth):
+    y = np.ones(smooth)
+    x = np.asarray(dataframe[value])
+    z = np.ones(len(x))
+    smoothed_x = np.convolve(x, y, 'same') / np.convolve(z, y, 'same')
+    dataframe[value] = smoothed_x
+
+
 def plot_data(data, xaxis='Epoch', value="AverageEpRet", condition="Condition1", smooth=1, **kwargs):
     if smooth > 1:
         """
@@ -22,12 +30,8 @@ def plot_data(data, xaxis='Epoch', value="AverageEpRet", condition="Condition1",
             smoothed_y[t] = average(y[t-k], y[t-k+1], ..., y[t+k-1], y[t+k])
         where the "smooth" param is width of that window (2k+1)
         """
-        y = np.ones(smooth)
         for datum in data:
-            x = np.asarray(datum[value])
-            z = np.ones(len(x))
-            smoothed_x = np.convolve(x, y, 'same') / np.convolve(z, y, 'same')
-            datum[value] = smoothed_x
+            smooth_dataframe(datum, value, smooth)
 
     if isinstance(data, list):
         data = pd.concat(data, ignore_index=True)
