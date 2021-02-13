@@ -214,8 +214,9 @@ class BRACPAgent(tf.keras.Model):
         # compute KLD upper bound
         x, cond = raw_action, obs
         print(f'Tracing call_n with x={x}, cond={cond}')
-        x = self.behavior_policy.expand_ensemble_dim(x)  # (num_ensembles, None, act_dim)
-        cond = self.behavior_policy.expand_ensemble_dim(cond)  # (num_ensembles, None, obs_dim)
+        x = rlu.functional.expand_ensemble_dim(x, self.behavior_policy.num_ensembles)  # (num_ensembles, None, act_dim)
+        cond = rlu.functional.expand_ensemble_dim(
+            cond, self.behavior_policy.num_ensembles)  # (num_ensembles, None, obs_dim)
         posterior = self.behavior_policy.encode_distribution(inputs=(x, cond))
         encode_sample = posterior.sample(n)  # (n, num_ensembles, None, z_dim)
         encode_sample = tf.transpose(encode_sample, perm=[1, 0, 2, 3])  # (num_ensembles, n, None, z_dim)
@@ -520,11 +521,20 @@ class BRACPAgent(tf.keras.Model):
             values=[lr, 0.5 * lr, 0.1 * lr, 0.05 * lr, 0.01 * lr])
         return lr_schedule
 
-    def pretrain_cloning(self, epochs, steps_per_epoch, replay_buffer):
+    def set_pretrain_policy_net_optimizer(self, epochs, steps_per_epoch):
         # set learning rate decay
         interval = epochs * steps_per_epoch // 5
         self.policy_net.optimizer = get_adam_optimizer(lr=self.get_decayed_lr_schedule(lr=self.policy_behavior_lr,
                                                                                        interval=interval))
+
+    def set_policy_net_optimizer(self):
+        # reset learning rate
+        self.hard_update_policy_target()
+        # reset policy net learning rate
+        self.policy_net.optimizer = get_adam_optimizer(lr=self.policy_lr)
+        self.log_beta.optimizer = get_adam_optimizer(lr=1e-3)
+
+    def pretrain_cloning(self, epochs, steps_per_epoch, replay_buffer):
         EpochLogger.log(f'Training cloning policy')
         t = trange(epochs)
         for epoch in t:
@@ -540,19 +550,12 @@ class BRACPAgent(tf.keras.Model):
             log_pi = tf.reduce_mean(log_pi).numpy()
             t.set_description(desc=f'KL: {kl:.2f}, LogPi: {log_pi:.2f}')
 
-        # reset learning rate
-        self.hard_update_policy_target()
-        # reset policy net learning rate
-        self.policy_net.optimizer = get_adam_optimizer(lr=self.policy_lr)
-        self.log_beta.optimizer = get_adam_optimizer(lr=1e-3)
-
-    def set_behavior_policy_lr(self, interval):
+    def set_behavior_policy_optimizer(self, epochs, steps_per_epoch):
+        interval = epochs * steps_per_epoch // 5
         self.behavior_policy.optimizer = get_adam_optimizer(lr=self.get_decayed_lr_schedule(lr=self.behavior_lr,
                                                                                             interval=interval))
 
     def pretrain_behavior_policy(self, epochs, steps_per_epoch, replay_buffer):
-        interval = epochs * steps_per_epoch // 5
-        self.set_behavior_policy_lr(interval)
         EpochLogger.log(f'Training behavior policy')
         t = trange(epochs)
         for epoch in t:
@@ -706,6 +709,7 @@ class BRACPRunner(TFRunner):
             self.agent.save_weights(filepath=os.path.join(self.logger.output_dir, f'agent_final_{epoch + 1}.ckpt'))
 
     def on_train_begin(self):
+        self.agent.set_behavior_policy_optimizer(self.pretrain_epochs, self.steps_per_epoch)
         try:
             if self.force_pretrain_behavior:
                 raise tf.errors.NotFoundError(None, None, None)
@@ -735,6 +739,7 @@ class BRACPRunner(TFRunner):
 
         self.logger.log(f'The target entropy of the behavior policy is {self.agent.target_entropy:.4f}')
 
+        self.agent.set_pretrain_policy_net_optimizer(self.pretrain_epochs, self.steps_per_epoch)
         try:
             if self.force_pretrain_cloning:
                 raise tf.errors.NotFoundError(None, None, None)
@@ -763,6 +768,8 @@ class BRACPRunner(TFRunner):
 
         self.agent.set_delta_behavior(self.max_kl)
         self.agent.set_delta_gp(self.max_kl + self.generalization_threshold)
+
+        self.agent.set_policy_net_optimizer()
 
         self.start_time = time.time()
 
