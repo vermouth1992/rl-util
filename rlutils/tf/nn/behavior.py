@@ -44,7 +44,7 @@ class BehaviorPolicy(ConditionalBetaVAE, AbstractBehaviorPolicy):
         self.obs_dim = obs_dim
         self.act_dim = act_dim
         self.mlp_hidden = mlp_hidden
-        super(BehaviorPolicy, self).__init__(latent_dim=-(-act_dim // 2), beta=beta)
+        super(BehaviorPolicy, self).__init__(latent_dim=self.act_dim * 2, beta=beta)
 
     def log_prob(self, obs, act):
         raise NotImplementedError
