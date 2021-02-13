@@ -40,14 +40,14 @@ class BRACPAgent(tf.keras.Model):
                  gamma=0.99,
                  target_entropy=None,
                  use_gp=True,
-                 gp_type='softplus',
+                 gp_type='hard',
                  reg_type='kl',
                  sigma=10,
                  n=5,
                  gp_weight=0.1,
                  entropy_reg=True,
                  kl_backup=False,
-                 max_ood_grad_norm=0.01,
+                 max_ood_grad_norm=None,
                  ):
         super(BRACPAgent, self).__init__()
         self.reg_type = reg_type
@@ -421,7 +421,8 @@ class BRACPAgent(tf.keras.Model):
         with tf.GradientTape() as q_tape:
             q_tape.watch(self.q_network.trainable_variables)
             q_values = self.q_network((obs, actions), training=True)  # (num_ensembles, None)
-            q_values_loss = 0.5 * tf.square(tf.expand_dims(q_target, axis=0) - q_values)
+            q_values_loss = 0.5 * tf.square(rlu.functional.expand_ensemble_dim(
+                q_target, self.q_network.num_ensembles) - q_values)
             # (num_ensembles, None)
             q_values_loss = tf.reduce_sum(q_values_loss, axis=0)  # (None,)
 
@@ -435,7 +436,7 @@ class BRACPAgent(tf.keras.Model):
 
         minimize(loss, q_tape, self.q_network)
 
-        if self.use_gp:
+        if self.use_gp and (self.max_ood_grad_norm is not None):
             with tf.GradientTape() as gp_weight_tape:
                 gp_weight_tape.watch(self.log_gp.trainable_variables)
                 gp_weight = self.log_gp(obs)
@@ -444,8 +445,9 @@ class BRACPAgent(tf.keras.Model):
 
             minimize(loss_gp_weight, gp_weight_tape, self.log_gp)
         else:
-            gp = 0.
-            gp_weight = 0.
+            if not self.use_gp:
+                gp = 0.
+                gp_weight = 0.
 
         info = dict(
             Q1Vals=q_values[0],
@@ -692,8 +694,8 @@ class BRACPRunner(TFRunner):
         self.test_agent(agent=self.agent, name='policy', logger=self.logger)
 
         # set delta_gp
-        # kl_stats = self.logger.get_stats('KL')
-        # self.agent.set_delta_gp(kl_stats[0] + kl_stats[1])  # mean + std
+        kl_stats = self.logger.get_stats('KL')
+        self.agent.set_delta_gp(kl_stats[0] + kl_stats[1])  # mean + std
 
         # Log info about epoch
         self.logger.log_tabular('Epoch', epoch)
