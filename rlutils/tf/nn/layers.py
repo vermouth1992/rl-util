@@ -82,4 +82,4 @@ class LagrangeLayer(tf.keras.Model):
         return tf.nn.softplus(clip_by_value(self.kernel, self.min_log_value, self.max_log_value))
 
     def assign(self, value):
-        self.kernel.assign(value)
+        self.kernel.assign(inverse_softplus(value))

@@ -3,6 +3,7 @@
 ## TODO:
 
 * [ ] N-step return in Numpy
+* [ ] GAN-based behavior policy for PLAS
 
 ## Network architecture
 

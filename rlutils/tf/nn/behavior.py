@@ -1,12 +1,14 @@
+"""
+Implement various behavior policy that estimates \pi(a|s)
+"""
+
+from abc import ABC, abstractmethod
+
 import numpy as np
+import rlutils.tf as rlu
 import tensorflow as tf
 import tensorflow_probability as tfp
-from rlutils.tf.distributions import make_independent_normal_from_params, make_independent_beta_from_params, \
-    apply_squash_log_prob
-from rlutils.tf.functional import clip_atanh, expand_ensemble_dim
-from rlutils.tf.nn.functional import build_mlp
-
-from .base import ConditionalBetaVAE
+from rlutils.tf.generative_models.vae import ConditionalBetaVAE
 
 tfd = tfp.distributions
 tfl = tfp.layers
@@ -17,13 +19,35 @@ MAX_LOG_SCALE = 5.
 EPS = 1e-3
 
 
-class BehaviorPolicy(ConditionalBetaVAE):
+class AbstractBehaviorPolicy(ABC):
+    def __init__(self, obs_dim, act_dim, mlp_hidden=256):
+        self.obs_dim = obs_dim
+        self.act_dim = act_dim
+        self.mlp_hidden = mlp_hidden
+
+    @abstractmethod
+    def sample(self, obs, n=None):
+        pass
+
+    @abstractmethod
+    def log_prob(self, obs, act):
+        pass
+
+    @abstractmethod
+    def act_batch(self, obs, **kwargs):
+        pass
+
+
+class BehaviorPolicy(ConditionalBetaVAE, AbstractBehaviorPolicy):
     def __init__(self, out_dist, obs_dim, act_dim, mlp_hidden=256, beta=1.):
         self.out_dist = out_dist
         self.obs_dim = obs_dim
         self.act_dim = act_dim
         self.mlp_hidden = mlp_hidden
         super(BehaviorPolicy, self).__init__(latent_dim=-(-act_dim // 2), beta=beta)
+
+    def log_prob(self, obs, act):
+        raise NotImplementedError
 
     def call(self, inputs, training=None, mask=None):
         x, cond = inputs
@@ -46,7 +70,7 @@ class BehaviorPolicy(ConditionalBetaVAE):
 
     def inverse_transform_action(self, action):
         if self.out_dist == 'normal':
-            return clip_atanh(action)
+            return rlu.functional.clip_atanh(action)
         elif self.out_dist == 'beta':
             raw_action = (action + 1) / 2
             raw_action = tf.clip_by_value(raw_action, EPS, 1. - EPS)
@@ -58,7 +82,7 @@ class BehaviorPolicy(ConditionalBetaVAE):
         if self.out_dist == 'beta':
             return raw_log_prob - np.log(2.)
         elif self.out_dist == 'normal':
-            return apply_squash_log_prob(raw_log_prob=raw_log_prob, x=raw_action)
+            return rlu.distributions.apply_squash_log_prob(raw_log_prob=raw_log_prob, x=raw_action)
         else:
             raise NotImplementedError
 
@@ -66,13 +90,11 @@ class BehaviorPolicy(ConditionalBetaVAE):
         obs_input = tf.keras.Input(shape=(self.obs_dim,), dtype=tf.float32)
         act_input = tf.keras.Input(shape=(self.act_dim,), dtype=tf.float32)
         input = tf.concat((act_input, obs_input), axis=-1)
-        encoder = build_mlp(input_dim=self.obs_dim + self.act_dim,
-                            output_dim=self.latent_dim * 2,
-                            mlp_hidden=self.mlp_hidden,
-                            num_layers=3)
-        encoder.add(tfl.DistributionLambda(
-            make_distribution_fn=lambda t: make_independent_normal_from_params(t, min_log_scale=MIN_LOG_SCALE,
-                                                                               max_log_scale=MAX_LOG_SCALE)))
+        encoder = rlu.nn.build_mlp(input_dim=self.obs_dim + self.act_dim,
+                                   output_dim=self.latent_dim * 2,
+                                   mlp_hidden=self.mlp_hidden,
+                                   num_layers=3)
+        encoder.add(rlu.distributions.IndependentNormal(min_log_scale=MIN_LOG_SCALE, max_log_scale=MAX_LOG_SCALE))
         output = encoder(input)
         model = tf.keras.Model(inputs=[act_input, obs_input], outputs=output)
         return model
@@ -81,17 +103,14 @@ class BehaviorPolicy(ConditionalBetaVAE):
         obs_input = tf.keras.Input(shape=(self.obs_dim,), dtype=tf.float32)
         latent_input = tf.keras.Input(shape=(self.latent_dim,), dtype=tf.float32)
         input = tf.concat((latent_input, obs_input), axis=-1)
-        decoder = build_mlp(input_dim=self.obs_dim + self.latent_dim,
-                            output_dim=self.act_dim * 2,
-                            mlp_hidden=self.mlp_hidden,
-                            num_layers=3)
+        decoder = rlu.nn.build_mlp(input_dim=self.obs_dim + self.latent_dim,
+                                   output_dim=self.act_dim * 2,
+                                   mlp_hidden=self.mlp_hidden,
+                                   num_layers=3)
         if self.out_dist == 'beta':
-            out_layer = tfl.DistributionLambda(
-                make_distribution_fn=lambda t: make_independent_beta_from_params(t))
+            out_layer = rlu.distributions.IndependentBeta()
         elif self.out_dist == 'normal':
-            out_layer = tfl.DistributionLambda(
-                make_distribution_fn=lambda t: make_independent_normal_from_params(t, min_log_scale=MIN_LOG_SCALE,
-                                                                                   max_log_scale=MAX_LOG_SCALE))
+            out_layer = rlu.distributions.IndependentNormal(min_log_scale=MIN_LOG_SCALE, max_log_scale=MAX_LOG_SCALE)
         else:
             raise NotImplementedError
 
@@ -101,9 +120,9 @@ class BehaviorPolicy(ConditionalBetaVAE):
         return model
 
     @tf.function
-    def act_batch(self, obs, deterministic=tf.convert_to_tensor(True)):
+    def act_batch(self, obs):
         print(f'Tracing vae act_batch with obs {obs}')
-        pi_final = self.sample(cond=obs, full_path=tf.logical_not(deterministic))
+        pi_final = self.sample(cond=obs, full_path=False)
         pi_final = tf.tanh(pi_final)
         return pi_final
 
@@ -115,10 +134,6 @@ class EnsembleBehaviorPolicy(BehaviorPolicy):
                                                      act_dim=act_dim, mlp_hidden=mlp_hidden)
         self.build(input_shape=[(self.num_ensembles, None, act_dim),
                                 (self.num_ensembles, None, obs_dim)])
-
-    def expand_ensemble_dim(self, x):
-        """ functionality for outer class to expand before passing into the ensemble model. """
-        return expand_ensemble_dim(x, self.num_ensembles)
 
     def select_random_ensemble(self, x):
         """ x: (num_ensembles, None) """
@@ -132,14 +147,12 @@ class EnsembleBehaviorPolicy(BehaviorPolicy):
         obs_input = tf.keras.Input(batch_input_shape=(self.num_ensembles, None, self.obs_dim,), dtype=tf.float32)
         act_input = tf.keras.Input(batch_input_shape=(self.num_ensembles, None, self.act_dim,), dtype=tf.float32)
         input = tf.concat((act_input, obs_input), axis=-1)
-        encoder = build_mlp(input_dim=self.obs_dim + self.act_dim,
-                            output_dim=self.latent_dim * 2,
-                            mlp_hidden=self.mlp_hidden,
-                            num_layers=3,
-                            num_ensembles=self.num_ensembles)
-        encoder.add(tfl.DistributionLambda(
-            make_distribution_fn=lambda t: make_independent_normal_from_params(t, min_log_scale=MIN_LOG_SCALE,
-                                                                               max_log_scale=MAX_LOG_SCALE)))
+        encoder = rlu.nn.build_mlp(input_dim=self.obs_dim + self.act_dim,
+                                   output_dim=self.latent_dim * 2,
+                                   mlp_hidden=self.mlp_hidden,
+                                   num_layers=3,
+                                   num_ensembles=self.num_ensembles)
+        encoder.add(rlu.distributions.IndependentNormal(min_log_scale=MIN_LOG_SCALE, max_log_scale=MAX_LOG_SCALE))
         output = encoder(input)
         model = tf.keras.Model(inputs=[act_input, obs_input], outputs=output)
         return model
@@ -149,19 +162,16 @@ class EnsembleBehaviorPolicy(BehaviorPolicy):
         latent_input = tf.keras.Input(batch_input_shape=(self.num_ensembles, None, self.latent_dim,),
                                       dtype=tf.float32)
         input = tf.concat((latent_input, obs_input), axis=-1)
-        decoder = build_mlp(input_dim=self.obs_dim + self.latent_dim,
-                            output_dim=self.act_dim * 2,
-                            mlp_hidden=self.mlp_hidden,
-                            num_layers=3,
-                            num_ensembles=self.num_ensembles)
+        decoder = rlu.nn.build_mlp(input_dim=self.obs_dim + self.latent_dim,
+                                   output_dim=self.act_dim * 2,
+                                   mlp_hidden=self.mlp_hidden,
+                                   num_layers=3,
+                                   num_ensembles=self.num_ensembles)
 
         if self.out_dist == 'beta':
-            out_layer = tfl.DistributionLambda(
-                make_distribution_fn=lambda t: make_independent_beta_from_params(t))
+            out_layer = rlu.distributions.IndependentBeta()
         elif self.out_dist == 'normal':
-            out_layer = tfl.DistributionLambda(
-                make_distribution_fn=lambda t: make_independent_normal_from_params(t, min_log_scale=MIN_LOG_SCALE,
-                                                                                   max_log_scale=MAX_LOG_SCALE))
+            out_layer = rlu.distributions.IndependentNormal(min_log_scale=MIN_LOG_SCALE, max_log_scale=MAX_LOG_SCALE)
         else:
             raise NotImplementedError
 
@@ -171,11 +181,10 @@ class EnsembleBehaviorPolicy(BehaviorPolicy):
         return model
 
     @tf.function
-    def act_batch(self, obs, deterministic=tf.convert_to_tensor(True)):
+    def act_batch(self, obs):
         print(f'Tracing vae act_batch with obs {obs}')
-
-        obs = self.expand_ensemble_dim(obs)
-        pi_final = self.sample(cond=obs, full_path=tf.logical_not(deterministic))
+        obs = rlu.functional.expand_ensemble_dim(obs, num_ensembles=self.num_ensembles)
+        pi_final = self.sample(cond=obs, full_path=False)
         # random select one ensemble
         pi_final = self.select_random_ensemble(pi_final)
         pi_final = tf.tanh(pi_final)
@@ -195,13 +204,15 @@ class EnsembleBehaviorPolicy(BehaviorPolicy):
         return nll, kld
 
     def train_step(self, data):
-        data = tf.nest.map_structure(lambda x: self.expand_ensemble_dim(x), data)
+        data = tf.nest.map_structure(lambda x: rlu.functional.expand_ensemble_dim(x, num_ensembles=self.num_ensembles),
+                                     data)
         result = super(EnsembleBehaviorPolicy, self).train_step(data=data)
         result = tf.nest.map_structure(lambda x: x / self.num_ensembles, result)
         return result
 
     def test_step(self, data):
-        data = tf.nest.map_structure(lambda x: self.expand_ensemble_dim(x), data)
+        data = tf.nest.map_structure(lambda x: rlu.functional.expand_ensemble_dim(x, num_ensembles=self.num_ensembles),
+                                     data)
         result = super(EnsembleBehaviorPolicy, self).test_step(data=data)
         result = tf.nest.map_structure(lambda x: x / self.num_ensembles, result)
         return result

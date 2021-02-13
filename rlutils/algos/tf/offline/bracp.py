@@ -10,21 +10,16 @@ import time
 
 import gym
 import numpy as np
+import rlutils.tf as rlu
 import tensorflow as tf
 import tensorflow_probability as tfp
 from rlutils.future.optimizer import get_adam_optimizer, minimize
 from rlutils.logx import EpochLogger
 from rlutils.replay_buffers import PyUniformParallelEnvReplayBuffer
 from rlutils.runner import TFRunner
-from rlutils.tf.distributions import apply_squash_log_prob
-from rlutils.tf.functional import soft_update, hard_update, to_numpy_or_python_type
-from rlutils.tf.generative_models.vae import EnsembleBehaviorPolicy
-from rlutils.tf.nn import SquashedGaussianMLPActor, EnsembleMinQNet, LagrangeLayer, CenteredBetaMLPActor
 from tqdm.auto import tqdm, trange
 
 tfd = tfp.distributions
-
-__all__ = ['SquashedGaussianMLPActor', 'CenteredBetaMLPActor']
 
 
 class BRACPAgent(tf.keras.Model):
@@ -64,26 +59,26 @@ class BRACPAgent(tf.keras.Model):
         self.q_mlp_hidden = q_mlp_hidden
         self.policy_lr = policy_lr
         self.policy_behavior_lr = policy_behavior_lr
-        self.behavior_policy = EnsembleBehaviorPolicy(num_ensembles=num_ensembles, out_dist='normal',
-                                                      obs_dim=self.ob_dim, act_dim=self.ac_dim,
-                                                      mlp_hidden=behavior_mlp_hidden)
+        self.behavior_policy = rlu.nn.EnsembleBehaviorPolicy(num_ensembles=num_ensembles, out_dist='normal',
+                                                             obs_dim=self.ob_dim, act_dim=self.ac_dim,
+                                                             mlp_hidden=behavior_mlp_hidden)
         self.behavior_lr = behavior_lr
-        self.policy_net = SquashedGaussianMLPActor(ob_dim, ac_dim, policy_mlp_hidden)
-        self.target_policy_net = SquashedGaussianMLPActor(ob_dim, ac_dim, policy_mlp_hidden)
+        self.policy_net = rlu.nn.SquashedGaussianMLPActor(ob_dim, ac_dim, policy_mlp_hidden)
+        self.target_policy_net = rlu.nn.SquashedGaussianMLPActor(ob_dim, ac_dim, policy_mlp_hidden)
         self.policy_net.optimizer = get_adam_optimizer(lr=self.policy_lr)
-        hard_update(self.target_policy_net, self.policy_net)
-        self.q_network = EnsembleMinQNet(ob_dim, ac_dim, q_mlp_hidden)
+        rlu.functional.hard_update(self.target_policy_net, self.policy_net)
+        self.q_network = rlu.nn.EnsembleMinQNet(ob_dim, ac_dim, q_mlp_hidden)
         self.q_network.compile(optimizer=get_adam_optimizer(q_lr))
-        self.target_q_network = EnsembleMinQNet(ob_dim, ac_dim, q_mlp_hidden)
-        hard_update(self.target_q_network, self.q_network)
+        self.target_q_network = rlu.nn.EnsembleMinQNet(ob_dim, ac_dim, q_mlp_hidden)
+        rlu.functional.hard_update(self.target_q_network, self.q_network)
 
-        self.log_beta = LagrangeLayer(initial_value=alpha)
+        self.log_beta = rlu.nn.LagrangeLayer(initial_value=alpha)
         self.log_beta.compile(optimizer=get_adam_optimizer(alpha_lr))
 
-        self.log_alpha = LagrangeLayer(initial_value=alpha)
+        self.log_alpha = rlu.nn.LagrangeLayer(initial_value=alpha)
         self.log_alpha.compile(optimizer=get_adam_optimizer(alpha_lr))
 
-        self.log_gp = LagrangeLayer(initial_value=gp_weight)
+        self.log_gp = rlu.nn.LagrangeLayer(initial_value=gp_weight)
         self.log_gp.compile(optimizer=get_adam_optimizer(alpha_lr))
 
         self.target_entropy = target_entropy
@@ -145,12 +140,12 @@ class BRACPAgent(tf.keras.Model):
 
     @tf.function
     def update_target(self):
-        soft_update(self.target_q_network, self.q_network, self.tau)
-        soft_update(self.target_policy_net, self.policy_net, self.tau)
+        rlu.functional.soft_update(self.target_q_network, self.q_network, self.tau)
+        rlu.functional.soft_update(self.target_policy_net, self.policy_net, self.tau)
 
     @tf.function
     def hard_update_policy_target(self):
-        hard_update(self.target_policy_net, self.policy_net)
+        rlu.functional.hard_update(self.target_policy_net, self.policy_net)
 
     @tf.function(experimental_relax_shapes=True)
     def compute_pi_pib_distance(self, obs):
@@ -238,7 +233,7 @@ class BRACPAgent(tf.keras.Model):
             # Cross entropy
             x = tf.tile(x, multiples=(1, n, 1))  # (num_ensembles, n * None, act_dim)
             kl_loss = beta_distribution.log_prob(x)  # (ensembles, None * n)
-            kl_loss = -apply_squash_log_prob(kl_loss, x)
+            kl_loss = -rlu.distributions.apply_squash_log_prob(kl_loss, x)
         else:
             raise NotImplementedError
 
@@ -482,7 +477,7 @@ class BRACPAgent(tf.keras.Model):
         # TODO: use different batches to update q and actor to break correlation
         data = replay_buffer.sample()
         info = self._update(**data)
-        self.logger.store(**to_numpy_or_python_type(info))
+        self.logger.store(**rlu.functional.to_numpy_or_python_type(info))
 
     @tf.function
     def act_batch(self, obs, type=5):
@@ -573,7 +568,7 @@ class BRACPAgent(tf.keras.Model):
             t.set_description(desc=f'Loss: {loss:.2f}')
 
 
-class Runner(TFRunner):
+class BRACPRunner(TFRunner):
     def get_action_batch(self, o, deterministic=False):
         return self.agent.act_batch(tf.convert_to_tensor(o, dtype=tf.float32),
                                     deterministic).numpy()
@@ -815,6 +810,7 @@ class Runner(TFRunner):
              reward_scale=True,
              save_freq: int = None,
              tensorboard=False,
+             logger_path='data',
              ):
         """Main function to run Improved Behavior Regularized Actor Critic (BRAC+)
 
@@ -862,9 +858,9 @@ class Runner(TFRunner):
         config = locals()
 
         runner = cls(seed=seed, steps_per_epoch=steps_per_epoch, epochs=epochs,
-                     exp_name=None, logger_path='data')
-        runner.setup_env(env_name=env_name, num_parallel_env=num_test_episodes, frame_stack=None, wrappers=None,
-                         asynchronous=False, num_test_episodes=None)
+                     exp_name=None, logger_path=logger_path)
+        runner.setup_env(env_name=env_name, num_parallel_env=num_test_episodes, asynchronous=False,
+                         num_test_episodes=None)
         runner.setup_logger(config=config, tensorboard=tensorboard)
         runner.setup_agent(num_ensembles=num_ensembles,
                            behavior_mlp_hidden=behavior_mlp_hidden,
@@ -900,4 +896,4 @@ if __name__ == '__main__':
     args = vars(parser.parse_args())
     env_name = args['env_name']
 
-    Runner.main(**args)
+    BRACPRunner.main(**args)

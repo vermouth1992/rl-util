@@ -9,7 +9,7 @@ import d4rl
 import gym
 import numpy as np
 import tensorflow as tf
-from rlutils.algos.tf.offline.bracp import bracp, BRACPAgent
+from rlutils.algos.tf.offline.bracp import BRACPRunner, BRACPAgent
 from rlutils.logx import EpochLogger
 from rlutils.runner import get_argparser_from_func
 from tqdm.auto import tqdm
@@ -153,7 +153,7 @@ def train_policy(args):
     }
     override_args = default_args.get(env_name, dict())
     args.update(override_args)
-    bracp(**args)
+    BRACPRunner.main(**args)
 
 
 if __name__ == '__main__':
@@ -162,7 +162,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     subparser = parser.add_subparsers(dest='action')
     train_parser = subparser.add_parser(name='train', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    train_parser = get_argparser_from_func(bracp, train_parser)
+    train_parser = get_argparser_from_func(BRACPRunner.main, train_parser)
 
     test_parser = subparser.add_parser(name='test', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     test_parser.add_argument('fpath', type=str)
@@ -172,6 +172,7 @@ if __name__ == '__main__':
     test_parser.add_argument('--test_type', '-t', type=int, default=5)
 
     args = vars(parser.parse_args())
+    args['logger_path'] = 'data/d4rl_results'
 
     pprint.pprint(args)
 
