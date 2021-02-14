@@ -139,16 +139,13 @@ def train_policy(args):
             'generalization_threshold': 2.0,
         },
         'hopper-random-v0': {
-            'generalization_threshold': 0.1,
-            'std_scale': 1.0
+            'generalization_threshold': 3.0,
         },
         'walker2d-random-v0': {
-            'generalization_threshold': 0.1,
-            'std_scale': 1.0
+            'generalization_threshold': 1.0,
         },
         'halfcheetah-random-v0': {
-            'generalization_threshold': 0.1,
-            'std_scale': 1.0
+            'generalization_threshold': 3.0,
         }
     }
     override_args = default_args.get(env_name, dict())
