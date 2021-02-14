@@ -75,11 +75,14 @@ class LagrangeLayer(tf.keras.Model):
         )
         self.built = True
 
-    def __call__(self, *args, **kwargs):
-        return super(LagrangeLayer, self).__call__(tf.random.normal(shape=(), dtype=tf.float32))
+    def __call__(self, inputs, training=None):
+        return super(LagrangeLayer, self).__call__(tf.random.normal(shape=(), dtype=tf.float32), training=training)
 
-    def call(self, inputs, **kwargs):
-        return tf.nn.softplus(clip_by_value(self.kernel, self.min_log_value, self.max_log_value))
+    def call(self, inputs, training=None, mask=None):
+        if training:
+            return tf.nn.softplus(self.kernel)
+        else:
+            return tf.nn.softplus(clip_by_value(self.kernel, self.min_log_value, self.max_log_value))
 
     def assign(self, value):
         self.kernel.assign(inverse_softplus(value))

@@ -78,7 +78,7 @@ class BRACPAgent(tf.keras.Model):
         self.log_alpha = rlu.nn.LagrangeLayer(initial_value=alpha)
         self.log_alpha.compile(optimizer=get_adam_optimizer(alpha_lr))
 
-        self.log_gp = rlu.nn.LagrangeLayer(initial_value=gp_weight)
+        self.log_gp = rlu.nn.LagrangeLayer(initial_value=gp_weight, min_value=gp_weight)
         self.log_gp.compile(optimizer=get_adam_optimizer(alpha_lr))
 
         self.target_entropy = target_entropy
@@ -427,11 +427,13 @@ class BRACPAgent(tf.keras.Model):
             q_values_loss = tf.reduce_sum(q_values_loss, axis=0)  # (None,)
 
             if self.use_gp:
-                gp_weight = self.log_gp(obs)
+                gp_weight = self.log_gp(obs, training=False)
                 gp = self._compute_q_net_gp(obs)
                 loss = q_values_loss + gp * gp_weight
             else:
                 loss = q_values_loss
+                gp = 0.
+                gp_weight = 0.
             loss = tf.reduce_mean(loss, axis=0)
 
         minimize(loss, q_tape, self.q_network)
@@ -439,15 +441,11 @@ class BRACPAgent(tf.keras.Model):
         if self.use_gp and (self.max_ood_grad_norm is not None):
             with tf.GradientTape() as gp_weight_tape:
                 gp_weight_tape.watch(self.log_gp.trainable_variables)
-                gp_weight = self.log_gp(obs)
-                delta_gp = (gp - self.max_ood_grad_norm) * gp_weight
+                raw_gp_weight = self.log_gp(obs, training=True)
+                delta_gp = (gp - self.max_ood_grad_norm) * raw_gp_weight
                 loss_gp_weight = -tf.reduce_mean(delta_gp, axis=0)
 
             minimize(loss_gp_weight, gp_weight_tape, self.log_gp)
-        else:
-            if not self.use_gp:
-                gp = 0.
-                gp_weight = 0.
 
         info = dict(
             Q1Vals=q_values[0],
@@ -647,7 +645,8 @@ class BRACPRunner(TFRunner):
                     n,
                     gp_weight,
                     entropy_reg,
-                    kl_backup
+                    kl_backup,
+                    max_ood_grad_norm,
                     ):
         obs_dim = self.env.single_observation_space.shape[-1]
         act_dim = self.env.single_action_space.shape[-1]
@@ -661,7 +660,7 @@ class BRACPRunner(TFRunner):
                                 q_lr=q_lr, alpha_lr=alpha_lr, alpha=alpha, tau=tau, gamma=gamma,
                                 target_entropy=target_entropy, use_gp=use_gp,
                                 reg_type=reg_type, sigma=sigma, n=n, gp_weight=gp_weight,
-                                entropy_reg=entropy_reg, kl_backup=kl_backup)
+                                entropy_reg=entropy_reg, kl_backup=kl_backup, max_ood_grad_norm=max_ood_grad_norm)
         self.agent.set_logger(self.logger)
         self.behavior_filepath = os.path.join(self.logger.output_dir, 'behavior.ckpt')
         self.policy_behavior_filepath = os.path.join(self.logger.output_dir,
@@ -811,6 +810,7 @@ class BRACPRunner(TFRunner):
              kl_backup=False,
              generalization_threshold=0.1,
              std_scale=4.,
+             max_ood_grad_norm=0.01,
              # behavior policy
              num_ensembles=3,
              behavior_mlp_hidden=256,
@@ -879,7 +879,7 @@ class BRACPRunner(TFRunner):
                            target_entropy=target_entropy, use_gp=use_gp,
                            policy_behavior_lr=policy_behavior_lr,
                            reg_type=reg_type, sigma=sigma, n=n, gp_weight=gp_weight,
-                           entropy_reg=entropy_reg, kl_backup=kl_backup)
+                           entropy_reg=entropy_reg, kl_backup=kl_backup, max_ood_grad_norm=max_ood_grad_norm)
         runner.setup_extra(pretrain_epochs=pretrain_epochs,
                            save_freq=save_freq,
                            max_kl=max_kl,

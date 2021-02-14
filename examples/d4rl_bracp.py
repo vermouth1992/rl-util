@@ -119,6 +119,7 @@ def train_policy(args):
         },
         'halfcheetah-medium-expert-v0': {
             'generalization_threshold': 0.2,
+            'max_ood_grad_norm': 0.1,
         },
         'hopper-medium-v0': {
             'generalization_threshold': 0.4,
@@ -128,6 +129,7 @@ def train_policy(args):
         },
         'halfcheetah-medium-v0': {
             'generalization_threshold': 7.0,
+            'max_ood_grad_norm': 0.1,
         },
         'hopper-medium-replay-v0': {
             'generalization_threshold': 4.0,
@@ -136,7 +138,8 @@ def train_policy(args):
             'generalization_threshold': 3.0,
         },
         'halfcheetah-medium-replay-v0': {
-            'generalization_threshold': 4.0,
+            'generalization_threshold': 3.0,
+            'max_ood_grad_norm': 0.1,
         },
         'hopper-random-v0': {
             'generalization_threshold': 3.0,
@@ -146,6 +149,7 @@ def train_policy(args):
         },
         'halfcheetah-random-v0': {
             'generalization_threshold': 3.0,
+            'max_ood_grad_norm': 0.1,
         }
     }
     override_args = default_args.get(env_name, dict())
