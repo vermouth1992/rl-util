@@ -47,7 +47,7 @@ class BRACPAgent(tf.keras.Model):
                  gp_weight=0.1,
                  entropy_reg=True,
                  kl_backup=False,
-                 max_ood_grad_norm=None,
+                 max_ood_grad_norm=0.01,
                  ):
         super(BRACPAgent, self).__init__()
         self.reg_type = reg_type

@@ -23,6 +23,10 @@ def smooth_dataframe(dataframe, value, smooth):
 
 
 def plot_data(data, xaxis='Epoch', value="AverageEpRet", condition="Condition1", smooth=1, **kwargs):
+    maxlen = min([len(d) for d in data])
+    if smooth > maxlen:
+        print(f'Truncate smooth to {maxlen}')
+        smooth = maxlen
     if smooth > 1:
         """
         smooth data with moving window average.
