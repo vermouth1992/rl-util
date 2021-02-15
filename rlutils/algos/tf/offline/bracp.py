@@ -40,7 +40,7 @@ class BRACPAgent(tf.keras.Model):
                  gamma=0.99,
                  target_entropy=None,
                  use_gp=True,
-                 gp_type='hard',
+                 gp_type='softplus',
                  reg_type='kl',
                  sigma=10,
                  n=5,
