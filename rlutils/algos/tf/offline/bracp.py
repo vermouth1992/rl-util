@@ -384,22 +384,22 @@ class BRACPAgent(tf.keras.Model):
         q_target = reward + self.gamma * (1.0 - done) * target_q_values
         return q_target
 
-    def _compute_q_net_gp(self, obs):
+    def _compute_q_net_gp(self, obs, actions):
         batch_size = tf.shape(obs)[0]
         if self.reg_type in ['kl', 'cross_entropy']:
-            action, log_prob, raw_action, pi_distribution = self.policy_net((obs, False))
+            pi_action, log_prob, raw_action, pi_distribution = self.policy_net((obs, False))
             kl = self._compute_kl_behavior_v2(obs, raw_action, pi_distribution)  # (None,)
         elif self.reg_type == 'mmd':
             obs = tf.tile(obs, (self.n, 1))
-            action, log_prob, raw_action, pi_distribution = self.policy_net((obs, False))
+            pi_action, log_prob, raw_action, pi_distribution = self.policy_net((obs, False))
             kl = self._compute_mmd(obs, raw_action, pi_distribution)
         else:
             raise NotImplementedError
 
         with tf.GradientTape() as inner_tape:
-            inner_tape.watch(action)
-            q_values = self.q_network((obs, action), training=False)  # (num_ensembles, None)
-        input_gradient = inner_tape.gradient(q_values, action)  # (None, act_dim)
+            inner_tape.watch(pi_action)
+            q_values = self.q_network((obs, pi_action), training=False)  # (num_ensembles, None)
+        input_gradient = inner_tape.gradient(q_values, pi_action)  # (None, act_dim)
         penalty = tf.norm(input_gradient, axis=-1)  # (None,)
         if self.reg_type == 'mmd':
             penalty = tf.reshape(penalty, shape=(self.n, batch_size))
@@ -413,6 +413,10 @@ class BRACPAgent(tf.keras.Model):
             weights = tf.cast((kl - self.delta_gp) > 0, dtype=tf.float32)
         else:
             raise NotImplementedError
+
+        in_distribution_q_values = self.q_network((obs, actions), training=False)
+        # only penalize the gradient if OOD Q > in-distribution Q
+        weights = weights * tf.cast(q_values > in_distribution_q_values, dtype=tf.float32)
         penalty = penalty * tf.stop_gradient(weights)
         return penalty
 
@@ -428,7 +432,7 @@ class BRACPAgent(tf.keras.Model):
 
             if self.use_gp:
                 gp_weight = self.log_gp(obs, training=False)
-                gp = self._compute_q_net_gp(obs)
+                gp = self._compute_q_net_gp(obs, actions)
                 loss = q_values_loss + gp * gp_weight
             else:
                 loss = q_values_loss
