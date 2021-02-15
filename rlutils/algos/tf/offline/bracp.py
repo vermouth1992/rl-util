@@ -414,9 +414,6 @@ class BRACPAgent(tf.keras.Model):
         else:
             raise NotImplementedError
 
-        in_distribution_q_values = self.q_network((obs, actions), training=False)
-        # only penalize the gradient if OOD Q > in-distribution Q
-        weights = weights * tf.cast(q_values > in_distribution_q_values, dtype=tf.float32)
         penalty = penalty * tf.stop_gradient(weights)
         return penalty
 
