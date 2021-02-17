@@ -16,7 +16,8 @@ from gym.error import (AlreadyPendingCallError, NoAsyncCallError,
 from gym.vector.utils import (create_shared_memory, create_empty_array,
                               write_to_shared_memory, read_from_shared_memory,
                               concatenate, CloudpickleWrapper, clear_mpi_env_vars)
-from gym.vector.vector_env import VectorEnv
+
+from .vector_env import VectorEnv
 
 __all__ = ['AsyncVectorEnv']
 

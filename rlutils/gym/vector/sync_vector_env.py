@@ -7,7 +7,8 @@ from copy import deepcopy
 
 import numpy as np
 from gym.vector.utils import concatenate, create_empty_array
-from gym.vector.vector_env import VectorEnv
+
+from .vector_env import VectorEnv
 
 __all__ = ['SyncVectorEnv']
 

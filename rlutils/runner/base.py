@@ -14,9 +14,9 @@ import gym
 import gym.spaces
 import numpy as np
 import rlutils.gym
-import rlutils.np as rln
 from rlutils.logx import EpochLogger, setup_logger_kwargs
 from rlutils.replay_buffers import PyUniformParallelEnvReplayBuffer
+from rlutils.samplers import StepSampler
 from tqdm.auto import trange, tqdm
 
 
@@ -231,53 +231,20 @@ class OffPolicyRunner(BaseRunner):
                     update_every,
                     update_per_step,
                     policy_delay):
-        self.start_steps = start_steps
         self.update_after = update_after
-        self.update_every = update_every
         self.update_per_step = update_per_step
         self.policy_delay = policy_delay
+        self.update_every = update_every
+        self.sampler = StepSampler(env=self.env, start_steps=start_steps, num_steps=update_every,
+                                   collect_fn=self.get_action_batch_explore)
+        self.sampler.set_logger(logger=self.logger)
 
     def run_one_step(self, t):
-        global_env_steps = self.global_step * self.num_parallel_env
-        if global_env_steps >= self.start_steps:
-            a = self.get_action_batch_explore(self.o)
-            assert not np.any(np.isnan(a)), f'NAN action: {a}'
-        else:
-            a = self.env.action_space.sample()
-
-        # Step the env
-        o2, r, d, infos = self.env.step(a)
-        self.ep_ret += r
-        self.ep_len += 1
-
-        timeouts = rln.gather_dict_key(infos=infos, key='TimeLimit.truncated', default=False, dtype=np.bool)
-        # Ignore the "done" signal if it comes from hitting the time
-        # horizon (that is, when it's an artificial terminal signal
-        # that isn't based on the agent's state)
-        true_d = np.logical_and(d, np.logical_not(timeouts))
-
-        # Store experience to replay buffer
-        self.replay_buffer.add(data={
-            'obs': self.o,
-            'act': a,
-            'rew': r,
-            'next_obs': o2,
-            'done': true_d
-        })
-
-        # Super critical, easy to overlook step: make sure to update
-        # most recent observation!
-        self.o = o2
-
-        # End of trajectory handling
-        if np.any(d):
-            self.logger.store(EpRet=self.ep_ret[d], EpLen=self.ep_len[d])
-            self.ep_ret[d] = 0
-            self.ep_len[d] = 0
-            self.o = self.env.reset_done()
-
+        transitions = self.sampler.sample()
+        for data in transitions:
+            self.replay_buffer.add(data=data)
         # Update handling
-        if global_env_steps >= self.update_after and global_env_steps % self.update_every == 0:
+        if self.sampler.total_env_steps >= self.update_after:
             for j in range(self.update_every * self.update_per_step):
                 batch = self.replay_buffer.sample()
                 batch['update_target'] = self.update_target == self.policy_delay - 1
@@ -290,11 +257,9 @@ class OffPolicyRunner(BaseRunner):
 
         # Log info about epoch
         self.logger.log_tabular('Epoch', epoch)
-        self.logger.log_tabular('EpRet', with_min_and_max=True)
+        self.sampler.log_tabular()
         self.logger.log_tabular('TestEpRet', with_min_and_max=True)
-        self.logger.log_tabular('EpLen', average_only=True)
         self.logger.log_tabular('TestEpLen', average_only=True)
-        self.logger.log_tabular('TotalEnvInteracts', self.global_step * self.num_parallel_env)
         self.agent.log_tabular()
         self.logger.log_tabular('Time', time.time() - self.start_time)
         self.logger.dump_tabular()

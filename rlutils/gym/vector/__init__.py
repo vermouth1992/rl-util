@@ -3,8 +3,9 @@ try:
 except ImportError:
     Iterable = (tuple, list)
 
-from rlutils.gym.vector.async_vector_env import AsyncVectorEnv
-from rlutils.gym.vector.sync_vector_env import SyncVectorEnv
+from .async_vector_env import AsyncVectorEnv
+from .sync_vector_env import SyncVectorEnv
+from .vector_env import VectorEnv
 
 
 def make(id, num_envs=1, asynchronous=True, wrappers=None, **kwargs):
