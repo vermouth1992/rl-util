@@ -188,7 +188,7 @@ class BRACPAgent(tf.keras.Model):
         samples_pi = tf.reshape(samples_pi, shape=(self.n, self.behavior_policy.num_ensembles * batch_size,
                                                    self.ac_dim))
 
-        obs_expand = self.behavior_policy.expand_ensemble_dim(obs)
+        obs_expand = rlu.functional.expand_ensemble_dim(obs, self.behavior_policy.num_ensembles)
         samples_pi_b = self.behavior_policy.sample(
             obs_expand, full_path=tf.convert_to_tensor(False))  # (num_ensembles, n * batch_size, d)
         samples_pi_b = tf.reshape(samples_pi_b, shape=(self.behavior_policy.num_ensembles, self.n,
