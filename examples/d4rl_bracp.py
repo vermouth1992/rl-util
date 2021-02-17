@@ -112,7 +112,7 @@ def train_policy(args):
     # setup env specific arguments.
     default_args = {
         'hopper-medium-expert-v0': {
-            'generalization_threshold': 0.1,
+            'generalization_threshold': 0.2,
         },
         'walker2d-medium-expert-v0': {
             'generalization_threshold': 0.2,
@@ -122,10 +122,10 @@ def train_policy(args):
             'max_ood_grad_norm': 0.1,
         },
         'hopper-medium-v0': {
-            'generalization_threshold': 0.4,
+            'generalization_threshold': 0.2,
         },
         'walker2d-medium-v0': {
-            'generalization_threshold': 0.8,
+            'generalization_threshold': 1.0,
         },
         'halfcheetah-medium-v0': {
             'generalization_threshold': 7.0,
