@@ -150,6 +150,45 @@ def train_policy(args):
         'halfcheetah-random-v0': {
             'generalization_threshold': 3.0,
             'max_ood_grad_norm': 0.1,
+        },
+        'pen-human-v0': {
+            'generalization_threshold': 0.001,
+            'reg_type': 'mmd',
+            'std_scale': 1.0,
+            'sigma': 20,
+            'policy_lr': 5e-8,
+            'epochs': 200,
+            'gp_type': 'hard',
+            'max_ood_grad_norm': 0.1,
+        },
+        'hammer-human-v0': {
+            'generalization_threshold': 0.001,
+            'reg_type': 'mmd',
+            'std_scale': 1.0,
+            'sigma': 60,
+            'policy_lr': 5e-8,
+            'epochs': 200,
+            'gp_type': 'hard',
+            'max_ood_grad_norm': 0.1,
+        },
+        'door-human-v0': {
+            'generalization_threshold': 0.001,
+            'reg_type': 'mmd',
+            'std_scale': 1.0,
+            'sigma': 60,
+            'policy_lr': 5e-8,
+            'gp_type': 'hard',
+            'max_ood_grad_norm': 0.1,
+        },
+        'relocate-human-v0': {
+            'generalization_threshold': 0.001,
+            'reg_type': 'mmd',
+            'std_scale': 1.0,
+            'sigma': 60,
+            'policy_lr': 5e-8,
+            'epochs': 200,
+            'gp_type': 'hard',
+            'max_ood_grad_norm': 0.1,
         }
     }
     override_args = default_args.get(env_name, dict())

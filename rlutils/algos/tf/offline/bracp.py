@@ -185,7 +185,7 @@ class BRACPAgent(tf.keras.Model):
         samples_pi = tf.reshape(samples_pi, shape=(self.behavior_policy.num_ensembles, self.n,
                                                    batch_size, self.ac_dim))
         samples_pi = tf.transpose(samples_pi, perm=[1, 0, 2, 3])
-        samples_pi = tf.reshape(samples_pi, shape=(self.n, self.behavior_policy.num_ensembles * batch_size,
+        samples_pi = tf.reshape(samples_pi, shape=(self.n * self.behavior_policy.num_ensembles, batch_size,
                                                    self.ac_dim))
 
         obs_expand = rlu.functional.expand_ensemble_dim(obs, self.behavior_policy.num_ensembles)
@@ -194,14 +194,18 @@ class BRACPAgent(tf.keras.Model):
         samples_pi_b = tf.reshape(samples_pi_b, shape=(self.behavior_policy.num_ensembles, self.n,
                                                        batch_size, self.ac_dim))
         samples_pi_b = tf.transpose(samples_pi_b, perm=[1, 0, 2, 3])
-        samples_pi_b = tf.reshape(samples_pi_b, shape=(self.n, self.behavior_policy.num_ensembles * batch_size,
+        samples_pi_b = tf.reshape(samples_pi_b, shape=(self.n * self.behavior_policy.num_ensembles, batch_size,
                                                        self.ac_dim))
 
-        samples_pi = self.policy_net.transform_raw_action(samples_pi)
-        samples_pi_b = self.behavior_policy.transform_raw_action(samples_pi_b)
+        samples_pi = tf.clip_by_value(samples_pi, -3., 3.)
+        samples_pi_b = tf.clip_by_value(samples_pi_b, -3., 3.)
+        samples_pi = tf.tanh(samples_pi)
+        samples_pi_b = tf.tanh(samples_pi_b)
+        # samples_pi = self.policy_net.transform_raw_action(samples_pi)
+        # samples_pi_b = self.behavior_policy.transform_raw_action(samples_pi_b)
         mmd_loss = self.mmd_loss_laplacian(samples_pi, samples_pi_b, sigma=self.sigma)
-        mmd_loss = tf.reshape(mmd_loss, shape=(self.behavior_policy.num_ensembles, batch_size))
-        mmd_loss = tf.reduce_mean(mmd_loss, axis=0)
+        # mmd_loss = tf.reshape(mmd_loss, shape=(self.behavior_policy.num_ensembles, batch_size))
+        # mmd_loss = tf.reduce_mean(mmd_loss, axis=0)
         return mmd_loss
 
     def _compute_kl_behavior_v2(self, obs, raw_action, pi_distribution):
@@ -645,6 +649,7 @@ class BRACPRunner(TFRunner):
                     sigma,
                     n,
                     gp_weight,
+                    gp_type,
                     entropy_reg,
                     kl_backup,
                     max_ood_grad_norm,
@@ -661,7 +666,8 @@ class BRACPRunner(TFRunner):
                                 q_lr=q_lr, alpha_lr=alpha_lr, alpha=alpha, tau=tau, gamma=gamma,
                                 target_entropy=target_entropy, use_gp=use_gp,
                                 reg_type=reg_type, sigma=sigma, n=n, gp_weight=gp_weight,
-                                entropy_reg=entropy_reg, kl_backup=kl_backup, max_ood_grad_norm=max_ood_grad_norm)
+                                entropy_reg=entropy_reg, kl_backup=kl_backup, max_ood_grad_norm=max_ood_grad_norm,
+                                gp_type=gp_type)
         self.agent.set_logger(self.logger)
         self.behavior_filepath = os.path.join(self.logger.output_dir, 'behavior.ckpt')
         self.policy_behavior_filepath = os.path.join(self.logger.output_dir,
@@ -804,6 +810,7 @@ class BRACPRunner(TFRunner):
              max_kl: float = None,
              use_gp=True,
              reg_type='kl',
+             gp_type='hard',
              sigma=20,
              n=5,
              gp_weight=0.1,
@@ -879,7 +886,7 @@ class BRACPRunner(TFRunner):
                            policy_lr=policy_lr, q_lr=q_lr, alpha_lr=alpha_lr, alpha=alpha, tau=tau, gamma=gamma,
                            target_entropy=target_entropy, use_gp=use_gp,
                            policy_behavior_lr=policy_behavior_lr,
-                           reg_type=reg_type, sigma=sigma, n=n, gp_weight=gp_weight,
+                           reg_type=reg_type, sigma=sigma, n=n, gp_weight=gp_weight, gp_type=gp_type,
                            entropy_reg=entropy_reg, kl_backup=kl_backup, max_ood_grad_norm=max_ood_grad_norm)
         runner.setup_extra(pretrain_epochs=pretrain_epochs,
                            save_freq=save_freq,
