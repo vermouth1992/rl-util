@@ -159,7 +159,7 @@ def train_policy(args):
             'policy_lr': 5e-8,
             'epochs': 100,
             'gp_type': 'hard',
-            'max_ood_grad_norm': 0.01,
+            'max_ood_grad_norm': 0.001,
         },
         'hammer-human-v0': {
             'generalization_threshold': 0.001,
@@ -169,7 +169,7 @@ def train_policy(args):
             'policy_lr': 5e-8,
             'epochs': 200,
             'gp_type': 'hard',
-            'max_ood_grad_norm': 0.01,
+            'max_ood_grad_norm': 0.001,
         },
         'door-human-v0': {
             'generalization_threshold': 0.001,
@@ -178,7 +178,7 @@ def train_policy(args):
             'sigma': 120,
             'policy_lr': 5e-8,
             'gp_type': 'hard',
-            'max_ood_grad_norm': 0.01,
+            'max_ood_grad_norm': 0.001,
         },
         'relocate-human-v0': {
             'generalization_threshold': 0.001,
@@ -188,7 +188,7 @@ def train_policy(args):
             'policy_lr': 5e-8,
             'epochs': 200,
             'gp_type': 'hard',
-            'max_ood_grad_norm': 0.01,
+            'max_ood_grad_norm': 0.001,
         }
     }
     override_args = default_args.get(env_name, dict())
