@@ -1,46 +1,21 @@
-# Reinforcement Learning Utilities
+# BRACP: Improved Behavior Regularized Offline Reinforcement Learning
+## Requirements
+To install requirements:
+#### Python package
+```shell
+pip install -r requirements.txt
+```
 
-## TODO:
+#### D4RL library
+```shell
+pip install git+https://github.com/rail-berkeley/d4rl@master#egg=d4rl
+```
 
-* [ ] N-step return in Numpy
-* [ ] GAN-based behavior policy for PLAS
+## Training
+```shell
+python examples/d4rl_bracp.py train --env_name halfcheetah-medium-v0 --seed 110
+```
+The script will first pretrain the behavior policy and the initial policy that minimize the divergence.
 
-## Network architecture
-
-* MLP
-* CNN for atari
-* Ensembles
-
-## Experience Replay
-
-* Prioritized experience replay
-* n-step return
-
-## Runner
-
-### Experimental grid
-
-### Data collection
-
-### Policy improvement
-
-## Logger
-
-## Exploration Strategies
-
-## Algorithms
-
-### Model-free
-
-#### Off-policy
-
-* SAC
-* TD3
-
-#### On-policy
-
-* TRPO
-* PPO
-* A2C
-
-## Benchmarks
+## Logging
+The logs will be placed at data/d4rl_results/
