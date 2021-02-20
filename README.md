@@ -1,5 +1,11 @@
 # BRACP: Improved Behavior Regularized Offline Reinforcement Learning
 ## Requirements
+We high recommend that you create a new Python environment to test our code
+#### Conda Environment
+```shell
+conda create -n bracp python=3.8
+```
+
 To install requirements:
 #### Python package
 ```shell
