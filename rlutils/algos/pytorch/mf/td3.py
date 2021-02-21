@@ -11,7 +11,7 @@ import torch.nn as nn
 from rlutils.pytorch.functional import soft_update, compute_target_value, to_numpy_or_python_type
 from rlutils.pytorch.nn import EnsembleMinQNet
 from rlutils.pytorch.nn.functional import build_mlp
-from rlutils.runner import OffPolicyRunner, run_func_as_main, PytorchRunner
+from rlutils.infra.runner import OffPolicyRunner, run_func_as_main, PytorchRunner
 
 
 class TD3Agent(nn.Module):

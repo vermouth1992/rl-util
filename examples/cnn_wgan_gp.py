@@ -5,7 +5,7 @@ import tensorflow as tf
 import tensorflow_addons as tfa
 import torch
 import torchvision
-from rlutils.runner import run_func_as_main
+from rlutils.infra.runner import run_func_as_main
 from rlutils.tf.generative_models.gan import ACWassersteinGANGradientPenalty
 from tensorboardX import SummaryWriter
 

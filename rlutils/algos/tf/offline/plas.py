@@ -12,7 +12,7 @@ import tensorflow_probability as tfp
 from rlutils.future.optimizer import get_adam_optimizer, minimize
 from rlutils.logx import EpochLogger
 from rlutils.replay_buffers import PyUniformParallelEnvReplayBuffer
-from rlutils.runner import TFRunner
+from rlutils.infra.runner import TFRunner
 from rlutils.tf.functional import soft_update, hard_update, to_numpy_or_python_type
 from rlutils.tf.nn import EnsembleMinQNet, BehaviorPolicy
 from rlutils.tf.nn.functional import build_mlp

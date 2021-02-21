@@ -4,7 +4,7 @@ import gym.spaces
 import numpy as np
 import tensorflow as tf
 from rlutils.replay_buffers import PyUniformParallelEnvReplayBuffer
-from rlutils.runner import TFRunner, run_func_as_main
+from rlutils.infra.runner import TFRunner, run_func_as_main
 from rlutils.tf.nn.models import EnsembleDynamicsModel
 from rlutils.tf.nn.planners import RandomShooter
 

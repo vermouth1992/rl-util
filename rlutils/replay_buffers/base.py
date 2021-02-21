@@ -29,7 +29,10 @@ class BaseReplayBuffer(ABC):
         raise NotImplementedError
 
     def load(self, data):
-        pass
+        raise NotImplementedError
+
+    def append(self, data):
+        raise NotImplementedError
 
     def is_full(self):
         return len(self) == self.capacity

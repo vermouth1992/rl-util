@@ -4,14 +4,13 @@ Implement soft actor critic agent here
 
 import rlutils.tf as rlu
 import tensorflow as tf
-from rlutils.runner import OffPolicyRunner, run_func_as_main, TFRunner
+from rlutils.infra.runner import OffPolicyRunner, run_func_as_main, TFRunner
 
 
 class SACAgent(tf.keras.Model):
     def __init__(self,
                  obs_spec,
                  act_spec,
-                 policy_type='gaussian',
                  policy_mlp_hidden=128,
                  policy_lr=3e-4,
                  q_mlp_hidden=256,
@@ -21,6 +20,7 @@ class SACAgent(tf.keras.Model):
                  tau=5e-3,
                  gamma=0.99,
                  target_entropy=None,
+                 auto_alpha=True,
                  ):
         super(SACAgent, self).__init__()
         self.obs_spec = obs_spec
@@ -28,12 +28,7 @@ class SACAgent(tf.keras.Model):
         self.act_dim = self.act_spec.shape[0]
         if len(self.obs_spec.shape) == 1:  # 1D observation
             self.obs_dim = self.obs_spec.shape[0]
-            if policy_type == 'gaussian':
-                self.policy_net = rlu.nn.SquashedGaussianMLPActor(self.obs_dim, self.act_dim, policy_mlp_hidden)
-            elif policy_type == 'beta':
-                self.policy_net = rlu.nn.CenteredBetaMLPActor(self.obs_dim, self.act_dim, policy_mlp_hidden)
-            else:
-                raise NotImplementedError
+            self.policy_net = rlu.nn.SquashedGaussianMLPActor(self.obs_dim, self.act_dim, policy_mlp_hidden)
             self.q_network = rlu.nn.EnsembleMinQNet(self.obs_dim, self.act_dim, q_mlp_hidden)
             self.target_q_network = rlu.nn.EnsembleMinQNet(self.obs_dim, self.act_dim, q_mlp_hidden)
         else:
@@ -46,6 +41,7 @@ class SACAgent(tf.keras.Model):
         self.log_alpha = rlu.nn.LagrangeLayer(initial_value=alpha)
         self.alpha_optimizer = tf.keras.optimizers.Adam(lr=alpha_lr)
         self.target_entropy = -self.act_dim if target_entropy is None else target_entropy
+        self.auto_alpha = auto_alpha
 
         self.tau = tau
         self.gamma = gamma
@@ -108,11 +104,14 @@ class SACAgent(tf.keras.Model):
         self.policy_optimizer.apply_gradients(zip(policy_gradients, self.policy_net.trainable_variables))
 
         # log alpha
-        with tf.GradientTape() as alpha_tape:
-            alpha = self.log_alpha()
-            alpha_loss = -tf.reduce_mean(alpha * (log_prob + self.target_entropy))
-        alpha_gradient = alpha_tape.gradient(alpha_loss, self.log_alpha.trainable_variables)
-        self.alpha_optimizer.apply_gradients(zip(alpha_gradient, self.log_alpha.trainable_variables))
+        if self.auto_alpha:
+            with tf.GradientTape() as alpha_tape:
+                alpha = self.log_alpha()
+                alpha_loss = -tf.reduce_mean(alpha * (log_prob + self.target_entropy))
+            alpha_gradient = alpha_tape.gradient(alpha_loss, self.log_alpha.trainable_variables)
+            self.alpha_optimizer.apply_gradients(zip(alpha_gradient, self.log_alpha.trainable_variables))
+        else:
+            alpha_loss = 0.
 
         info = dict(
             LogPi=log_prob,
@@ -143,53 +142,38 @@ class SACAgent(tf.keras.Model):
         self.logger.store(**rlu.functional.to_numpy_or_python_type(info))
 
     @tf.function
-    def act_batch(self, obs, deterministic):
+    def act_batch_explore(self, obs):
         print(f'Tracing sac act_batch with obs {obs}')
-        pi_final = self.policy_net((obs, deterministic))[0]
+        pi_final = self.policy_net((obs, False))[0]
         return pi_final
 
     @tf.function
     def act_batch_test(self, obs):
-        n = 20
-        batch_size = tf.shape(obs)[0]
-        obs = tf.tile(obs, (n, 1))
-        action = self.policy_net((obs, False))[0]
-        q_values_pi_min = self.q_network((obs, action), training=True)[0, :]
-        action = tf.reshape(action, shape=(n, batch_size, self.act_dim))
-        idx = tf.argmax(tf.reshape(q_values_pi_min, shape=(n, batch_size)), axis=0,
-                        output_type=tf.int32)  # (batch_size)
-        idx = tf.stack([idx, tf.range(batch_size)], axis=-1)
-        pi_final = tf.gather_nd(action, idx)
+        pi_final = self.policy_net((obs, True))[0]
         return pi_final
 
 
 class Runner(OffPolicyRunner, TFRunner):
-    def get_action_batch_explore(self, obs):
-        return self.agent.act_batch(tf.convert_to_tensor(obs, tf.float32),
-                                    tf.convert_to_tensor(False)).numpy()
-
-    def get_action_batch_test(self, obs):
-        return self.agent.act_batch(tf.convert_to_tensor(obs, tf.float32),
-                                    tf.convert_to_tensor(True)).numpy()
-
     @classmethod
     def main(cls,
              env_name,
              # sac args
-             nn_size=256,
-             learning_rate=3e-4,
+             policy_mlp_hidden=256,
+             policy_lr=3e-4,
+             q_mlp_hidden=256,
+             q_lr=3e-4,
              alpha=0.2,
              tau=5e-3,
              gamma=0.99,
              **kwargs
              ):
         agent_kwargs = dict(
-            policy_mlp_hidden=nn_size,
-            policy_lr=learning_rate,
-            q_mlp_hidden=nn_size,
-            q_lr=learning_rate,
+            policy_mlp_hidden=policy_mlp_hidden,
+            policy_lr=policy_lr,
+            q_mlp_hidden=q_mlp_hidden,
+            q_lr=q_lr,
             alpha=alpha,
-            alpha_lr=learning_rate,
+            alpha_lr=q_lr,
             tau=tau,
             gamma=gamma,
             target_entropy=None

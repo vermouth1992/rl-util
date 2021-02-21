@@ -16,7 +16,7 @@ import tensorflow_probability as tfp
 from rlutils.future.optimizer import get_adam_optimizer, minimize
 from rlutils.logx import EpochLogger
 from rlutils.replay_buffers import PyUniformParallelEnvReplayBuffer
-from rlutils.runner import TFRunner
+from rlutils.infra.runner import TFRunner
 from tqdm.auto import tqdm, trange
 
 tfd = tfp.distributions

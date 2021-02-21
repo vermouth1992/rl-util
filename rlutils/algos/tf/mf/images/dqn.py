@@ -7,10 +7,10 @@ from rlutils.tf.utils import set_tf_allow_growth
 
 set_tf_allow_growth()
 
-from rlutils.runner import TFRunner
+from rlutils.infra.runner import TFRunner
 from rlutils.tf.nn import AtariQNetworkDeepMind, hard_update
 from rlutils.replay_buffers import PyUniformParallelEnvReplayBufferFrame
-from rlutils.runner import run_func_as_main
+from rlutils.infra.runner import run_func_as_main
 from rlutils.np.schedulers import PiecewiseSchedule
 
 from gym.wrappers import AtariPreprocessing

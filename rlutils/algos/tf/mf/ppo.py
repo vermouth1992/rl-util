@@ -8,7 +8,7 @@ from typing import Callable
 import numpy as np
 import tensorflow as tf
 from rlutils.replay_buffers import GAEBuffer
-from rlutils.runner import TFRunner, run_func_as_main
+from rlutils.infra.runner import TFRunner, run_func_as_main
 from rlutils.tf.functional import to_numpy_or_python_type
 from rlutils.tf.nn import CategoricalActor, CenteredBetaMLPActor
 from rlutils.tf.nn.functional import build_mlp

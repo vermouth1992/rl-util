@@ -16,10 +16,7 @@ class PyUniformParallelEnvReplayBuffer(BaseReplayBuffer):
     def __init__(self,
                  data_spec: Dict[str, gym.spaces.Space],
                  capacity,
-                 batch_size,
-                 num_parallel_env):
-        assert capacity % num_parallel_env == 0
-        self.num_parallel_env = num_parallel_env
+                 batch_size):
         self.max_size = capacity
         self.storage = {key: np.zeros(combined_shape(self.capacity, item.shape), dtype=item.dtype)
                         for key, item in data_spec.items()}
@@ -43,12 +40,34 @@ class PyUniformParallelEnvReplayBuffer(BaseReplayBuffer):
             data = shuffle_dict_data(data)
         data_spec = {key: gym.spaces.Space(shape=item.shape[1:], dtype=item.dtype) for key, item in data.items()}
         capacity = list(data.values())[0].shape[0]
-        replay_buffer = cls(data_spec=data_spec, capacity=capacity, batch_size=batch_size, num_parallel_env=1)
-        replay_buffer.load(data=data)
+        replay_buffer = cls(data_spec=data_spec, capacity=capacity, batch_size=batch_size)
+        replay_buffer.append(data=data)
         assert replay_buffer.is_full()
         return replay_buffer
 
-    def load(self, data: Dict[str, np.ndarray]):
+    @classmethod
+    def from_vec_env(cls, vec_env, capacity, batch_size):
+        data_spec = {
+            'obs': vec_env.single_observation_space,
+            'act': vec_env.single_action_space,
+            'next_obs': vec_env.single_observation_space,
+            'rew': gym.spaces.Space(shape=None, dtype=np.float32),
+            'done': gym.spaces.Space(shape=None, dtype=np.float32)
+        }
+        return cls(data_spec=data_spec, capacity=capacity, batch_size=batch_size)
+
+    @classmethod
+    def from_env(cls, env, capacity, batch_size):
+        data_spec = {
+            'obs': env.observation_space,
+            'act': env.action_space,
+            'next_obs': env.observation_space,
+            'rew': gym.spaces.Space(shape=None, dtype=np.float32),
+            'done': gym.spaces.Space(shape=None, dtype=np.float32)
+        }
+        return cls(data_spec=data_spec, capacity=capacity, batch_size=batch_size)
+
+    def append(self, data: Dict[str, np.ndarray]):
         batch_size = list(data.values())[0].shape[0]
         for key, item in data.items():
             assert batch_size == item.shape[0], 'Mismatch batch size in the dataset'
@@ -68,10 +87,17 @@ class PyUniformParallelEnvReplayBuffer(BaseReplayBuffer):
 
     def add(self, data: Dict[str, np.ndarray], priority=None):
         assert priority is None, 'Uniform Replay Buffer'
+        batch_size = None
         for key, item in data.items():
-            self.storage[key][self.ptr:self.ptr + self.num_parallel_env] = item
-        self.ptr = (self.ptr + self.num_parallel_env) % self.capacity
-        self.size = min(self.size + self.num_parallel_env, self.capacity)
+            batch_size = item.shape[0]
+            if self.ptr + batch_size > self.max_size:
+                print('Reaches the end of the replay buffer')
+                self.storage[key][self.ptr:] = item[:self.max_size - self.ptr]
+                self.storage[key][:batch_size - (self.max_size - self.ptr)] = item[self.max_size - self.ptr:]
+            else:
+                self.storage[key][self.ptr:self.ptr + batch_size] = item
+        self.ptr = (self.ptr + batch_size) % self.capacity
+        self.size = min(self.size + batch_size, self.capacity)
 
     def sample(self):
         assert not self.is_empty()

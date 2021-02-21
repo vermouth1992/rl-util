@@ -4,7 +4,7 @@ Deep Q Network for low-dimensional observation space
 
 import rlutils.tf as rlu
 import tensorflow as tf
-from rlutils.runner import OffPolicyRunner, TFRunner, run_func_as_main
+from rlutils.infra.runner import OffPolicyRunner, TFRunner, run_func_as_main
 
 
 def gather_q_values(q_values, actions):
@@ -102,6 +102,14 @@ class DQN(tf.keras.Model):
         self.logger.store(**rlu.functional.to_numpy_or_python_type(info))
 
     @tf.function
+    def act_batch_explore(self, obs):
+        return self.act_batch(obs, deterministic=tf.convert_to_tensor(False))
+
+    @tf.function
+    def act_batch_test(self, obs):
+        return self.act_batch(obs, deterministic=tf.convert_to_tensor(True))
+
+    @tf.function
     def act_batch(self, obs, deterministic):
         """ Implement epsilon-greedy here """
         batch_size = tf.shape(obs)[0]
@@ -118,13 +126,6 @@ class DQN(tf.keras.Model):
 
 
 class Runner(OffPolicyRunner, TFRunner):
-    def get_action_batch_test(self, obs):
-        return self.agent.act_batch(tf.convert_to_tensor(obs, dtype=tf.float32),
-                                    tf.convert_to_tensor(True, dtype=tf.bool)).numpy()
-
-    def get_action_batch_explore(self, obs):
-        return self.agent.act_batch(self.o, deterministic=tf.convert_to_tensor(False)).numpy()
-
     @classmethod
     def main(cls,
              env_name,

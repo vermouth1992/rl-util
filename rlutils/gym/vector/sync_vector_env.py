@@ -83,16 +83,18 @@ class SyncVectorEnv(VectorEnv):
 
         return np.copy(self.observations) if self.copy else self.observations
 
-    def step_async(self, actions):
+    def step_async(self, actions, mask=None):
         self._actions = actions
+        self._mask = mask if mask is not None else np.zeros(shape=(self.num_envs,), dtype=np.bool_)
 
     def step_wait(self):
         observations, infos = [], []
-        for i, (env, action) in enumerate(zip(self.envs, self._actions)):
-            observation, self._rewards[i], self._dones[i], info = env.step(action)
-            observations.append(observation)
-            infos.append(info)
-        concatenate(observations, self.observations, self.single_observation_space)
+        for i, (env, action, mask) in enumerate(zip(self.envs, self._actions, self._mask)):
+            if not mask:
+                self.observations[i], self._rewards[i], self._dones[i], info = env.step(action)
+                infos.append(info)
+            else:
+                infos.append({})
 
         return (deepcopy(self.observations) if self.copy else self.observations,
                 np.copy(self._rewards), np.copy(self._dones), infos)

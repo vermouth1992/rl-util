@@ -6,8 +6,11 @@ from rlutils.gym.vector import VectorEnv
 
 
 class Sampler(ABC):
+    def reset(self):
+        pass
+
     @abstractmethod
-    def sample(self):
+    def sample(self, num_steps, collect_fn):
         pass
 
     @property
@@ -17,16 +20,13 @@ class Sampler(ABC):
 
 
 class TrajectorySampler(Sampler):
-    def sample(self):
+    def sample(self, num_steps, collect_fn):
         pass
 
 
-class StepSampler(Sampler):
-    def __init__(self, env: VectorEnv, start_steps, num_steps, collect_fn):
+class BatchSampler(Sampler):
+    def __init__(self, env: VectorEnv):
         self.env = env
-        self.start_steps = start_steps
-        self.num_steps = num_steps
-        self.collect_fn = collect_fn
 
     @property
     def total_env_steps(self):
@@ -46,15 +46,17 @@ class StepSampler(Sampler):
         self.logger.log_tabular('EpLen', average_only=True)
         self.logger.log_tabular('TotalEnvInteracts', self._global_env_step)
 
-    def sample(self):
-        data_dict = []
-        for _ in range(self.num_steps):
-            if self._global_env_step >= self.start_steps:
-                a = self.collect_fn(self.o)
-                assert not np.any(np.isnan(a)), f'NAN action: {a}'
-            else:
-                a = self.env.action_space.sample()
-
+    def sample(self, num_steps, collect_fn):
+        transitions = {
+            'obs': [],
+            'act': [],
+            'rew': [],
+            'next_obs': [],
+            'done': []
+        }
+        for _ in range(num_steps):
+            a = collect_fn(self.o)
+            assert not np.any(np.isnan(a)), f'NAN action: {a}'
             # Step the env
             o2, r, d, infos = self.env.step(a)
             self.ep_ret += r
@@ -67,13 +69,11 @@ class StepSampler(Sampler):
             true_d = np.logical_and(d, np.logical_not(timeouts))
 
             # Store experience to replay buffer
-            data_dict.append({
-                'obs': self.o,
-                'act': a,
-                'rew': r,
-                'next_obs': o2,
-                'done': true_d
-            })
+            transitions['obs'].append(self.o)
+            transitions['act'].append(a)
+            transitions['rew'].append(r)
+            transitions['next_obs'].append(o2)
+            transitions['done'].append(true_d)
 
             # Super critical, easy to overlook step: make sure to update
             # most recent observation!
@@ -88,4 +88,6 @@ class StepSampler(Sampler):
 
             self._global_env_step += self.env.num_envs
 
-        return data_dict
+        for key, item in transitions.items():
+            transitions[key] = np.concatenate(item, axis=0)
+        return transitions

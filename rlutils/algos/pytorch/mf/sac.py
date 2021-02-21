@@ -10,7 +10,7 @@ import torch
 from rlutils.pytorch.functional import soft_update
 from rlutils.pytorch.nn import LagrangeLayer, SquashedGaussianMLPActor, EnsembleMinQNet
 from rlutils.replay_buffers import PyUniformParallelEnvReplayBuffer
-from rlutils.runner import PytorchRunner, run_func_as_main
+from rlutils.infra.runner import PytorchRunner, run_func_as_main
 from torch import nn
 from tqdm.auto import tqdm
 

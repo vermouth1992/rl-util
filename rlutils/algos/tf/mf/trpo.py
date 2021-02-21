@@ -9,7 +9,7 @@ import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
 from rlutils.replay_buffers import GAEBuffer
-from rlutils.runner import TFRunner, run_func_as_main
+from rlutils.infra.runner import TFRunner, run_func_as_main
 from rlutils.tf.functional import to_numpy_or_python_type, flat_grads, get_flat_trainable_variables, \
     set_flat_trainable_variables
 from rlutils.tf.nn import NormalActor, CategoricalActor

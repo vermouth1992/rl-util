@@ -11,7 +11,7 @@ import numpy as np
 import tensorflow as tf
 from rlutils.algos.tf.offline.bracp import BRACPRunner, BRACPAgent
 from rlutils.logx import EpochLogger
-from rlutils.runner import get_argparser_from_func
+from rlutils.infra.runner import get_argparser_from_func
 from tqdm.auto import tqdm
 
 __all__ = ['d4rl']

@@ -8,7 +8,7 @@ import gym
 import numpy as np
 import tensorflow as tf
 from rlutils.replay_buffers import PyUniformParallelEnvReplayBuffer
-from rlutils.runner import TFRunner, run_func_as_main
+from rlutils.infra.runner import TFRunner, run_func_as_main
 from rlutils.tf.distributions import apply_squash_log_prob
 from rlutils.tf.functional import soft_update, hard_update, compute_target_value, to_numpy_or_python_type
 from rlutils.tf.nn import LagrangeLayer, SquashedGaussianMLPActor, EnsembleMinQNet
