@@ -11,4 +11,4 @@ from . import samplers
 from .seeder import Seeder
 from .tester import Tester
 from .timer import StopWatch
-from .updater import OffPolicyUpdater
+from .updater import OffPolicyUpdater, OnPolicyUpdater

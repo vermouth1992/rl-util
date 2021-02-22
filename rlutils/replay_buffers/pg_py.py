@@ -29,6 +29,16 @@ class GAEBuffer(object):
         self.max_size = length
         self.reset()
 
+    @classmethod
+    def from_vec_env(cls, vec_env, max_length, gamma, lam):
+        obs_shape = vec_env.single_observation_space.shape
+        obs_dtype = vec_env.single_observation_space.dtype
+        act_shape = vec_env.single_action_space.shape
+        act_dtype = vec_env.single_action_space.dtype
+        buffer = cls(obs_shape=obs_shape, obs_dtype=obs_dtype, act_shape=act_shape, act_dtype=act_dtype,
+                     num_envs=vec_env.num_envs, length=max_length, gamma=gamma, lam=lam)
+        return buffer
+
     def reset(self):
         self.ptr, self.path_start_idx = 0, np.zeros(shape=(self.num_envs), dtype=np.int32)
 

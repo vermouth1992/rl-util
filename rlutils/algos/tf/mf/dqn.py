@@ -102,12 +102,18 @@ class DQN(tf.keras.Model):
         self.logger.store(**rlu.functional.to_numpy_or_python_type(info))
 
     @tf.function
-    def act_batch_explore(self, obs):
+    def act_batch_explore_tf(self, obs):
         return self.act_batch(obs, deterministic=tf.convert_to_tensor(False))
 
     @tf.function
-    def act_batch_test(self, obs):
+    def act_batch_test_tf(self, obs):
         return self.act_batch(obs, deterministic=tf.convert_to_tensor(True))
+
+    def act_batch_test(self, obs):
+        return self.act_batch_test_tf(tf.convert_to_tensor(obs)).numpy()
+
+    def act_batch_explore(self, obs):
+        return self.act_batch_explore_tf(tf.convert_to_tensor(obs)).numpy()
 
     @tf.function
     def act_batch(self, obs, deterministic):

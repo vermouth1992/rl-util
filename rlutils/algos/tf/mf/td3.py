@@ -137,17 +137,23 @@ class TD3Agent(tf.keras.Model):
         self.logger.store(**rlu.functional.to_numpy_or_python_type(info))
 
     @tf.function
-    def act_batch_test(self, obs):
+    def act_batch_test_tf(self, obs):
         return self.policy_net(obs)
 
     @tf.function
-    def act_batch_explore(self, obs):
+    def act_batch_explore_tf(self, obs):
         print('Tracing act_batch_explore')
         pi_final = self.policy_net(obs)
         noise = tf.random.normal(shape=[tf.shape(obs)[0], self.act_dim], dtype=tf.float32) * self.actor_noise
         pi_final_noise = pi_final + noise
         pi_final_noise = tf.clip_by_value(pi_final_noise, -self.act_lim, self.act_lim)
         return pi_final_noise
+
+    def act_batch_test(self, obs):
+        return self.act_batch_test_tf(tf.convert_to_tensor(obs)).numpy()
+
+    def act_batch_explore(self, obs):
+        return self.act_batch_explore_tf(tf.convert_to_tensor(obs)).numpy()
 
 
 class Runner(OffPolicyRunner, TFRunner):

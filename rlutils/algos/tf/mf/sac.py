@@ -142,15 +142,21 @@ class SACAgent(tf.keras.Model):
         self.logger.store(**rlu.functional.to_numpy_or_python_type(info))
 
     @tf.function
-    def act_batch_explore(self, obs):
+    def act_batch_explore_tf(self, obs):
         print(f'Tracing sac act_batch with obs {obs}')
         pi_final = self.policy_net((obs, False))[0]
         return pi_final
 
     @tf.function
-    def act_batch_test(self, obs):
+    def act_batch_test_tf(self, obs):
         pi_final = self.policy_net((obs, True))[0]
         return pi_final
+
+    def act_batch_test(self, obs):
+        return self.act_batch_test_tf(tf.convert_to_tensor(obs)).numpy()
+
+    def act_batch_explore(self, obs):
+        return self.act_batch_explore_tf(tf.convert_to_tensor(obs)).numpy()
 
 
 class Runner(OffPolicyRunner, TFRunner):

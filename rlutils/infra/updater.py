@@ -2,14 +2,18 @@
 An updater updates the agent from the replay buffer. It also maintains statistics of the update.
 """
 
+from abc import ABC, abstractmethod
 
-class OffPolicyUpdater(object):
-    def __init__(self, agent, replay_buffer, policy_delay, update_per_step):
+
+class PolicyUpdater(ABC):
+    def __init__(self, agent, replay_buffer):
         self.agent = agent
         self.replay_buffer = replay_buffer
-        self.policy_delay = policy_delay
-        self.update_per_step = update_per_step
         self.logger = None
+
+    @property
+    def num_policy_updates(self):
+        return self.policy_updates
 
     def reset(self):
         self.policy_updates = 0
@@ -19,6 +23,23 @@ class OffPolicyUpdater(object):
 
     def log_tabular(self):
         self.agent.log_tabular()
+
+    @abstractmethod
+    def update(self):
+        pass
+
+
+class OnPolicyUpdater(PolicyUpdater):
+    def update(self):
+        data = self.replay_buffer.get()
+        self.agent.train_on_batch(**data)
+
+
+class OffPolicyUpdater(PolicyUpdater):
+    def __init__(self, agent, replay_buffer, policy_delay, update_per_step):
+        super(OffPolicyUpdater, self).__init__(agent=agent, replay_buffer=replay_buffer)
+        self.policy_delay = policy_delay
+        self.update_per_step = update_per_step
 
     def update(self):
         for _ in range(self.update_per_step):

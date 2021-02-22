@@ -15,4 +15,5 @@ class StopWatch(object):
         self.logger = logger
 
     def log_tabular(self):
+        self.lap()
         self.logger.log_tabular('Time', self.current_time - self.start_time)
