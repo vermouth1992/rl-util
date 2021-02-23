@@ -9,7 +9,7 @@ import numpy as np
 import torch
 from rlutils.pytorch.functional import soft_update
 from rlutils.pytorch.nn import LagrangeLayer, SquashedGaussianMLPActor, EnsembleMinQNet
-from rlutils.replay_buffers import PyUniformParallelEnvReplayBuffer
+from rlutils.replay_buffers import PyUniformReplayBuffer
 from rlutils.infra.runner import PytorchRunner, run_func_as_main
 from torch import nn
 from tqdm.auto import tqdm
@@ -162,12 +162,12 @@ class SACRunner(PytorchRunner):
                             batch_size):
         obs_dim = self.env.single_observation_space.shape[0]
         act_dim = self.env.single_action_space.shape[0]
-        self.replay_buffer = PyUniformParallelEnvReplayBuffer(obs_dim=obs_dim,
-                                                              act_dim=act_dim,
-                                                              act_dtype=np.float32,
-                                                              capacity=replay_size,
-                                                              batch_size=batch_size,
-                                                              num_parallel_env=self.num_parallel_env)
+        self.replay_buffer = PyUniformReplayBuffer(obs_dim=obs_dim,
+                                                   act_dim=act_dim,
+                                                   act_dtype=np.float32,
+                                                   capacity=replay_size,
+                                                   batch_size=batch_size,
+                                                   num_parallel_env=self.num_parallel_env)
 
     def setup_agent(self,
                     policy_mlp_hidden=128,

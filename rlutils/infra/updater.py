@@ -23,16 +23,18 @@ class PolicyUpdater(ABC):
 
     def log_tabular(self):
         self.agent.log_tabular()
+        self.logger.log_tabular('PolicyUpdates', self.num_policy_updates)
 
     @abstractmethod
-    def update(self):
+    def update(self, global_step):
         pass
 
 
 class OnPolicyUpdater(PolicyUpdater):
-    def update(self):
+    def update(self, global_step):
         data = self.replay_buffer.get()
         self.agent.train_on_batch(**data)
+        self.policy_updates += 1
 
 
 class OffPolicyUpdater(PolicyUpdater):
@@ -41,7 +43,7 @@ class OffPolicyUpdater(PolicyUpdater):
         self.policy_delay = policy_delay
         self.update_per_step = update_per_step
 
-    def update(self):
+    def update(self, global_step):
         for _ in range(self.update_per_step):
             batch = self.replay_buffer.sample()
             batch['update_target'] = ((self.policy_updates + 1) % self.policy_delay == 0)

@@ -4,7 +4,7 @@ Implement soft actor critic agent here
 
 import rlutils.tf as rlu
 import tensorflow as tf
-from rlutils.infra.runner import OffPolicyRunner, run_func_as_main, TFRunner
+from rlutils.infra.runner import TFOffPolicyRunner, run_func_as_main
 
 
 class SACAgent(tf.keras.Model):
@@ -69,7 +69,7 @@ class SACAgent(tf.keras.Model):
         return next_q_values
 
     @tf.function
-    def _update_q_nets(self, obs, act, next_obs, done, rew):
+    def _update_q_nets(self, obs, act, next_obs, done, rew, weights=None):
         # compute target Q values
         next_q_values = self._compute_next_obs_q(next_obs)
         q_target = rlu.functional.compute_target_value(rew, self.gamma, done, next_q_values)
@@ -80,7 +80,9 @@ class SACAgent(tf.keras.Model):
             q_values_loss = 0.5 * tf.square(tf.expand_dims(q_target, axis=0) - q_values)
             # (num_ensembles, None)
             q_values_loss = tf.reduce_sum(q_values_loss, axis=0)  # (None,)
-            # apply importance weights
+            # apply importance weights if needed
+            if weights is not None:
+                q_values_loss = q_values_loss * weights
             q_values_loss = tf.reduce_mean(q_values_loss)
         q_gradients = q_tape.gradient(q_values_loss, self.q_network.trainable_variables)
         self.q_optimizer.apply_gradients(zip(q_gradients, self.q_network.trainable_variables))
@@ -93,13 +95,16 @@ class SACAgent(tf.keras.Model):
         return info
 
     @tf.function
-    def _update_actor(self, obs):
+    def _update_actor(self, obs, weights=None):
         alpha = self.log_alpha()
         # policy loss
         with tf.GradientTape() as policy_tape:
             action, log_prob, _, _ = self.policy_net((obs, False))
             q_values_pi_min = self.q_network((obs, action), training=False)
-            policy_loss = tf.reduce_mean(log_prob * alpha - q_values_pi_min)
+            policy_loss = log_prob * alpha - q_values_pi_min
+            if weights is not None:
+                policy_loss = policy_loss * weights
+            policy_loss = tf.reduce_mean(policy_loss, axis=0)
         policy_gradients = policy_tape.gradient(policy_loss, self.policy_net.trainable_variables)
         self.policy_optimizer.apply_gradients(zip(policy_gradients, self.policy_net.trainable_variables))
 
@@ -107,7 +112,10 @@ class SACAgent(tf.keras.Model):
         if self.auto_alpha:
             with tf.GradientTape() as alpha_tape:
                 alpha = self.log_alpha()
-                alpha_loss = -tf.reduce_mean(alpha * (log_prob + self.target_entropy))
+                alpha_loss = alpha * (log_prob + self.target_entropy)
+                if weights is not None:
+                    alpha_loss = alpha_loss * weights
+                alpha_loss = -tf.reduce_mean(alpha_loss, axis=0)
             alpha_gradient = alpha_tape.gradient(alpha_loss, self.log_alpha.trainable_variables)
             self.alpha_optimizer.apply_gradients(zip(alpha_gradient, self.log_alpha.trainable_variables))
         else:
@@ -159,7 +167,7 @@ class SACAgent(tf.keras.Model):
         return self.act_batch_explore_tf(tf.convert_to_tensor(obs)).numpy()
 
 
-class Runner(OffPolicyRunner, TFRunner):
+class Runner(TFOffPolicyRunner):
     @classmethod
     def main(cls,
              env_name,
@@ -171,6 +179,7 @@ class Runner(OffPolicyRunner, TFRunner):
              alpha=0.2,
              tau=5e-3,
              gamma=0.99,
+             seed=1,
              **kwargs
              ):
         agent_kwargs = dict(
@@ -189,6 +198,7 @@ class Runner(OffPolicyRunner, TFRunner):
             env_name=env_name,
             agent_cls=SACAgent,
             agent_kwargs=agent_kwargs,
+            seed=seed,
             **kwargs
         )
 

@@ -4,7 +4,7 @@ Deep Q Network for low-dimensional observation space
 
 import rlutils.tf as rlu
 import tensorflow as tf
-from rlutils.infra.runner import OffPolicyRunner, TFRunner, run_func_as_main
+from rlutils.infra.runner import TFOffPolicyRunner, run_func_as_main
 
 
 def gather_q_values(q_values, actions):
@@ -131,7 +131,7 @@ class DQN(tf.keras.Model):
         return final_actions
 
 
-class Runner(OffPolicyRunner, TFRunner):
+class Runner(TFOffPolicyRunner):
     @classmethod
     def main(cls,
              env_name,

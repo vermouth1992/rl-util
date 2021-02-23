@@ -6,7 +6,7 @@ import numpy as np
 import rlutils.tf as rlu
 import tensorflow as tf
 import tensorflow_probability as tfp
-from rlutils.infra.runner import OnPolicyRunner, TFRunner
+from rlutils.infra.runner import TFOnPolicyRunner
 
 
 class TRPOAgent(tf.keras.Model):
@@ -215,7 +215,7 @@ class TRPOAgent(tf.keras.Model):
         self.logger.store(**rlu.functional.to_numpy_or_python_type(info))
 
 
-class Runner(OnPolicyRunner, TFRunner):
+class Runner(TFOnPolicyRunner):
     @classmethod
     def main(cls, env_name, mlp_hidden=128, delta=0.01, vf_lr=1e-3,
              train_vf_iters=80, damping_coeff=0.1, cg_iters=10, backtrack_iters=10,

@@ -8,7 +8,7 @@ from .base import BaseReplayBuffer
 from .utils import combined_shape
 
 
-class PyUniformParallelEnvReplayBuffer(BaseReplayBuffer):
+class PyUniformReplayBuffer(BaseReplayBuffer):
     """
     A simple FIFO experience replay buffer for SAC agents.
     """
@@ -85,11 +85,10 @@ class PyUniformParallelEnvReplayBuffer(BaseReplayBuffer):
         idxs = np.arange(self.size)
         return self.__getitem__(idxs)
 
-    def add(self, data: Dict[str, np.ndarray], priority=None):
-        assert priority is None, 'Uniform Replay Buffer'
-        batch_size = None
+    def add(self, data: Dict[str, np.ndarray]):
+        batch_size = list(data.values())[0].shape[0]
         for key, item in data.items():
-            batch_size = item.shape[0]
+            assert batch_size == item.shape[0], 'The batch size in the data is not consistent'
             if self.ptr + batch_size > self.max_size:
                 print('Reaches the end of the replay buffer')
                 self.storage[key][self.ptr:] = item[:self.max_size - self.ptr]

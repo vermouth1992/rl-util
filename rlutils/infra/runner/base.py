@@ -14,7 +14,7 @@ import numpy as np
 import rlutils.gym
 import rlutils.infra as rl_infra
 from rlutils.logx import EpochLogger, setup_logger_kwargs
-from rlutils.replay_buffers import PyUniformParallelEnvReplayBuffer, GAEBuffer
+from rlutils.replay_buffers import PyUniformReplayBuffer, GAEBuffer
 from tqdm.auto import trange
 
 
@@ -132,7 +132,7 @@ class OnPolicyRunner(BaseRunner):
         self.sampler.sample(num_steps=self.num_steps,
                             collect_fn=(self.agent.act_batch, self.agent.value_net.predict),
                             replay_buffer=self.replay_buffer)
-        self.updater.update()
+        self.updater.update(self.global_step)
 
     def on_epoch_end(self, epoch):
         self.logger.log_tabular('Epoch', epoch)
@@ -182,8 +182,8 @@ class OffPolicyRunner(BaseRunner):
     def setup_replay_buffer(self,
                             replay_size,
                             batch_size):
-        self.replay_buffer = PyUniformParallelEnvReplayBuffer.from_vec_env(self.env, capacity=replay_size,
-                                                                           batch_size=batch_size)
+        self.replay_buffer = PyUniformReplayBuffer.from_vec_env(self.env, capacity=replay_size,
+                                                                batch_size=batch_size)
 
     def setup_sampler(self, start_steps, num_steps):
         self.start_steps = start_steps
@@ -208,7 +208,7 @@ class OffPolicyRunner(BaseRunner):
                                 replay_buffer=self.replay_buffer)
         # Update handling
         if self.sampler.total_env_steps >= self.update_after:
-            self.updater.update()
+            self.updater.update(self.global_step)
 
     def on_epoch_end(self, epoch):
         self.tester.test_agent(get_action=lambda obs: self.agent.act_batch_test(obs),
@@ -293,7 +293,7 @@ class OfflineRunner(BaseRunner):
 
         replay_size = dataset['obs'].shape[0]
         EpochLogger.log(f'Dataset size: {replay_size}')
-        self.replay_buffer = PyUniformParallelEnvReplayBuffer.from_data_dict(
+        self.replay_buffer = PyUniformReplayBuffer.from_data_dict(
             data=dataset,
             batch_size=batch_size
         )

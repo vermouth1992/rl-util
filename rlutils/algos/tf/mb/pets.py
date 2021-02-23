@@ -3,7 +3,7 @@ import time
 import gym.spaces
 import numpy as np
 import tensorflow as tf
-from rlutils.replay_buffers import PyUniformParallelEnvReplayBuffer
+from rlutils.replay_buffers import PyUniformReplayBuffer
 from rlutils.infra.runner import TFRunner, run_func_as_main
 from rlutils.tf.nn.models import EnsembleDynamicsModel
 from rlutils.tf.nn.planners import RandomShooter
@@ -48,10 +48,10 @@ class Runner(TFRunner):
             'rew': gym.spaces.Space(shape=None, dtype=np.float32),
             'done': gym.spaces.Space(shape=None, dtype=np.float32)
         }
-        self.replay_buffer = PyUniformParallelEnvReplayBuffer(data_spec=data_spec,
-                                                              capacity=replay_size,
-                                                              batch_size=None,
-                                                              num_parallel_env=self.num_parallel_env)
+        self.replay_buffer = PyUniformReplayBuffer(data_spec=data_spec,
+                                                   capacity=replay_size,
+                                                   batch_size=None,
+                                                   num_parallel_env=self.num_parallel_env)
 
     def setup_agent(self, mlp_hidden=128, num_ensembles=5, lr=1e-3, horizon=10, num_particles=5, num_actions=1024):
         obs_dim = self.env.single_observation_space.shape[0]

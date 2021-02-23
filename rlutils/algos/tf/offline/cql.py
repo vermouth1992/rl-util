@@ -7,7 +7,7 @@ import time
 import gym
 import numpy as np
 import tensorflow as tf
-from rlutils.replay_buffers import PyUniformParallelEnvReplayBuffer
+from rlutils.replay_buffers import PyUniformReplayBuffer
 from rlutils.infra.runner import TFRunner, run_func_as_main
 from rlutils.tf.distributions import apply_squash_log_prob
 from rlutils.tf.functional import soft_update, hard_update, compute_target_value, to_numpy_or_python_type
@@ -273,7 +273,7 @@ class Runner(TFRunner):
         dataset['done'] = dataset.pop('terminals')
         replay_size = dataset['obs'].shape[0]
         print(f'Dataset size: {replay_size}')
-        self.replay_buffer = PyUniformParallelEnvReplayBuffer.from_data_dict(
+        self.replay_buffer = PyUniformReplayBuffer.from_data_dict(
             data=dataset,
             batch_size=batch_size
         )

@@ -2,7 +2,7 @@ import os
 
 import tensorflow as tf
 
-from .base import BaseRunner
+from .base import BaseRunner, OffPolicyRunner, OnPolicyRunner
 
 
 class TFRunner(BaseRunner):
@@ -10,3 +10,11 @@ class TFRunner(BaseRunner):
         super(TFRunner, self).setup_global_seed()
         tf.random.set_seed(seed=self.seeder.generate_seed())
         os.environ['TF_DETERMINISTIC_OPS'] = '1'
+
+
+class TFOffPolicyRunner(OffPolicyRunner, TFRunner):
+    pass
+
+
+class TFOnPolicyRunner(OnPolicyRunner, TFRunner):
+    pass

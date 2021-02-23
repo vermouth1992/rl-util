@@ -3,11 +3,9 @@ Proximal Policy Optimization
 """
 
 import numpy as np
+import rlutils.tf as rlu
 import tensorflow as tf
-from rlutils.infra.runner import TFRunner, OnPolicyRunner
-from rlutils.tf.functional import to_numpy_or_python_type
-from rlutils.tf.nn import CategoricalActor, NormalActor
-from rlutils.tf.nn.functional import build_mlp
+from rlutils.infra.runner import TFOnPolicyRunner
 
 
 class PPOAgent(tf.keras.Model):
@@ -34,12 +32,12 @@ class PPOAgent(tf.keras.Model):
         super(PPOAgent, self).__init__()
         obs_dim = obs_spec.shape[0]
         if act_spec.dtype == np.int32 or act_spec.dtype == np.int64:
-            self.policy_net = CategoricalActor(obs_dim=obs_dim, act_dim=act_spec.n, mlp_hidden=mlp_hidden)
+            self.policy_net = rlu.nn.CategoricalActor(obs_dim=obs_dim, act_dim=act_spec.n, mlp_hidden=mlp_hidden)
         else:
-            self.policy_net = NormalActor(obs_dim=obs_dim, act_dim=act_spec.shape[0], mlp_hidden=mlp_hidden)
+            self.policy_net = rlu.nn.NormalActor(obs_dim=obs_dim, act_dim=act_spec.shape[0], mlp_hidden=mlp_hidden)
         self.pi_optimizer = tf.keras.optimizers.Adam(learning_rate=pi_lr)
         self.v_optimizer = tf.keras.optimizers.Adam(learning_rate=vf_lr)
-        self.value_net = build_mlp(input_dim=obs_dim, output_dim=1, squeeze=True, mlp_hidden=mlp_hidden)
+        self.value_net = rlu.nn.build_mlp(input_dim=obs_dim, output_dim=1, squeeze=True, mlp_hidden=mlp_hidden)
         self.value_net.compile(optimizer=self.v_optimizer, loss='mse')
 
         self.target_kl = target_kl
@@ -121,10 +119,10 @@ class PPOAgent(tf.keras.Model):
 
         # only record the final result
         info['ValueLoss'] = loss
-        self.logger.store(**to_numpy_or_python_type(info))
+        self.logger.store(**rlu.functional.to_numpy_or_python_type(info))
 
 
-class Runner(OnPolicyRunner, TFRunner):
+class Runner(TFOnPolicyRunner):
     @classmethod
     def main(cls, env_name, mlp_hidden=256, clip_ratio=0.2, pi_lr=3e-4, vf_lr=1e-3,
              train_pi_iters=80, train_vf_iters=80,

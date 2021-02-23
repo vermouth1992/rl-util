@@ -15,7 +15,7 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 from rlutils.future.optimizer import get_adam_optimizer, minimize
 from rlutils.logx import EpochLogger
-from rlutils.replay_buffers import PyUniformParallelEnvReplayBuffer
+from rlutils.replay_buffers import PyUniformReplayBuffer
 from rlutils.infra.runner import TFRunner
 from tqdm.auto import tqdm, trange
 
@@ -479,7 +479,7 @@ class BRACPAgent(tf.keras.Model):
         info['BehaviorLoss'] = behavior_loss
         return info
 
-    def update(self, replay_buffer: PyUniformParallelEnvReplayBuffer):
+    def update(self, replay_buffer: PyUniformReplayBuffer):
         # TODO: use different batches to update q and actor to break correlation
         data = replay_buffer.sample()
         info = self._update(**data)
@@ -625,7 +625,7 @@ class BRACPRunner(TFRunner):
         dataset['done'] = dataset.pop('terminals').astype(np.float32)
         replay_size = dataset['obs'].shape[0]
         self.logger.log(f'Dataset size: {replay_size}')
-        self.replay_buffer = PyUniformParallelEnvReplayBuffer.from_data_dict(
+        self.replay_buffer = PyUniformReplayBuffer.from_data_dict(
             data=dataset,
             batch_size=batch_size
         )

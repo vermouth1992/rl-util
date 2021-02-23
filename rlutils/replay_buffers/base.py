@@ -16,7 +16,7 @@ class BaseReplayBuffer(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def add(self, data, priority=1.0):
+    def add(self, data):
         raise NotImplementedError
 
     @property

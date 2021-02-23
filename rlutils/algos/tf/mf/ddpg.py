@@ -5,7 +5,7 @@ To obtain DDPG, set target smooth to zero and Q network ensembles to 1.
 
 from rlutils.infra.runner import run_func_as_main
 
-from .td3 import TD3Agent, OffPolicyRunner, TFRunner
+from .td3 import TD3Agent, TFOffPolicyRunner
 
 
 class DDPGAgent(TD3Agent):
@@ -33,7 +33,7 @@ class DDPGAgent(TD3Agent):
                                         noise_clip=0)
 
 
-class Runner(OffPolicyRunner, TFRunner):
+class Runner(TFOffPolicyRunner):
     @classmethod
     def main(cls,
              env_name,
