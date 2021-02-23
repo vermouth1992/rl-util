@@ -162,3 +162,14 @@ class SquashedGaussianMLPActor(StochasticActor):
         logp_pi = self.transform_raw_log_prob(logp_pi, pi_action)
         pi_action_final = self.transform_raw_action(pi_action)
         return pi_action_final, logp_pi, pi_action, pi_distribution
+
+
+class DeterministicMLPActor(tf.keras.Model):
+    def __init__(self, ob_dim, ac_dim, mlp_hidden, out_activation=tf.math.sin):
+        super(DeterministicMLPActor, self).__init__()
+        self.policy_net = build_mlp(ob_dim, ac_dim, mlp_hidden=mlp_hidden,
+                                    num_layers=3, out_activation=out_activation,
+                                    out_kernel_initializer=OUT_KERNEL_INIT)
+
+    def call(self, inputs, **kwargs):
+        return self.policy_net(inputs)
