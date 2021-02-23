@@ -5,7 +5,7 @@ envs=(
   Ant-v2
 )
 
-algos=(ppo trpo sac td3 ddpg)
+algos=$1
 
 seeds=(
   110 111 112 113 114 115 116 117 118 119
@@ -14,7 +14,7 @@ seeds=(
 for env in "${envs[@]}"; do
   for algo in "${algos[@]}"; do
     for seed in "${seeds[@]}"; do
-      python -m rlutils.run $algo --env_name $env --seed $seed --logger_path 'benchmark_results'
+      python -m rlutils.run $algo --env_name $env --seed $seed --logger_path 'benchmark_results' --epochs 600
     done
   done
 done

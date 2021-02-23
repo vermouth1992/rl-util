@@ -160,6 +160,7 @@ class Runner(TFOffPolicyRunner):
     @classmethod
     def main(cls,
              env_name,
+             epochs=200,
              policy_mlp_hidden=256,
              policy_lr=1e-3,
              q_mlp_hidden=256,
@@ -169,6 +170,8 @@ class Runner(TFOffPolicyRunner):
              noise_clip=0.5,
              tau=5e-3,
              gamma=0.99,
+             seed=1,
+             logger_path: str = None,
              **kwargs
              ):
         agent_kwargs = dict(
@@ -184,7 +187,10 @@ class Runner(TFOffPolicyRunner):
         )
 
         super(Runner, cls).main(env_name=env_name,
+                                epochs=epochs,
                                 policy_delay=2,
                                 agent_cls=TD3Agent,
                                 agent_kwargs=agent_kwargs,
+                                seed=seed,
+                                logger_path=logger_path,
                                 **kwargs)
