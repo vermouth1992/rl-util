@@ -185,17 +185,17 @@ class OffPolicyRunner(BaseRunner):
         self.replay_buffer = PyUniformReplayBuffer.from_vec_env(self.env, capacity=replay_size,
                                                                 batch_size=batch_size)
 
-    def setup_sampler(self, start_steps, num_steps):
+    def setup_sampler(self, start_steps):
         self.start_steps = start_steps
-        self.num_steps = num_steps
         self.sampler = rl_infra.samplers.BatchSampler(env=self.env)
 
-    def setup_updater(self, update_after, policy_delay, update_per_step):
+    def setup_updater(self, update_after, policy_delay, update_per_step, update_every):
         self.update_after = update_after
         self.updater = rl_infra.OffPolicyUpdater(agent=self.agent,
                                                  replay_buffer=self.replay_buffer,
                                                  policy_delay=policy_delay,
-                                                 update_per_step=update_per_step)
+                                                 update_per_step=update_per_step,
+                                                 update_every=update_every)
 
     def run_one_step(self, t):
         if self.sampler.total_env_steps < self.start_steps:
@@ -203,7 +203,7 @@ class OffPolicyRunner(BaseRunner):
                                 collect_fn=lambda o: np.asarray(self.env.action_space.sample()),
                                 replay_buffer=self.replay_buffer)
         else:
-            self.sampler.sample(num_steps=self.num_steps,
+            self.sampler.sample(num_steps=1,
                                 collect_fn=lambda obs: self.agent.act_batch_explore(obs),
                                 replay_buffer=self.replay_buffer)
         # Update handling
@@ -235,7 +235,7 @@ class OffPolicyRunner(BaseRunner):
              epochs=200,
              start_steps=10000,
              update_after=4000,
-             update_every=1,
+             update_every=50,
              update_per_step=1,
              policy_delay=1,
              batch_size=256,
@@ -258,11 +258,12 @@ class OffPolicyRunner(BaseRunner):
         runner.setup_agent(agent_cls=agent_cls, **agent_kwargs)
         runner.setup_replay_buffer(replay_size=replay_size,
                                    batch_size=batch_size)
-        runner.setup_sampler(start_steps=start_steps, num_steps=update_every)
+        runner.setup_sampler(start_steps=start_steps)
         runner.setup_tester(num_test_episodes=num_test_episodes)
         runner.setup_updater(update_after=update_after,
                              policy_delay=policy_delay,
-                             update_per_step=update_every * update_per_step)
+                             update_per_step=update_per_step,
+                             update_every=update_every)
         runner.setup_logger(config=config, tensorboard=False)
         runner.run()
 

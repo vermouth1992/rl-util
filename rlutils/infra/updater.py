@@ -38,14 +38,16 @@ class OnPolicyUpdater(PolicyUpdater):
 
 
 class OffPolicyUpdater(PolicyUpdater):
-    def __init__(self, agent, replay_buffer, policy_delay, update_per_step):
+    def __init__(self, agent, replay_buffer, policy_delay, update_per_step, update_every):
         super(OffPolicyUpdater, self).__init__(agent=agent, replay_buffer=replay_buffer)
         self.policy_delay = policy_delay
         self.update_per_step = update_per_step
+        self.update_every = update_every
 
     def update(self, global_step):
-        for _ in range(self.update_per_step):
-            batch = self.replay_buffer.sample()
-            batch['update_target'] = ((self.policy_updates + 1) % self.policy_delay == 0)
-            self.agent.train_on_batch(data=batch)
-            self.policy_updates += 1
+        if global_step % self.update_every == 0:
+            for _ in range(self.update_per_step * self.update_every):
+                batch = self.replay_buffer.sample()
+                batch['update_target'] = ((self.policy_updates + 1) % self.policy_delay == 0)
+                self.agent.train_on_batch(data=batch)
+                self.policy_updates += 1

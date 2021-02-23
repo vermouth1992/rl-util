@@ -201,6 +201,7 @@ class Runner(TFOffPolicyRunner):
             epochs=epochs,
             agent_cls=SACAgent,
             agent_kwargs=agent_kwargs,
+            policy_delay=1,
             seed=seed,
             logger_path=logger_path,
             **kwargs
