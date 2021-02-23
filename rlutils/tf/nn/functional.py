@@ -75,8 +75,8 @@ def build_mlp(input_dim, output_dim, mlp_hidden, num_ensembles=None, num_layers=
     # final layer
     if num_ensembles is None:
         model.add(tf.keras.layers.Dense(output_dim, activation=out_activation, kernel_regularizer=out_regularizer,
-                                        kernel_initializer=kernel_initializer,
-                                        bias_initializer=bias_initializer))
+                                        kernel_initializer=out_kernel_initializer,
+                                        bias_initializer=out_bias_initializer))
     else:
         model.add(EnsembleDense(num_ensembles, output_dim, activation=out_activation,
                                 kernel_regularizer=out_regularizer,
