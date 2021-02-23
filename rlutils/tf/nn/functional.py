@@ -7,27 +7,28 @@ from .layers import EnsembleDense, SqueezeLayer
 def build_mlp(input_dim, output_dim, mlp_hidden, num_ensembles=None, num_layers=3,
               activation='relu', out_activation=None, squeeze=False, dropout=None,
               batch_norm=False, layer_norm=False, regularization=None, out_regularization=None,
-              kernel_initializer=None, bias_initializer=None,
-              out_kernel_initializer=None, out_bias_initializer=None):
+              kernel_initializer='glorot_uniform', bias_initializer='zeros',
+              out_kernel_initializer='glorot_uniform', out_bias_initializer='zeros'):
     """
 
     Args:
         input_dim: input dimension
         output_dim: output dimension
-        mlp_hidden: hidden size (a list of int)
+        mlp_hidden: hidden size. int or a list of integers
         num_ensembles: number of ensembles
-        num_layers: number of layers
-        activation:
-        out_activation:
-        squeeze:
-        dropout:
-        batch_norm:
-        layer_norm:
-        regularization:
-        out_regularization:
-        kernel_initializer:
-        bias_initializer:
-        out_bias_initializer:
+        num_layers: number of layers. Must be compatible with mlp_hidden
+        activation: activation after each hidden layer
+        out_activation: activation after the output layer
+        squeeze: whether squeeze the output
+        dropout: apply dropout
+        batch_norm: apply batch normalization
+        layer_norm: apply layer normalization
+        regularization: hidden kernel regularization
+        out_regularization: output kernel regularization
+        kernel_initializer: hidden kernel initializer
+        bias_initializer: bias initializer
+        out_kernel_initializer: The range of the output kernel is set to small number.
+        out_bias_initializer: output bias initializer
 
     Returns:
 

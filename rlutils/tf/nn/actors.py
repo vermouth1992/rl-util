@@ -10,6 +10,8 @@ tfd = tfp.distributions
 LOG_STD_RANGE = (-20., 5.)
 EPS = 1e-3
 
+OUT_KERNEL_INIT = tf.keras.initializers.RandomUniform(minval=-1e-3, maxval=1e-3)
+
 
 @tf.function
 def get_pi_action(deterministic, pi_distribution):
@@ -45,7 +47,8 @@ class StochasticActor(tf.keras.Model):
 class CategoricalActor(StochasticActor):
     def __init__(self, obs_dim, act_dim, mlp_hidden):
         super(CategoricalActor, self).__init__()
-        self.net = build_mlp(input_dim=obs_dim, output_dim=act_dim, mlp_hidden=mlp_hidden)
+        self.net = build_mlp(input_dim=obs_dim, output_dim=act_dim, mlp_hidden=mlp_hidden,
+                             out_kernel_initializer=OUT_KERNEL_INIT)
 
     @property
     def pi_dist_layer(self):
@@ -68,10 +71,12 @@ class NormalActor(StochasticActor):
         super(NormalActor, self).__init__()
         self.global_std = global_std
         if self.global_std:
-            self.net = build_mlp(input_dim=obs_dim, output_dim=act_dim, mlp_hidden=mlp_hidden)
+            self.net = build_mlp(input_dim=obs_dim, output_dim=act_dim, mlp_hidden=mlp_hidden,
+                                 out_kernel_initializer=OUT_KERNEL_INIT)
             self.log_std = tf.Variable(initial_value=-0.5 * tf.ones(act_dim))
         else:
-            self.net = build_mlp(input_dim=obs_dim, output_dim=act_dim * 2, mlp_hidden=mlp_hidden)
+            self.net = build_mlp(input_dim=obs_dim, output_dim=act_dim * 2, mlp_hidden=mlp_hidden,
+                                 out_kernel_initializer=OUT_KERNEL_INIT)
             self.log_std = None
 
     @property
@@ -106,7 +111,7 @@ class CenteredBetaMLPActor(StochasticActor):
 
     def __init__(self, ob_dim, ac_dim, mlp_hidden):
         super(CenteredBetaMLPActor, self).__init__()
-        self.net = build_mlp(ob_dim, ac_dim * 2, mlp_hidden)
+        self.net = build_mlp(ob_dim, ac_dim * 2, mlp_hidden, out_kernel_initializer=OUT_KERNEL_INIT)
         self.ac_dim = ac_dim
         self.build(input_shape=[(None, ob_dim), (None,)])
 
@@ -129,7 +134,7 @@ class CenteredBetaMLPActor(StochasticActor):
 class SquashedGaussianMLPActor(StochasticActor):
     def __init__(self, ob_dim, ac_dim, mlp_hidden):
         super(SquashedGaussianMLPActor, self).__init__()
-        self.net = build_mlp(ob_dim, ac_dim * 2, mlp_hidden)
+        self.net = build_mlp(ob_dim, ac_dim * 2, mlp_hidden, out_kernel_initializer=OUT_KERNEL_INIT)
         self.ac_dim = ac_dim
         self.build(input_shape=[(None, ob_dim), (None,)])
 

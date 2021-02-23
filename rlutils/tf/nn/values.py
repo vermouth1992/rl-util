@@ -2,6 +2,8 @@ import tensorflow as tf
 
 from rlutils.tf.nn.functional import build_mlp
 
+OUT_KERNEL_INIT = tf.keras.initializers.RandomUniform(minval=-1e-3, maxval=1e-3)
+
 
 class EnsembleMinQNet(tf.keras.Model):
     def __init__(self, ob_dim, ac_dim, mlp_hidden, num_ensembles=2, num_layers=3):
@@ -16,7 +18,8 @@ class EnsembleMinQNet(tf.keras.Model):
                                mlp_hidden=self.mlp_hidden,
                                num_ensembles=self.num_ensembles,
                                num_layers=num_layers,
-                               squeeze=True)
+                               squeeze=True,
+                               out_kernel_initializer=OUT_KERNEL_INIT)
         self.build(input_shape=[(None, ob_dim), (None, ac_dim)])
 
     def get_config(self):

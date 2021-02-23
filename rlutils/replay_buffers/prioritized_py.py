@@ -3,8 +3,11 @@ from typing import Dict
 import gym.spaces
 import numpy as np
 
-from ..uniform_py import PyUniformReplayBuffer
+from .uniform_py import PyUniformReplayBuffer
+from .utils import segtree
 
+import gym.envs.mujoco.hopper
+import gym.envs.mujoco.hopper_v3
 
 class PyPrioritizedReplayBuffer(PyUniformReplayBuffer):
     """
@@ -17,7 +20,7 @@ class PyPrioritizedReplayBuffer(PyUniformReplayBuffer):
                                                         batch_size=batch_size)
         self.alpha = alpha
         self.default_priority = 1.0
-        self.storage['priority'] = np.ones(shape=(capacity,), dtype=np.float32) * self.default_priority
+        self.priority = segtree.SegmentTree(size=capacity)
 
     def add(self, data: Dict[str, np.ndarray], priority=None):
         batch_size = list(data.values())[0].shape[0]

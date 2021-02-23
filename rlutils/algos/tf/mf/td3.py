@@ -7,6 +7,8 @@ import rlutils.tf as rlu
 import tensorflow as tf
 from rlutils.infra.runner import TFOffPolicyRunner
 
+OUT_KERNEL_INIT = tf.keras.initializers.RandomUniform(minval=-1e-3, maxval=1e-3)
+
 
 class TD3Agent(tf.keras.Model):
     def __init__(self,
@@ -36,10 +38,12 @@ class TD3Agent(tf.keras.Model):
         if len(self.obs_spec.shape) == 1:  # 1D observation
             self.obs_dim = self.obs_spec.shape[0]
             self.policy_net = rlu.nn.build_mlp(self.obs_dim, self.act_dim, mlp_hidden=policy_mlp_hidden,
-                                               num_layers=3, out_activation=lambda x: self.act_lim * tf.math.sin(x))
+                                               num_layers=3, out_activation=lambda x: self.act_lim * tf.math.sin(x),
+                                               out_kernel_initializer=OUT_KERNEL_INIT)
             self.target_policy_net = rlu.nn.build_mlp(self.obs_dim, self.act_dim,
                                                       mlp_hidden=policy_mlp_hidden, num_layers=3,
-                                                      out_activation=lambda x: self.act_lim * tf.math.sin(x))
+                                                      out_activation=lambda x: self.act_lim * tf.math.sin(x),
+                                                      out_kernel_initializer=OUT_KERNEL_INIT)
             rlu.functional.hard_update(self.target_policy_net, self.policy_net)
             self.q_network = rlu.nn.EnsembleMinQNet(self.obs_dim, self.act_dim, q_mlp_hidden,
                                                     num_ensembles=num_q_ensembles)
