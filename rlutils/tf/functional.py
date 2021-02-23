@@ -36,28 +36,17 @@ def clip_atanh(x, name=None):
     return tf.atanh(tf.clip_by_value(x, clip_value_min=-1. + EPS, clip_value_max=1. - EPS), name=name)
 
 
-@tf.function
 def compute_target_value(reward, gamma, done, next_q):
     q_target = reward + gamma * (1.0 - done) * next_q
     return q_target
 
 
-@tf.function
-def flat_grads(grads):
-    print(f'Tracing flat_grads grads={len(grads)}')
-    grads = [tf.reshape(grad, shape=(-1,)) for grad in grads]
-    return tf.concat(grads, axis=0)
+def flat_vars(vars):
+    print('Tracing flat_vars')
+    vars = [tf.reshape(v, shape=(-1,)) for v in vars]
+    return tf.concat(vars, axis=0)
 
 
-@tf.function
-def get_flat_trainable_variables(model: tf.keras.layers.Layer):
-    print(f'Tracing get_flat_params_from model={model.name}')
-    trainable_variables = [tf.reshape(p, shape=(-1,)) for p in model.trainable_variables]
-    trainable_variables = tf.concat(trainable_variables, axis=0)
-    return trainable_variables
-
-
-@tf.function
 def set_flat_trainable_variables(model: tf.keras.layers.Layer, trainable_variables):
     print(f'Tracing set_flat_params_to model={model.name}, flat_params={len(trainable_variables)}')
     prev_ind = 0

@@ -51,7 +51,11 @@ class TrajectorySampler(Sampler):
         actor_fn, value_fn = collect_fn
         for t in trange(num_steps, desc='Sampling'):
             act, logp, val = actor_fn(self.obs)
-            obs2, rew, dones, infos = self.env.step(np.clip(act, -1., 1.))
+            if isinstance(act, np.float32):
+                act_taken = np.clip(act, -1., 1.)
+            else:
+                act_taken = act
+            obs2, rew, dones, infos = self.env.step(act_taken)
             replay_buffer.store(self.obs, act, rew, val, logp)
             self.logger.store(VVals=val)
             self.ep_ret += rew

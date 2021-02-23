@@ -3,13 +3,10 @@ Trust Region Policy Optimization
 """
 
 import numpy as np
+import rlutils.tf as rlu
 import tensorflow as tf
 import tensorflow_probability as tfp
 from rlutils.infra.runner import OnPolicyRunner, TFRunner
-from rlutils.tf.functional import to_numpy_or_python_type, flat_grads, get_flat_trainable_variables, \
-    set_flat_trainable_variables
-from rlutils.tf.nn import NormalActor, CategoricalActor
-from rlutils.tf.nn.functional import build_mlp
 
 
 class TRPOAgent(tf.keras.Model):
@@ -35,11 +32,11 @@ class TRPOAgent(tf.keras.Model):
         super(TRPOAgent, self).__init__()
         obs_dim = obs_spec.shape[0]
         if act_spec.dtype == np.int32 or act_spec.dtype == np.int64:
-            self.policy_net = CategoricalActor(obs_dim=obs_dim, act_dim=act_spec.n, mlp_hidden=mlp_hidden)
+            self.policy_net = rlu.nn.CategoricalActor(obs_dim=obs_dim, act_dim=act_spec.n, mlp_hidden=mlp_hidden)
         else:
-            self.policy_net = NormalActor(obs_dim=obs_dim, act_dim=act_spec.shape[0], mlp_hidden=mlp_hidden)
+            self.policy_net = rlu.nn.NormalActor(obs_dim=obs_dim, act_dim=act_spec.shape[0], mlp_hidden=mlp_hidden)
         self.v_optimizer = tf.keras.optimizers.Adam(learning_rate=vf_lr)
-        self.value_net = build_mlp(input_dim=obs_dim, output_dim=1, squeeze=True, mlp_hidden=mlp_hidden)
+        self.value_net = rlu.nn.build_mlp(input_dim=obs_dim, output_dim=1, squeeze=True, mlp_hidden=mlp_hidden)
         self.value_net.compile(optimizer=self.v_optimizer, loss='mse')
 
         self.delta = delta
@@ -103,7 +100,7 @@ class TRPOAgent(tf.keras.Model):
         with tf.GradientTape() as tape:
             policy_loss = self._compute_loss_pi(obs, act, logp, adv)
         grads = tape.gradient(policy_loss, self.policy_net.trainable_variables)
-        grads = flat_grads(grads)
+        grads = rlu.functional.flat_vars(grads)
         # flat grads
         return grads, policy_loss
 
@@ -115,15 +112,16 @@ class TRPOAgent(tf.keras.Model):
                 kl = self._compute_kl(obs, old_pi)
             inner_grads = t1.gradient(kl, self.policy_net.trainable_variables)
             # flat gradients
-            inner_grads = flat_grads(inner_grads)
+            inner_grads = rlu.functional.flat_vars(inner_grads)
             kl_v = tf.reduce_sum(inner_grads * p)
         grads = t2.gradient(kl_v, self.policy_net.trainable_variables)
-        grads = flat_grads(grads)
+        grads = rlu.functional.flat_vars(grads)
         _Avp = grads + p * self.damping_coeff
         return _Avp
 
     @tf.function
     def _conjugate_gradients(self, obs, b, nsteps, residual_tol=1e-10):
+        # TODO: replace with tf.linalg.experimental.conjugate_gradient
         """
         Args:
             Avp: a callable computes matrix vector produce. Note that vector here has NO dummy dimension
@@ -161,7 +159,7 @@ class TRPOAgent(tf.keras.Model):
 
     def _set_and_eval(self, obs, act, logp, adv, old_params, old_pi, natural_gradient, step):
         new_params = old_params - natural_gradient * step
-        set_flat_trainable_variables(self.policy_net, new_params)
+        rlu.functional.set_flat_trainable_variables(self.policy_net, new_params)
         loss_pi = self._compute_loss_pi(obs, act, logp, adv)
         kl_loss = self._compute_kl(obs, old_pi)
         return kl_loss, loss_pi
@@ -169,7 +167,7 @@ class TRPOAgent(tf.keras.Model):
     @tf.function
     def _update_actor(self, obs, act, adv):
         print(f'Tracing _update_actor with obs={obs}, act={act}, adv={adv}')
-        old_params = get_flat_trainable_variables(self.policy_net)
+        old_params = rlu.functional.flat_vars(self.policy_net.trainable_variables)
         old_pi = self.get_pi_distribution(obs)
         logp = old_pi.log_prob(act)
         natural_gradient, pi_l_old = self._compute_natural_gradient(obs, act, logp, adv)
@@ -214,7 +212,7 @@ class TRPOAgent(tf.keras.Model):
         info['DeltaLossV'] = loss_v - v_l_old
 
         # Log changes from update
-        self.logger.store(**to_numpy_or_python_type(info))
+        self.logger.store(**rlu.functional.to_numpy_or_python_type(info))
 
 
 class Runner(OnPolicyRunner, TFRunner):
