@@ -22,3 +22,7 @@ def get_tf_func(instance, fun):
         setattr(instance, fun.__name__, fun)
         func = getattr(instance, fun.__name__, None)
     return func
+
+
+def print_tf_version():
+    print(f'Tensorflow version: {tf.__version__}, git version: {tf.__git_version__}')

@@ -27,7 +27,7 @@ def create_vector_env(env_name=None,
     if isinstance(dummy_env.observation_space, gym.spaces.Box):
         if dummy_env.observation_space.dtype == np.float64:
             print('Truncating observation_space dtype from np.float64 to np.float32')
-            fn = lambda env: gym.wrappers.TransformObservation(env, f=lambda x: x.astype(np.float32))
+            fn = lambda env: rlutils.gym.wrappers.TransformObservationDtype(env, dtype=np.float32)
             wrappers.append(fn)
     else:
         raise NotImplementedError

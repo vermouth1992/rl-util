@@ -236,7 +236,7 @@ class OffPolicyRunner(BaseRunner):
              epochs=100,
              start_steps=10000,
              update_after=5000,
-             update_every=1,
+             update_every=50,
              update_per_step=1,
              policy_delay=1,
              batch_size=256,

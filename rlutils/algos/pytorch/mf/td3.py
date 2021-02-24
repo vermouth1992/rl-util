@@ -8,10 +8,10 @@ import copy
 import rlutils.pytorch.utils as ptu
 import torch
 import torch.nn as nn
+from rlutils.infra.runner import run_func_as_main, PytorchOffPolicyRunner
 from rlutils.pytorch.functional import soft_update, compute_target_value, to_numpy_or_python_type
 from rlutils.pytorch.nn import EnsembleMinQNet
 from rlutils.pytorch.nn.functional import build_mlp
-from rlutils.infra.runner import OffPolicyRunner, run_func_as_main, PytorchRunner
 
 
 class TD3Agent(nn.Module):
@@ -112,7 +112,13 @@ class TD3Agent(nn.Module):
         )
         return info
 
-    def update(self, obs, act, next_obs, done, rew, update_target=True):
+    def train_on_batch(self, data, **kwargs):
+        obs = data['obs']
+        act = data['act']
+        next_obs = data['next_obs']
+        done = data['done']
+        rew = data['rew']
+        update_target = data['update_target']
         obs = torch.as_tensor(obs, dtype=torch.float32, device=ptu.device)
         act = torch.as_tensor(act, dtype=torch.float32, device=ptu.device)
         next_obs = torch.as_tensor(next_obs, dtype=torch.float32, device=ptu.device)
@@ -129,82 +135,60 @@ class TD3Agent(nn.Module):
         self.logger.store(**to_numpy_or_python_type(info))
 
     def act_batch_test(self, obs):
+        obs = torch.as_tensor(obs, dtype=torch.float32, device=ptu.device)
         with torch.no_grad():
-            return self.policy_net(obs)
+            return self.policy_net(obs).cpu().numpy()
 
     def act_batch_explore(self, obs):
+        obs = torch.as_tensor(obs, dtype=torch.float32, device=ptu.device)
         with torch.no_grad():
             pi_final = self.policy_net(obs)
             noise = torch.randn_like(pi_final) * self.actor_noise
             pi_final = pi_final + noise
             pi_final = torch.clip(pi_final, -self.act_lim, self.act_lim)
-            return pi_final
+            return pi_final.cpu().numpy()
 
 
-class TD3Runner(OffPolicyRunner, PytorchRunner):
-    def get_action_batch_test(self, obs):
-        return self.agent.act_batch_test(torch.as_tensor(obs, dtype=torch.float32, device=ptu.device)).cpu().numpy()
+class Runner(PytorchOffPolicyRunner):
+    @classmethod
+    def main(cls,
+             env_name,
+             epochs=200,
+             policy_mlp_hidden=256,
+             policy_lr=1e-3,
+             q_mlp_hidden=256,
+             q_lr=1e-3,
+             actor_noise=0.1,
+             target_noise=0.2,
+             noise_clip=0.5,
+             tau=5e-3,
+             gamma=0.99,
+             seed=1,
+             logger_path: str = None,
+             **kwargs
+             ):
+        agent_kwargs = dict(
+            policy_mlp_hidden=policy_mlp_hidden,
+            policy_lr=policy_lr,
+            q_mlp_hidden=q_mlp_hidden,
+            q_lr=q_lr,
+            tau=tau,
+            gamma=gamma,
+            actor_noise=actor_noise,
+            target_noise=target_noise,
+            noise_clip=noise_clip
+        )
 
-    def get_action_batch_explore(self, obs):
-        return self.agent.act_batch_explore(torch.as_tensor(obs, dtype=torch.float32, device=ptu.device)).cpu().numpy()
-
-
-def td3(env_name,
-        env_fn=None,
-        steps_per_epoch=5000,
-        epochs=200,
-        start_steps=10000,
-        update_after=4000,
-        update_every=1,
-        update_per_step=1,
-        policy_delay=2,
-        batch_size=256,
-        num_parallel_env=1,
-        num_test_episodes=20,
-        seed=1,
-        # sac args
-        nn_size=256,
-        learning_rate=1e-3,
-        actor_noise=0.1,
-        target_noise=0.2,
-        noise_clip=0.5,
-        tau=5e-3,
-        gamma=0.99,
-        # replay
-        replay_size=int(1e6),
-        logger_path='data'
-        ):
-    ptu.set_device('cuda')
-
-    config = locals()
-
-    runner = TD3Runner(seed=seed, steps_per_epoch=steps_per_epoch // num_parallel_env, epochs=epochs,
-                       exp_name=None, logger_path=logger_path)
-    runner.setup_env(env_name=env_name, num_parallel_env=num_parallel_env, env_fn=env_fn,
-                     asynchronous=False, num_test_episodes=num_test_episodes)
-    runner.setup_logger(config=config)
-
-    agent_kwargs = dict(
-        policy_mlp_hidden=nn_size,
-        policy_lr=learning_rate,
-        q_mlp_hidden=nn_size,
-        q_lr=learning_rate,
-        tau=tau,
-        gamma=gamma,
-        actor_noise=actor_noise,
-        target_noise=target_noise,
-        noise_clip=noise_clip
-    )
-    runner.setup_agent(agent_cls=TD3Agent, **agent_kwargs)
-    runner.setup_extra(start_steps=start_steps,
-                       update_after=update_after,
-                       update_every=update_every,
-                       update_per_step=update_per_step,
-                       policy_delay=policy_delay)
-    runner.setup_replay_buffer(replay_size=replay_size,
-                               batch_size=batch_size)
-    runner.run()
+        super(Runner, cls).main(env_name=env_name,
+                                epochs=epochs,
+                                policy_delay=2,
+                                agent_cls=TD3Agent,
+                                agent_kwargs=agent_kwargs,
+                                seed=seed,
+                                logger_path=logger_path,
+                                **kwargs)
 
 
 if __name__ == '__main__':
-    run_func_as_main(td3)
+    ptu.set_device('cuda')
+    run_func_as_main(Runner.main)
