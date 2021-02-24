@@ -4,7 +4,7 @@
     "env_fn":	null,
     "env_name":	"Walker2d-v2",
     "epochs":	200,
-    "exp_name":	"Walker2d-v2_TD3Runner_test",
+    "exp_name":	"Walker2d-v2_TD3Runner_sine_test",
     "gamma":	0.99,
     "learning_rate":	0.001,
     "logger_path":	"benchmark_results_td3_sine",

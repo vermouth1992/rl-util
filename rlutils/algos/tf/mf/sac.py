@@ -73,17 +73,19 @@ class SACAgent(tf.keras.Model):
         # compute target Q values
         next_q_values = self._compute_next_obs_q(next_obs)
         q_target = rlu.functional.compute_target_value(rew, self.gamma, done, next_q_values)
-
+        q_target = rlu.functional.expand_ensemble_dim(q_target, num_ensembles=self.q_network.num_ensembles)
         # q loss
         with tf.GradientTape() as q_tape:
             q_values = self.q_network((obs, act), training=True)  # (num_ensembles, None)
-            q_values_loss = 0.5 * tf.square(tf.expand_dims(q_target, axis=0) - q_values)
-            # (num_ensembles, None)
-            q_values_loss = tf.reduce_sum(q_values_loss, axis=0)  # (None,)
+            q_values_loss = 0.5 * tf.square(q_target - q_values)
             # apply importance weights if needed
             if weights is not None:
+                weights = rlu.functional.expand_ensemble_dim(weights, num_ensembles=self.q_network.num_ensembles)
                 q_values_loss = q_values_loss * weights
-            q_values_loss = tf.reduce_mean(q_values_loss)
+            q_values_loss = tf.reduce_mean(q_values_loss, axis=-1)
+            # (num_ensembles, None)
+            q_values_loss = tf.reduce_sum(q_values_loss, axis=0)
+
         q_gradients = q_tape.gradient(q_values_loss, self.q_network.trainable_variables)
         self.q_optimizer.apply_gradients(zip(q_gradients, self.q_network.trainable_variables))
 
@@ -171,7 +173,7 @@ class Runner(TFOffPolicyRunner):
     @classmethod
     def main(cls,
              env_name,
-             epochs=200,
+             epochs=100,
              # sac args
              policy_mlp_hidden=256,
              policy_lr=3e-4,
