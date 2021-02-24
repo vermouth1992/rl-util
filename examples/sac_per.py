@@ -10,7 +10,7 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 from rlutils.algos.tf.mf.sac import SACAgent
 from rlutils.replay_buffers import PyPrioritizedReplayBuffer
-from rlutils.schedulers import PiecewiseSchedule
+from rlutils.np.schedulers import PiecewiseSchedule
 
 tfd = tfp.distributions
 

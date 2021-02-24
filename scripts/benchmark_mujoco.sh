@@ -1,8 +1,8 @@
 envs=(
-  Hopper-v2
   Walker2d-v2
   HalfCheetah-v2
   Ant-v2
+  Hopper-v2
 )
 
 algos=$1
@@ -14,7 +14,7 @@ seeds=(
 for env in "${envs[@]}"; do
   for algo in "${algos[@]}"; do
     for seed in "${seeds[@]}"; do
-      python -m rlutils.run $algo --env_name $env --seed $seed --logger_path 'benchmark_results' --epochs 600
+      python -m rlutils.run $algo --env_name $env --seed $seed --logger_path 'benchmark_results' --epochs 300
     done
   done
 done

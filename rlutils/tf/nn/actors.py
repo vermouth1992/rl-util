@@ -165,7 +165,7 @@ class SquashedGaussianMLPActor(StochasticActor):
 
 
 class DeterministicMLPActor(tf.keras.Model):
-    def __init__(self, ob_dim, ac_dim, mlp_hidden, out_activation=tf.math.sin):
+    def __init__(self, ob_dim, ac_dim, mlp_hidden, out_activation='tanh'):
         super(DeterministicMLPActor, self).__init__()
         self.policy_net = build_mlp(ob_dim, ac_dim, mlp_hidden=mlp_hidden,
                                     num_layers=3, out_activation=out_activation,

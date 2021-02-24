@@ -162,6 +162,20 @@ class SACAgent(tf.keras.Model):
         pi_final = self.policy_net((obs, True))[0]
         return pi_final
 
+    @tf.function
+    def act_batch_test_tf_v2(self, obs):
+        n = 20
+        batch_size = tf.shape(obs)[0]
+        obs = tf.tile(obs, (n, 1))
+        action = self.policy_net((obs, False))[0]
+        q_values_pi_min = self.q_network((obs, action), training=True)[0, :]
+        action = tf.reshape(action, shape=(n, batch_size, self.act_dim))
+        idx = tf.argmax(tf.reshape(q_values_pi_min, shape=(n, batch_size)), axis=0,
+                        output_type=tf.int32)  # (batch_size)
+        idx = tf.stack([idx, tf.range(batch_size)], axis=-1)
+        pi_final = tf.gather_nd(action, idx)
+        return pi_final
+
     def act_batch_test(self, obs):
         return self.act_batch_test_tf(tf.convert_to_tensor(obs)).numpy()
 

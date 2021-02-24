@@ -26,6 +26,7 @@ class BaseRunner(ABC):
         self.epochs = epochs
         self.seed = seed
         self.global_step = 0
+        self.total_steps = steps_per_epoch * epochs
         self.seeder = rl_infra.Seeder(seed=seed)
         self.timer = rl_infra.StopWatch()
         self.agent = None
@@ -234,8 +235,8 @@ class OffPolicyRunner(BaseRunner):
              steps_per_epoch=10000,
              epochs=100,
              start_steps=10000,
-             update_after=1000,
-             update_every=50,
+             update_after=5000,
+             update_every=1,
              update_per_step=1,
              policy_delay=1,
              batch_size=256,
