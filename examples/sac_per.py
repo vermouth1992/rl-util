@@ -31,11 +31,14 @@ class PrioritizedUpdater(rl_infra.OffPolicyUpdater):
                 if priorities is not None:
                     self.replay_buffer.update_priorities(idx, priorities=priorities,
                                                          min_priority=0.01,
-                                                         # max_priority=10.
+                                                         max_priority=10.
                                                          )
 
 
 class PrioritizedSACAgent(SACAgent):
+    def __init__(self, *args, **kwargs):
+        super(PrioritizedSACAgent, self).__init__(*args, num_ensembles=10, **kwargs)
+
     def log_tabular(self):
         super(PrioritizedSACAgent, self).log_tabular()
         self.logger.log_tabular('Priorities', with_min_and_max=True)
@@ -121,13 +124,13 @@ class Runner(rl_infra.runner.TFOffPolicyRunner):
     @classmethod
     def main(cls,
              env_name,
-             steps_per_epoch=10000,
-             epochs=100,
-             start_steps=10000,
-             update_after=5000,
+             steps_per_epoch=1000,
+             epochs=125,
+             start_steps=1000,
+             update_after=900,
              update_every=50,
-             update_per_step=1,
-             policy_delay=1,
+             update_per_step=20,
+             policy_delay=5,
              batch_size=100,
              num_parallel_env=1,
              num_test_episodes=30,

@@ -66,8 +66,11 @@ class TD3Agent(tf.keras.Model):
         self.logger.log_tabular('LossQ', average_only=True)
 
     @tf.function
-    def update_target(self):
+    def update_target_q(self):
         rlu.functional.soft_update(self.target_q_network, self.q_network, self.tau)
+
+    @tf.function
+    def update_target_policy(self):
         rlu.functional.soft_update(self.target_policy_net, self.policy_net, self.tau)
 
     def _compute_next_obs_q(self, next_obs):
@@ -98,6 +101,8 @@ class TD3Agent(tf.keras.Model):
         q_gradients = q_tape.gradient(q_values_loss, self.q_network.trainable_variables)
         self.q_optimizer.apply_gradients(zip(q_gradients, self.q_network.trainable_variables))
 
+        self.update_target_q()
+
         info = dict(
             LossQ=q_values_loss,
         )
@@ -115,6 +120,9 @@ class TD3Agent(tf.keras.Model):
             policy_loss = -tf.reduce_mean(q, axis=0)
         policy_gradients = policy_tape.gradient(policy_loss, self.policy_net.trainable_variables)
         self.policy_optimizer.apply_gradients(zip(policy_gradients, self.policy_net.trainable_variables))
+
+        self.update_target_policy()
+
         info = dict(
             LossPi=policy_loss,
         )
@@ -133,7 +141,6 @@ class TD3Agent(tf.keras.Model):
         if update_target:
             actor_info = self._update_actor(obs)
             info.update(actor_info)
-            self.update_target()
         return info
 
     def train_on_batch(self, data, **kwargs):

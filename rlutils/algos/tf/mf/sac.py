@@ -11,6 +11,7 @@ class SACAgent(tf.keras.Model):
     def __init__(self,
                  obs_spec,
                  act_spec,
+                 num_ensembles=2,
                  policy_mlp_hidden=128,
                  policy_lr=3e-4,
                  q_mlp_hidden=256,
@@ -29,8 +30,10 @@ class SACAgent(tf.keras.Model):
         if len(self.obs_spec.shape) == 1:  # 1D observation
             self.obs_dim = self.obs_spec.shape[0]
             self.policy_net = rlu.nn.SquashedGaussianMLPActor(self.obs_dim, self.act_dim, policy_mlp_hidden)
-            self.q_network = rlu.nn.EnsembleMinQNet(self.obs_dim, self.act_dim, q_mlp_hidden)
-            self.target_q_network = rlu.nn.EnsembleMinQNet(self.obs_dim, self.act_dim, q_mlp_hidden)
+            self.q_network = rlu.nn.EnsembleMinQNet(self.obs_dim, self.act_dim, q_mlp_hidden,
+                                                    num_ensembles=num_ensembles)
+            self.target_q_network = rlu.nn.EnsembleMinQNet(self.obs_dim, self.act_dim, q_mlp_hidden,
+                                                           num_ensembles=num_ensembles)
         else:
             raise NotImplementedError
         rlu.functional.hard_update(self.target_q_network, self.q_network)
@@ -59,7 +62,7 @@ class SACAgent(tf.keras.Model):
         self.logger.log_tabular('LossAlpha', average_only=True)
 
     @tf.function
-    def update_target(self):
+    def update_target_q(self):
         rlu.functional.soft_update(self.target_q_network, self.q_network, self.tau)
 
     def _compute_next_obs_q(self, next_obs):
@@ -88,6 +91,8 @@ class SACAgent(tf.keras.Model):
 
         q_gradients = q_tape.gradient(q_values_loss, self.q_network.trainable_variables)
         self.q_optimizer.apply_gradients(zip(q_gradients, self.q_network.trainable_variables))
+
+        self.update_target_q()
 
         info = dict(
             LossQ=q_values_loss,
@@ -144,7 +149,6 @@ class SACAgent(tf.keras.Model):
         if update_target:
             actor_info = self._update_actor(obs)
             info.update(actor_info)
-            self.update_target()
         return info
 
     def train_on_batch(self, data, **kwargs):
