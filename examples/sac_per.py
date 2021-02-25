@@ -9,8 +9,8 @@ import rlutils.tf as rlu
 import tensorflow as tf
 import tensorflow_probability as tfp
 from rlutils.algos.tf.mf.sac import SACAgent
-from rlutils.replay_buffers import PyPrioritizedReplayBuffer
 from rlutils.np.schedulers import PiecewiseSchedule
+from rlutils.replay_buffers import PyPrioritizedReplayBuffer
 
 tfd = tfp.distributions
 
@@ -22,12 +22,17 @@ class PrioritizedUpdater(rl_infra.OffPolicyUpdater):
         self.beta_scheduler = PiecewiseSchedule(endpoints=[(0, 0.4), (total_steps, 1.0)])
 
     def update(self, global_step):
-        for _ in range(self.update_per_step):
-            batch, idx = self.replay_buffer.sample(beta=self.beta_scheduler.value(global_step))
-            batch['update_target'] = ((self.policy_updates + 1) % self.policy_delay == 0)
-            priorities = self.agent.train_on_batch(data=batch)
-            self.policy_updates += 1
-            self.replay_buffer.update_priorities(idx, priorities=priorities, min_priority=0.1, max_priority=5)
+        if global_step % self.update_every == 0:
+            for _ in range(self.update_per_step * self.update_every):
+                batch, idx = self.replay_buffer.sample(beta=self.beta_scheduler.value(global_step))
+                batch['update_target'] = ((self.policy_updates + 1) % self.policy_delay == 0)
+                priorities = self.agent.train_on_batch(data=batch)
+                self.policy_updates += 1
+                if priorities is not None:
+                    self.replay_buffer.update_priorities(idx, priorities=priorities,
+                                                         min_priority=0.01,
+                                                         # max_priority=10.
+                                                         )
 
 
 class PrioritizedSACAgent(SACAgent):
@@ -35,6 +40,7 @@ class PrioritizedSACAgent(SACAgent):
         super(PrioritizedSACAgent, self).log_tabular()
         self.logger.log_tabular('Priorities', with_min_and_max=True)
 
+    @tf.function
     def _update_actor(self, obs, weights=None):
         alpha = self.log_alpha()
         # policy loss
@@ -72,7 +78,6 @@ class PrioritizedSACAgent(SACAgent):
         )
         return info
 
-    @tf.function
     def train_step(self, data):
         obs = data['obs']
         act = data['act']
@@ -81,10 +86,9 @@ class PrioritizedSACAgent(SACAgent):
         rew = data['rew']
         update_target = data['update_target']
         weights = data['weights']
-        print(f'Tracing train_step with {update_target}')
         info = self._update_q_nets(obs, act, next_obs, done, rew, weights=weights)
         if update_target:
-            actor_info = self._update_actor(obs, weights=weights)
+            actor_info = self._update_actor(obs)
             info.update(actor_info)
             self.update_target()
         return info
@@ -92,7 +96,10 @@ class PrioritizedSACAgent(SACAgent):
     def train_on_batch(self, data, **kwargs):
         info = self.train_step(data=data)
         self.logger.store(**rlu.functional.to_numpy_or_python_type(info))
-        return info['Priorities']
+        new_priorities = info.get('Priorities', None)
+        if new_priorities is not None:
+            new_priorities = new_priorities.numpy()
+        return new_priorities
 
 
 class Runner(rl_infra.runner.TFOffPolicyRunner):
@@ -102,25 +109,26 @@ class Runner(rl_infra.runner.TFOffPolicyRunner):
         self.replay_buffer = PyPrioritizedReplayBuffer.from_vec_env(self.env, capacity=replay_size,
                                                                     batch_size=batch_size)
 
-    def setup_updater(self, update_after, policy_delay, update_per_step):
+    def setup_updater(self, update_after, policy_delay, update_per_step, update_every):
         self.update_after = update_after
         self.updater = PrioritizedUpdater(agent=self.agent,
                                           replay_buffer=self.replay_buffer,
                                           policy_delay=policy_delay,
                                           update_per_step=update_per_step,
+                                          update_every=update_every,
                                           total_steps=self.epochs * self.steps_per_epoch)
 
     @classmethod
     def main(cls,
              env_name,
-             steps_per_epoch=5000,
-             epochs=200,
+             steps_per_epoch=10000,
+             epochs=100,
              start_steps=10000,
-             update_after=4000,
-             update_every=1,
+             update_after=5000,
+             update_every=50,
              update_per_step=1,
              policy_delay=1,
-             batch_size=256,
+             batch_size=100,
              num_parallel_env=1,
              num_test_episodes=30,
              seed=1,
