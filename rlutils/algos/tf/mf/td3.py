@@ -23,7 +23,8 @@ class TD3Agent(tf.keras.Model):
                  gamma=0.99,
                  actor_noise=0.1,
                  target_noise=0.2,
-                 noise_clip=0.5
+                 noise_clip=0.5,
+                 out_activation='tanh'
                  ):
         super(TD3Agent, self).__init__()
         self.obs_spec = obs_spec
@@ -38,9 +39,11 @@ class TD3Agent(tf.keras.Model):
         if len(self.obs_spec.shape) == 1:  # 1D observation
             self.obs_dim = self.obs_spec.shape[0]
             self.policy_net = rlu.nn.DeterministicMLPActor(ob_dim=self.obs_dim, ac_dim=self.act_dim,
-                                                           mlp_hidden=policy_mlp_hidden)
+                                                           mlp_hidden=policy_mlp_hidden,
+                                                           out_activation=out_activation)
             self.target_policy_net = rlu.nn.DeterministicMLPActor(ob_dim=self.obs_dim, ac_dim=self.act_dim,
-                                                                  mlp_hidden=policy_mlp_hidden)
+                                                                  mlp_hidden=policy_mlp_hidden,
+                                                                  out_activation=out_activation)
             rlu.functional.hard_update(self.target_policy_net, self.policy_net)
             self.q_network = rlu.nn.EnsembleMinQNet(self.obs_dim, self.act_dim, q_mlp_hidden,
                                                     num_ensembles=num_q_ensembles)
