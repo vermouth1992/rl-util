@@ -58,13 +58,13 @@ def set_flat_trainable_variables(model: tf.keras.layers.Layer, trainable_variabl
 
 def soft_update(target: tf.keras.layers.Layer, source: tf.keras.layers.Layer, tau):
     print('Tracing soft_update_tf')
-    for target_param, source_param in zip(target.variables, source.variables):
+    for target_param, source_param in zip(target.trainable_variables, source.trainable_variables):
         target_param.assign(target_param * (1. - tau) + source_param * tau)
 
 
 def hard_update(target: tf.keras.layers.Layer, source: tf.keras.layers.Layer):
     print('Tracing hard_update_tf')
-    for target_param, source_param in zip(target.variables, source.variables):
+    for target_param, source_param in zip(target.trainable_variables, source.trainable_variables):
         target_param.assign(source_param)
 
 

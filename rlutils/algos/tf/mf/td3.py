@@ -7,8 +7,6 @@ import rlutils.tf as rlu
 import tensorflow as tf
 from rlutils.infra.runner import TFOffPolicyRunner
 
-OUT_KERNEL_INIT = tf.keras.initializers.RandomUniform(minval=-1e-3, maxval=1e-3)
-
 
 class TD3Agent(tf.keras.Model):
     def __init__(self,
@@ -85,14 +83,15 @@ class TD3Agent(tf.keras.Model):
         return next_q_value
 
     @tf.function
-    def _update_q_nets(self, obs, actions, next_obs, done, reward):
-        print(f'Tracing _update_nets with obs={obs}, actions={actions}')
+    def _update_q_nets(self, obs, act, next_obs, done, rew):
+        print(f'Tracing _update_nets with obs={obs}, actions={act}')
         # compute target q
         next_q_value = self._compute_next_obs_q(next_obs)
-        q_target = rlu.functional.compute_target_value(reward, self.gamma, done, next_q_value)
+        q_target = rlu.functional.compute_target_value(rew, self.gamma, done, next_q_value)
         # q loss
         with tf.GradientTape() as q_tape:
-            q_values = self.q_network((obs, actions), training=True)  # (num_ensembles, None)
+            q_tape.watch(self.q_network.trainable_variables)
+            q_values = self.q_network((obs, act), training=True)  # (num_ensembles, None)
             q_values_loss = 0.5 * tf.square(tf.expand_dims(q_target, axis=0) - q_values)
             # (num_ensembles, None)
             q_values_loss = tf.reduce_sum(q_values_loss, axis=0)  # (None,)
@@ -115,6 +114,7 @@ class TD3Agent(tf.keras.Model):
         print(f'Tracing _update_actor with obs={obs}')
         # policy loss
         with tf.GradientTape() as policy_tape:
+            policy_tape.watch(self.policy_net.trainable_variables)
             a = self.policy_net(obs)
             q = self.q_network((obs, a), training=False)
             policy_loss = -tf.reduce_mean(q, axis=0)
@@ -128,23 +128,13 @@ class TD3Agent(tf.keras.Model):
         )
         return info
 
-    @tf.function
-    def train_step(self, data):
+    def train_on_batch(self, data, **kwargs):
+        update_target = data.pop('update_target')
         obs = data['obs']
-        act = data['act']
-        next_obs = data['next_obs']
-        done = data['done']
-        rew = data['rew']
-        update_target = data['update_target']
-        print(f'Tracing train_step with {update_target}')
-        info = self._update_q_nets(obs, act, next_obs, done, rew)
+        info = self._update_q_nets(**data)
         if update_target:
             actor_info = self._update_actor(obs)
             info.update(actor_info)
-        return info
-
-    def train_on_batch(self, data, **kwargs):
-        info = self.train_step(data=data)
         self.logger.store(**rlu.functional.to_numpy_or_python_type(info))
 
     @tf.function

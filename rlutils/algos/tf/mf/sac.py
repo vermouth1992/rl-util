@@ -136,23 +136,13 @@ class SACAgent(tf.keras.Model):
         )
         return info
 
-    @tf.function
-    def train_step(self, data):
+    def train_on_batch(self, data, **kwargs):
+        update_target = data.pop('update_target')
         obs = data['obs']
-        act = data['act']
-        next_obs = data['next_obs']
-        done = data['done']
-        rew = data['rew']
-        update_target = data['update_target']
-        print(f'Tracing train_step with {update_target}')
-        info = self._update_q_nets(obs, act, next_obs, done, rew)
+        info = self._update_q_nets(**data)
         if update_target:
             actor_info = self._update_actor(obs)
             info.update(actor_info)
-        return info
-
-    def train_on_batch(self, data, **kwargs):
-        info = self.train_step(data=data)
         self.logger.store(**rlu.functional.to_numpy_or_python_type(info))
 
     @tf.function
