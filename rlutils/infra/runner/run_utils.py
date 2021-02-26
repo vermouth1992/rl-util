@@ -325,7 +325,7 @@ class ExperimentGrid:
                     # only include in the name if it's True for this variant.
                     var_name += ('_' + param_name) if variant_val else ''
                 else:
-                    var_name += '_' + param_name + '-' + valid_str(variant_val)
+                    var_name += '_' + param_name + '=' + valid_str(variant_val)
 
         return var_name.lstrip('_')
 
