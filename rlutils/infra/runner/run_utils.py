@@ -15,10 +15,10 @@ import numpy as np
 import psutil
 from tqdm import trange
 
-DEFAULT_SHORTHAND = False
+DEFAULT_SHORTHAND = True
 WAIT_BEFORE_LAUNCH = 2
 
-from rlutils.logx import colorize, setup_logger_kwargs
+from rlutils.logx import colorize
 from rlutils.utils.serialization_utils import convert_json
 
 DIV_LINE_WIDTH = 80
@@ -80,19 +80,20 @@ def call_experiment(exp_name, thunk, seed=0, num_cpu=1, data_dir=None,
     print('\n')
 
     # Set up logger output directory
-    if 'logger_kwargs' not in kwargs:
-        kwargs['logger_kwargs'] = setup_logger_kwargs(exp_name, seed, data_dir, datestamp)
-    else:
-        print('Note: Call experiment is not handling logger_kwargs.\n')
+    # if 'logger_kwargs' not in kwargs:
+    #     kwargs['logger_kwargs'] = setup_logger_kwargs(exp_name, seed, data_dir, datestamp)
+    # else:
+    #     print('Note: Call experiment is not handling logger_kwargs.\n')
 
     def thunk_plus():
         # Make 'env_fn' from 'env_name'
-        if 'env_name' in kwargs:
-            import gym
-            env_name = kwargs['env_name']
-            kwargs['env_fn'] = lambda: gym.make(env_name)
-            # del kwargs['env_name']
-
+        # if 'env_name' in kwargs:
+        #     import gym
+        #     env_name = kwargs['env_name']
+        #     kwargs['env_fn'] = lambda: gym.make(env_name)
+        # del kwargs['env_name']
+        kwargs['exp_name'] = exp_name
+        kwargs['logger_path'] = data_dir
         # Run thunk
         thunk(**kwargs)
 
@@ -324,7 +325,7 @@ class ExperimentGrid:
                     # only include in the name if it's True for this variant.
                     var_name += ('_' + param_name) if variant_val else ''
                 else:
-                    var_name += '_' + param_name + valid_str(variant_val)
+                    var_name += '_' + param_name + '-' + valid_str(variant_val)
 
         return var_name.lstrip('_')
 

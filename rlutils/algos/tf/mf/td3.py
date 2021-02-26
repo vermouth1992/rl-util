@@ -34,6 +34,8 @@ class TD3Agent(tf.keras.Model):
         self.noise_clip = noise_clip * self.act_lim
         self.tau = tau
         self.gamma = gamma
+        if out_activation == 'sin':
+            out_activation = tf.math.sin
         if len(self.obs_spec.shape) == 1:  # 1D observation
             self.obs_dim = self.obs_spec.shape[0]
             self.policy_net = rlu.nn.DeterministicMLPActor(ob_dim=self.obs_dim, ac_dim=self.act_dim,
@@ -169,6 +171,7 @@ class Runner(TFOffPolicyRunner):
              actor_noise=0.1,
              target_noise=0.2,
              noise_clip=0.5,
+             out_activation='tanh',
              tau=5e-3,
              gamma=0.99,
              seed=1,
@@ -184,7 +187,8 @@ class Runner(TFOffPolicyRunner):
             gamma=gamma,
             actor_noise=actor_noise,
             target_noise=target_noise,
-            noise_clip=noise_clip
+            noise_clip=noise_clip,
+            out_activation=out_activation,
         )
 
         super(Runner, cls).main(env_name=env_name,

@@ -232,6 +232,7 @@ class OffPolicyRunner(BaseRunner):
     def main(cls,
              env_name,
              env_fn=None,
+             exp_name=None,
              steps_per_epoch=10000,
              epochs=100,
              start_steps=10000,
@@ -253,7 +254,7 @@ class OffPolicyRunner(BaseRunner):
         config = locals()
 
         runner = cls(seed=seed, steps_per_epoch=steps_per_epoch, epochs=epochs,
-                     exp_name=None, logger_path=logger_path)
+                     exp_name=exp_name, logger_path=logger_path)
         runner.setup_env(env_name=env_name, env_fn=env_fn, num_parallel_env=num_parallel_env,
                          asynchronous=False, num_test_episodes=num_test_episodes)
         runner.setup_agent(agent_cls=agent_cls, **agent_kwargs)
