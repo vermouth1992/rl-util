@@ -120,31 +120,31 @@ def call_experiment(exp_name, thunk, seed=0, num_cpu=1, data_dir=None,
         raise
 
     # Tell the user about where results are, and how to check them
-    logger_kwargs = kwargs['logger_kwargs']
-
-    plot_cmd = 'python -m spinup.run plot ' + logger_kwargs['output_dir']
-    plot_cmd = colorize(plot_cmd, 'green')
-
-    test_cmd = 'python -m spinup.run test_policy ' + logger_kwargs['output_dir']
-    test_cmd = colorize(test_cmd, 'green')
-
-    output_msg = '\n' * 5 + '=' * DIV_LINE_WIDTH + '\n' + dedent("""\
-    End of experiment.
-
-
-    Plot results from this run with:
-
-    %s
-
-
-    Watch the trained agent with:
-
-    %s
-
-
-    """ % (plot_cmd, test_cmd)) + '=' * DIV_LINE_WIDTH + '\n' * 5
-
-    print(output_msg)
+    # logger_kwargs = kwargs['logger_kwargs']
+    #
+    # plot_cmd = 'python -m spinup.run plot ' + logger_kwargs['output_dir']
+    # plot_cmd = colorize(plot_cmd, 'green')
+    #
+    # test_cmd = 'python -m spinup.run test_policy ' + logger_kwargs['output_dir']
+    # test_cmd = colorize(test_cmd, 'green')
+    #
+    # output_msg = '\n' * 5 + '=' * DIV_LINE_WIDTH + '\n' + dedent("""\
+    # End of experiment.
+    #
+    #
+    # Plot results from this run with:
+    #
+    # %s
+    #
+    #
+    # Watch the trained agent with:
+    #
+    # %s
+    #
+    #
+    # """ % (plot_cmd, test_cmd)) + '=' * DIV_LINE_WIDTH + '\n' * 5
+    #
+    # print(output_msg)
 
 
 def all_bools(vals):
