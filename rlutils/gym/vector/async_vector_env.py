@@ -34,6 +34,8 @@ class AsyncState(Enum):
 class AsyncVectorEnv(VectorEnv):
     def __init__(self, env_fns, observation_space=None, action_space=None,
                  shared_memory=True, copy=True, context=None, daemon=True, worker=None):
+        assert NotImplemented('Please use synchronous version')
+
         try:
             ctx = mp.get_context(context)
         except AttributeError:

@@ -67,8 +67,9 @@ class SACAgent(tf.keras.Model):
 
     def _compute_next_obs_q(self, next_obs):
         alpha = self.log_alpha()
-        next_action, next_action_log_prob, _, _ = self.policy_net((next_obs, False))
-        next_q_values = self.target_q_network((next_obs, next_action), training=False) - alpha * next_action_log_prob
+        next_action, next_action_log_prob, _, _ = self.policy_net((next_obs, tf.constant(False)))
+        next_q_values = self.target_q_network(
+            (next_obs, next_action, tf.constant(True))) - alpha * next_action_log_prob
         return next_q_values
 
     @tf.function
@@ -79,7 +80,7 @@ class SACAgent(tf.keras.Model):
         q_target = rlu.functional.expand_ensemble_dim(q_target, num_ensembles=self.q_network.num_ensembles)
         # q loss
         with tf.GradientTape() as q_tape:
-            q_values = self.q_network((obs, act), training=True)  # (num_ensembles, None)
+            q_values = self.q_network((obs, act, tf.constant(False)))  # (num_ensembles, None)
             q_values_loss = 0.5 * tf.square(q_target - q_values)
             # apply importance weights if needed
             if weights is not None:
@@ -106,8 +107,8 @@ class SACAgent(tf.keras.Model):
         alpha = self.log_alpha()
         # policy loss
         with tf.GradientTape() as policy_tape:
-            action, log_prob, _, _ = self.policy_net((obs, False))
-            q_values_pi_min = self.q_network((obs, action), training=False)
+            action, log_prob, _, _ = self.policy_net((obs, tf.constant(False)))
+            q_values_pi_min = self.q_network((obs, action, tf.constant(True)))
             policy_loss = log_prob * alpha - q_values_pi_min
             if weights is not None:
                 policy_loss = policy_loss * weights
@@ -148,12 +149,12 @@ class SACAgent(tf.keras.Model):
     @tf.function
     def act_batch_explore_tf(self, obs):
         print(f'Tracing sac act_batch with obs {obs}')
-        pi_final = self.policy_net((obs, False))[0]
+        pi_final = self.policy_net((obs, tf.constant(False)))[0]
         return pi_final
 
     @tf.function
     def act_batch_test_tf(self, obs):
-        pi_final = self.policy_net((obs, True))[0]
+        pi_final = self.policy_net((obs, tf.constant(True)))[0]
         return pi_final
 
     @tf.function
@@ -161,7 +162,7 @@ class SACAgent(tf.keras.Model):
         n = 20
         batch_size = tf.shape(obs)[0]
         obs = tf.tile(obs, (n, 1))
-        action = self.policy_net((obs, False))[0]
+        action = self.policy_net((obs, tf.constant(False)))[0]
         q_values_pi_min = self.q_network((obs, action), training=True)[0, :]
         action = tf.reshape(action, shape=(n, batch_size, self.act_dim))
         idx = tf.argmax(tf.reshape(q_values_pi_min, shape=(n, batch_size)), axis=0,

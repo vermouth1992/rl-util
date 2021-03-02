@@ -8,8 +8,9 @@ class Tester(object):
     A tester is bound to a single environment. It can be used to test different agents.
     """
 
-    def __init__(self, test_env: VectorEnv):
+    def __init__(self, test_env: VectorEnv, seed=None):
         self.test_env = test_env
+        self.seed = seed
         self.logger = None
 
     def set_logger(self, logger):
@@ -21,16 +22,24 @@ class Tester(object):
         self.logger.log_tabular('TestEpLen', average_only=True)
 
     def test_agent(self, get_action, name, num_test_episodes):
+        if self.seed is not None:
+            self.test_env.seed(self.seed)  # keep evaluating the same random obs
+
         assert num_test_episodes % self.test_env.num_envs == 0
         num_iterations = num_test_episodes // self.test_env.num_envs
         t = tqdm(total=num_test_episodes, desc=f'Testing {name}')
+
+        all_ep_ret = []
+        all_ep_len = []
+
         for _ in range(num_iterations):
             o = self.test_env.reset()
             d = np.zeros(shape=self.test_env.num_envs, dtype=np.bool_)
-            ep_ret = np.zeros(shape=self.test_env.num_envs)
+            ep_ret = np.zeros(shape=self.test_env.num_envs, dtype=np.float64)
             ep_len = np.zeros(shape=self.test_env.num_envs, dtype=np.int64)
             while not np.all(d):
                 a = get_action(o)
+                assert isinstance(a, np.ndarray), f'Action a must be np.ndarray. Got {type(a)}'
                 o, r, d_, _ = self.test_env.step(a, mask=d)
                 ep_ret = r * (1 - d) + ep_ret
                 ep_len = np.ones(shape=self.test_env.num_envs, dtype=np.int64) * (1 - d) + ep_len
@@ -39,5 +48,10 @@ class Tester(object):
                 newly_finished = np.sum(d) - np.sum(prev_d)
                 if newly_finished > 0:
                     t.update(newly_finished)
-            self.logger.store(TestEpRet=ep_ret, TestEpLen=ep_len)
+            if self.logger is not None:
+                self.logger.store(TestEpRet=ep_ret, TestEpLen=ep_len)
+            all_ep_ret.append(ep_ret)
+            all_ep_len.append(ep_len)
         t.close()
+
+        return np.concatenate(all_ep_ret, axis=0), np.concatenate(all_ep_len, axis=0)

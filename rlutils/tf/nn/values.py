@@ -20,7 +20,7 @@ class EnsembleMinQNet(tf.keras.Model):
                                num_layers=num_layers,
                                squeeze=True,
                                out_kernel_initializer=OUT_KERNEL_INIT)
-        self.build(input_shape=[(None, ob_dim), (None, ac_dim)])
+        self.build(input_shape=[(None, ob_dim), (None, ac_dim), ()])
 
     def get_config(self):
         config = super(EnsembleMinQNet, self).get_config()
@@ -34,14 +34,11 @@ class EnsembleMinQNet(tf.keras.Model):
         return config
 
     def call(self, inputs, training=None, mask=None):
-        obs, act = inputs
+        obs, act, reduce = inputs
         inputs = tf.concat((obs, act), axis=-1)
         inputs = tf.tile(tf.expand_dims(inputs, axis=0), (self.num_ensembles, 1, 1))
         q = self.q_net(inputs)  # (num_ensembles, None)
-        if training:
-            return q
-        else:
-            return tf.reduce_min(q, axis=0)
+        return tf.cond(pred=reduce, true_fn=lambda: tf.reduce_min(q, axis=0), false_fn=lambda: q)
 
 
 class AtariQNetworkDeepMind(tf.keras.Model):

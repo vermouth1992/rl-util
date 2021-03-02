@@ -106,6 +106,10 @@ def make_independent_beta_from_params(params, ndims=1):
     return distribution
 
 
+def make_independent_categorical_from_params(params, ndims=1):
+    return tfd.Independent(tfd.Categorical(logits=params), reinterpreted_batch_ndims=ndims)
+
+
 class IndependentNormal(tfl.DistributionLambda):
     def __init__(self, min_log_scale=None, max_log_scale=None, ndims=1):
         super(IndependentNormal, self).__init__(make_distribution_fn=lambda t: make_independent_normal_from_params(
@@ -128,4 +132,10 @@ class IndependentTruncatedNormal(tfl.DistributionLambda):
 class IndependentCenteredBeta(tfl.DistributionLambda):
     def __init__(self, ndims=1):
         super(IndependentCenteredBeta, self).__init__(lambda t: make_independent_centered_beta_from_params(
+            t, ndims=ndims))
+
+
+class IndependentCategorical(tfl.DistributionLambda):
+    def __init__(self, ndims=1):
+        super(IndependentCategorical, self).__init__(lambda t: make_independent_categorical_from_params(
             t, ndims=ndims))

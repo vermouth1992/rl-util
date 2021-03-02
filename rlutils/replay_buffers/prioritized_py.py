@@ -38,7 +38,7 @@ class PyPrioritizedReplayBuffer(PyUniformReplayBuffer):
         super(PyPrioritizedReplayBuffer, self).add(data=data)
 
     def sample(self, beta=0.4):
-        scalar = np.random.rand(self.batch_size) * self.segtree.reduce()
+        scalar = self.np_random.rand(self.batch_size) * self.segtree.reduce()
         idx = self.segtree.get_prefix_sum_idx(scalar)
         data = self.__getitem__(idx)
         # important sampling weight calculation

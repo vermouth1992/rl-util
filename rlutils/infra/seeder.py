@@ -7,7 +7,7 @@ class Seeder(object):
     """
 
     def __init__(self, seed):
-        self.max_seed = 10000
+        self.max_seed = 2 ** 31 - 1
         self.seed = seed
         self.reset()
 

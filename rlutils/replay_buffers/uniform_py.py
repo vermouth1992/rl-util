@@ -16,11 +16,16 @@ class PyUniformReplayBuffer(BaseReplayBuffer):
     def __init__(self,
                  data_spec: Dict[str, gym.spaces.Space],
                  capacity,
-                 batch_size):
+                 batch_size,
+                 seed=None):
+        super(PyUniformReplayBuffer, self).__init__(seed=seed)
         self.max_size = capacity
         self.storage = {key: np.zeros(combined_shape(self.capacity, item.shape), dtype=item.dtype)
                         for key, item in data_spec.items()}
         self.batch_size = batch_size
+        self.reset()
+
+    def reset(self):
         self.ptr, self.size = 0, 0
 
     def __len__(self):
@@ -35,18 +40,18 @@ class PyUniformReplayBuffer(BaseReplayBuffer):
         return self.max_size
 
     @classmethod
-    def from_data_dict(cls, data: Dict[str, np.ndarray], batch_size, shuffle=False):
+    def from_data_dict(cls, data: Dict[str, np.ndarray], batch_size, shuffle=False, seed=None):
         if shuffle:
             data = shuffle_dict_data(data)
         data_spec = {key: gym.spaces.Space(shape=item.shape[1:], dtype=item.dtype) for key, item in data.items()}
         capacity = list(data.values())[0].shape[0]
-        replay_buffer = cls(data_spec=data_spec, capacity=capacity, batch_size=batch_size)
+        replay_buffer = cls(data_spec=data_spec, capacity=capacity, batch_size=batch_size, seed=seed)
         replay_buffer.append(data=data)
         assert replay_buffer.is_full()
         return replay_buffer
 
     @classmethod
-    def from_vec_env(cls, vec_env, capacity, batch_size):
+    def from_vec_env(cls, vec_env, capacity, batch_size, seed=None):
         data_spec = {
             'obs': vec_env.single_observation_space,
             'act': vec_env.single_action_space,
@@ -54,10 +59,10 @@ class PyUniformReplayBuffer(BaseReplayBuffer):
             'rew': gym.spaces.Space(shape=None, dtype=np.float32),
             'done': gym.spaces.Space(shape=None, dtype=np.float32)
         }
-        return cls(data_spec=data_spec, capacity=capacity, batch_size=batch_size)
+        return cls(data_spec=data_spec, capacity=capacity, batch_size=batch_size, seed=seed)
 
     @classmethod
-    def from_env(cls, env, capacity, batch_size):
+    def from_env(cls, env, capacity, batch_size, seed=None):
         data_spec = {
             'obs': env.observation_space,
             'act': env.action_space,
@@ -65,7 +70,7 @@ class PyUniformReplayBuffer(BaseReplayBuffer):
             'rew': gym.spaces.Space(shape=None, dtype=np.float32),
             'done': gym.spaces.Space(shape=None, dtype=np.float32)
         }
-        return cls(data_spec=data_spec, capacity=capacity, batch_size=batch_size)
+        return cls(data_spec=data_spec, capacity=capacity, batch_size=batch_size, seed=seed)
 
     def append(self, data: Dict[str, np.ndarray]):
         batch_size = list(data.values())[0].shape[0]
@@ -100,7 +105,7 @@ class PyUniformReplayBuffer(BaseReplayBuffer):
 
     def sample(self):
         assert not self.is_empty()
-        idxs = np.random.randint(0, self.size, size=self.batch_size)
+        idxs = self.np_random.randint(0, self.size, size=self.batch_size)
         return self.__getitem__(idxs)
 
 
@@ -213,7 +218,7 @@ class PyUniformParallelEnvReplayBufferFrame(BaseReplayBuffer):
             Array of shape (batch_size,) and dtype np.float32
         """
         assert self.can_sample(self.batch_size)
-        idxes = np.random.choice(self.num_in_buffer - 1, size=self.batch_size, replace=True)
+        idxes = self.np_random.choice(self.num_in_buffer - 1, size=self.batch_size, replace=True)
         return self._encode_sample(idxes)
 
     def _encode_observation(self, idx, num_frames):

@@ -9,8 +9,19 @@ Abstract class for replay buffers
 
 from abc import ABC, abstractmethod
 
+from gym.utils import seeding
+
 
 class BaseReplayBuffer(ABC):
+    def __init__(self, seed=None):
+        self.set_seed(seed)
+
+    def reset(self):
+        pass
+
+    def set_seed(self, seed=None):
+        self.np_random, self.seed = seeding.np_random(seed)
+
     @abstractmethod
     def __len__(self):
         raise NotImplementedError
