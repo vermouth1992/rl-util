@@ -35,7 +35,11 @@ class TD3Agent(tf.keras.Model):
         self.tau = tau
         self.gamma = gamma
         if out_activation == 'sin':
-            out_activation = tf.math.sin
+            out_activation = tf.sin
+        elif out_activation == 'tanh':
+            out_activation = tf.tanh
+        else:
+            raise ValueError('Unknown output activation function')
         if len(self.obs_spec.shape) == 1:  # 1D observation
             self.obs_dim = self.obs_spec.shape[0]
             self.policy_net = rlu.nn.DeterministicMLPActor(ob_dim=self.obs_dim, ac_dim=self.act_dim,
@@ -81,7 +85,7 @@ class TD3Agent(tf.keras.Model):
             epsilon = tf.clip_by_value(epsilon, -self.noise_clip, self.noise_clip)
             next_action = next_action + epsilon
             next_action = tf.clip_by_value(next_action, -self.act_lim, self.act_lim)
-        next_q_value = self.target_q_network((next_obs, next_action), training=False)
+        next_q_value = self.target_q_network((next_obs, next_action, tf.constant(True)))
         return next_q_value
 
     @tf.function
@@ -93,7 +97,7 @@ class TD3Agent(tf.keras.Model):
         # q loss
         with tf.GradientTape() as q_tape:
             q_tape.watch(self.q_network.trainable_variables)
-            q_values = self.q_network((obs, act), training=True)  # (num_ensembles, None)
+            q_values = self.q_network((obs, act, tf.constant(False)))  # (num_ensembles, None)
             q_values_loss = 0.5 * tf.square(tf.expand_dims(q_target, axis=0) - q_values)
             # (num_ensembles, None)
             q_values_loss = tf.reduce_sum(q_values_loss, axis=0)  # (None,)
@@ -118,7 +122,7 @@ class TD3Agent(tf.keras.Model):
         with tf.GradientTape() as policy_tape:
             policy_tape.watch(self.policy_net.trainable_variables)
             a = self.policy_net(obs)
-            q = self.q_network((obs, a), training=False)
+            q = self.q_network((obs, a, tf.constant(True)))
             policy_loss = -tf.reduce_mean(q, axis=0)
         policy_gradients = policy_tape.gradient(policy_loss, self.policy_net.trainable_variables)
         self.policy_optimizer.apply_gradients(zip(policy_gradients, self.policy_net.trainable_variables))
