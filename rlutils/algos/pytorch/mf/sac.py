@@ -55,8 +55,8 @@ class SACAgent(nn.Module):
         self.logger = logger
 
     def log_tabular(self):
-        self.logger.log_tabular('Q1Vals', with_min_and_max=False)
-        self.logger.log_tabular('Q2Vals', with_min_and_max=False)
+        self.logger.log_tabular('Q1Vals', with_min_and_max=True)
+        self.logger.log_tabular('Q2Vals', with_min_and_max=True)
         self.logger.log_tabular('LogPi', average_only=True)
         self.logger.log_tabular('LossPi', average_only=True)
         self.logger.log_tabular('LossQ', average_only=True)
@@ -129,6 +129,8 @@ class SACAgent(nn.Module):
         for key, item in info.items():
             info[key] = item.detach().cpu().numpy()
         self.logger.store(**info)
+        if update_target:
+            self.update_target()
 
     def act_batch_torch(self, obs, deterministic):
         with torch.no_grad():
