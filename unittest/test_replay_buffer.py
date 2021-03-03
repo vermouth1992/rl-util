@@ -30,7 +30,7 @@ class TestReplayBuffer(unittest.TestCase):
         replay = replay_buffers.PyPrioritizedReplayBuffer(
             data_spec={'data': gym.spaces.Space(shape=None, dtype=np.int32)},
             capacity=capacity,
-            batch_size=capacity // 10,
+            batch_size=capacity,
             seed=1,
             alpha=1.0)
         for i in range(capacity):
@@ -38,7 +38,7 @@ class TestReplayBuffer(unittest.TestCase):
                 'data': np.array([i], dtype=np.int32)
             }, priority=np.log1p(i + 1))
 
-        num_iters = 10000
+        num_iters = 100000
 
         probability = np.log1p(np.arange(1, capacity + 1))
         probability /= np.sum(probability)
@@ -48,6 +48,9 @@ class TestReplayBuffer(unittest.TestCase):
             _, idx = replay.sample(beta=1.0)
             unique, counts = np.unique(idx, return_counts=True)
             idxes_count[unique] += counts
+
+        sample_prob = idxes_count / np.sum(idxes_count)
+        np.testing.assert_allclose(sample_prob, probability, rtol=1e-2)
 
 
 if __name__ == '__main__':
