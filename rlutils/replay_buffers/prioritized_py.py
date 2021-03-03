@@ -18,10 +18,11 @@ class PyPrioritizedReplayBuffer(PyUniformReplayBuffer):
     A simple implementation of PER based on pure numpy. No advanced data structure is used.
     """
 
-    def __init__(self, data_spec: Dict[str, gym.spaces.Space], capacity, batch_size, alpha=0.6):
+    def __init__(self, data_spec: Dict[str, gym.spaces.Space], capacity, batch_size, alpha=0.6, seed=None):
         super(PyPrioritizedReplayBuffer, self).__init__(data_spec=data_spec,
                                                         capacity=capacity,
-                                                        batch_size=batch_size)
+                                                        batch_size=batch_size,
+                                                        seed=seed)
         self.alpha = alpha
         self.max_priority = 1.0
         self.min_priority = 1.0
@@ -31,6 +32,7 @@ class PyPrioritizedReplayBuffer(PyUniformReplayBuffer):
         batch_size = list(data.values())[0].shape[0]
         if priority is None:
             priority = np.ones(shape=(batch_size,), dtype=np.float32) * self.max_priority
+        assert np.all(priority > 0.), f'Priority must be all greater than zero. Got {priority}'
         idx = np.arange(self.ptr, self.ptr + batch_size)
         self.segtree[idx] = priority
         self.max_priority = max(self.max_priority, np.max(priority))
