@@ -16,34 +16,38 @@ def thunk(**kwargs):
 
 
 class Benchmark(unittest.TestCase):
+    env_lst = ['Hopper-v2', 'Walker2d-v2', 'HalfCheetah-v2', 'Ant-v2']
+    update_lst = [1, 50]
+    seeds = list(range(110, 120))
+
     def test_sac_update_every(self):
         algo = 'sac'
         experiments = rl_infra.runner.ExperimentGrid()
+        experiments.add(key='env_name', vals=self.env_lst, shorthand='ENV')
+        experiments.add(key='update_every', vals=self.update_lst, in_name=True, shorthand='UPDATE')
         experiments.add(key='algo', vals=algo, in_name=True, shorthand='ALG')
-        experiments.add(key='update_every', vals=[1, 50], in_name=True, shorthand='UPDATE')
         experiments.add(key='epochs', vals=300)
-        experiments.add(key='seed', vals=list(range(110, 120)))
-        experiments.add(key='env_name', vals=['Walker2d-v2', 'Hopper-v2', 'HalfCheetah-v2', 'Ant-v2'], shorthand='ENV')
+        experiments.add(key='seed', vals=self.seeds)
         experiments.run(thunk=thunk, data_dir='benchmark_results')
 
     def test_td3_update_every(self):
         algo = 'td3'
         experiments = rl_infra.runner.ExperimentGrid()
+        experiments.add(key='env_name', vals=self.env_lst, shorthand='ENV')
+        experiments.add(key='update_every', vals=self.update_lst, in_name=True, shorthand='UPDATE')
         experiments.add(key='algo', vals=algo, in_name=True, shorthand='ALG')
-        experiments.add(key='update_every', vals=[1, 50], in_name=True, shorthand='UPDATE')
         experiments.add(key='epochs', vals=300)
-        experiments.add(key='seed', vals=list(range(110, 120)))
-        experiments.add(key='env_name', vals=['Walker2d-v2', 'Hopper-v2', 'HalfCheetah-v2', 'Ant-v2'], shorthand='ENV')
+        experiments.add(key='seed', vals=self.seeds)
         experiments.run(thunk=thunk, data_dir='benchmark_results')
 
     def test_td3_out_activation(self):
         algo = 'td3'
         experiments = rl_infra.runner.ExperimentGrid()
+        experiments.add(key='env_name', vals=self.env_lst, shorthand='ENV')
+        experiments.add(key='update_every', vals=self.update_lst, in_name=True, shorthand='UPDATE')
         experiments.add(key='algo', vals=algo, in_name=True, shorthand='ALG')
-        experiments.add(key='update_every', vals=1, in_name=True, shorthand='UPDATE')
         experiments.add(key='epochs', vals=300)
-        experiments.add(key='seed', vals=list(range(110, 120)))
-        experiments.add(key='env_name', vals=['Walker2d-v2', 'Hopper-v2', 'HalfCheetah-v2', 'Ant-v2'], shorthand='ENV')
+        experiments.add(key='seed', vals=self.seeds)
         experiments.add(key='out_activation', vals='sin', in_name=True)
         experiments.run(thunk=thunk, data_dir='benchmark_results')
 
