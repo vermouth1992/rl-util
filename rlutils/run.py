@@ -1,9 +1,11 @@
+from rlutils.algos.pytorch.mf import sac as sac_pytorch, td3 as td3_pytorch
 from rlutils.algos.tf.mb import pets
 from rlutils.algos.tf.mf import ddpg, ppo, sac, td3, trpo, dqn
 from rlutils.algos.tf.offline import cql, plas
 from rlutils.infra.runner import get_argparser_from_func
 
-__all__ = ['ppo', 'td3', 'trpo', 'sac', 'ddpg', 'cql', 'plas', 'dqn', 'pets']
+__all__ = ['ppo', 'td3', 'trpo', 'sac', 'ddpg', 'cql', 'plas', 'dqn', 'pets',
+           'sac_pytorch', 'td3_pytorch']
 
 
 def main():
