@@ -16,19 +16,19 @@ def thunk(**kwargs):
 
 
 def thunk_pytorch(**kwargs):
-    from rlutils.algos.pytorch.mf import sac, td3
-    temp = [sac, td3]
+    from rlutils.algos.pytorch.mf import sac as sac_pytorch, td3 as td3_pytorch
+    temp = [sac_pytorch, td3_pytorch]
     algo = kwargs.pop('algo')
     eval(f'{algo}.Runner.main')(**kwargs)
 
 
 class Benchmark(unittest.TestCase):
     env_lst = ['Hopper-v2', 'Walker2d-v2', 'HalfCheetah-v2', 'Ant-v2']
-    update_lst = [1, 50]
+    update_lst = [50, 1]
     seeds = list(range(110, 120))
 
     def test_sac_pytorch_hopper(self):
-        algo = 'sac'
+        algo = 'sac_pytorch'
         experiments = rl_infra.runner.ExperimentGrid()
         experiments.add(key='env_name', vals=self.env_lst[0], shorthand='ENV', in_name=True)
         experiments.add(key='update_every', vals=self.update_lst[1], in_name=True, shorthand='UPDATE')
@@ -40,7 +40,7 @@ class Benchmark(unittest.TestCase):
     def test_sac_update_every(self):
         algo = 'sac'
         experiments = rl_infra.runner.ExperimentGrid()
-        experiments.add(key='env_name', vals=self.env_lst, shorthand='ENV')
+        experiments.add(key='env_name', vals=self.env_lst, shorthand='ENV', in_name=True)
         experiments.add(key='update_every', vals=self.update_lst, in_name=True, shorthand='UPDATE')
         experiments.add(key='algo', vals=algo, in_name=True, shorthand='ALG')
         experiments.add(key='epochs', vals=300)

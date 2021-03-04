@@ -7,7 +7,10 @@ from rlutils.tf.functional import clip_atanh
 from .functional import build_mlp
 
 tfd = tfp.distributions
-LOG_STD_RANGE = (-20., 5.)
+
+LOG_STD_RANGE = (-10., 5.)
+# This may affect the performance a lot! Setting the min_log_scale=-20 makes HalfCheetah-v2 achieves 16000, but
+# makes Hopper-v2 worse.
 EPS = 1e-3
 
 OUT_KERNEL_INIT = tf.keras.initializers.RandomUniform(minval=-1e-3, maxval=1e-3)
@@ -103,7 +106,7 @@ class TruncatedNormalActor(NormalActor):
     @property
     def pi_dist_layer(self):
         return tfp.layers.DistributionLambda(
-            make_distribution_fn=lambda t: make_independent_truncated_normal(t[0], t[1]))
+            make_distribution_fn=lambda t: make_independent_truncated_normal(t[0], t[1], low=-1., high=1.))
 
 
 class CenteredBetaMLPActor(StochasticActor):
