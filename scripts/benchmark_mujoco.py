@@ -31,7 +31,7 @@ class Benchmark(unittest.TestCase):
         algo = 'sac_pytorch'
         experiments = rl_infra.runner.ExperimentGrid()
         experiments.add(key='env_name', vals=self.env_lst[0], shorthand='ENV', in_name=True)
-        experiments.add(key='update_every', vals=self.update_lst[1], in_name=True, shorthand='UPDATE')
+        experiments.add(key='update_every', vals=self.update_lst[0], in_name=True, shorthand='UPDATE')
         experiments.add(key='algo', vals=algo, in_name=True, shorthand='ALG')
         experiments.add(key='epochs', vals=300)
         experiments.add(key='seed', vals=self.seeds)

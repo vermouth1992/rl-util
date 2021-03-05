@@ -1,6 +1,6 @@
 import tensorflow as tf
 from rlutils.np.functional import inverse_softplus
-from rlutils.tf.functional import clip_by_value
+from rlutils.tf.functional import clip_by_value_preserve_gradient
 
 from .initializer import _decode_initializer
 
@@ -79,10 +79,7 @@ class LagrangeLayer(tf.keras.layers.Layer):
         return super(LagrangeLayer, self).__call__(inputs, training=training)
 
     def call(self, inputs, training=None, mask=None):
-        if training:
-            return tf.nn.softplus(self.kernel)
-        else:
-            return tf.nn.softplus(clip_by_value(self.kernel, self.min_log_value, self.max_log_value))
+        return tf.math.softplus(clip_by_value_preserve_gradient(self.kernel, self.min_log_value, self.max_log_value))
 
     def assign(self, value):
         self.kernel.assign(inverse_softplus(value))

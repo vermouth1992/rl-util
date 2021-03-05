@@ -25,6 +25,13 @@ def clip_by_value(t, clip_value_min=None, clip_value_max=None):
     return t
 
 
+def clip_by_value_preserve_gradient(t, clip_value_min=None, clip_value_max=None, name=None):
+    with tf.name_scope(name or 'clip_by_value_preserve_gradient'):
+        t = tf.convert_to_tensor(t, name='t')
+        clip_t = clip_by_value(t, clip_value_min, clip_value_max)
+        return t + tf.stop_gradient(clip_t - t)
+
+
 def flatten_leading_dims(tensor, n_dims):
     if n_dims <= 1:
         return tensor

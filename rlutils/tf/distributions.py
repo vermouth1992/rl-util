@@ -1,4 +1,5 @@
 import numpy as np
+import rlutils.tf as rlu
 import tensorflow as tf
 import tensorflow_probability as tfp
 
@@ -51,10 +52,7 @@ def make_independent_normal(loc, scale, ndims=1):
 
 def make_independent_normal_from_params(params, ndims=1, min_log_scale=None, max_log_scale=None):
     loc_params, scale_params = tf.split(params, 2, axis=-1)
-    if min_log_scale is not None:
-        scale_params = tf.maximum(scale_params, min_log_scale)
-    if max_log_scale is not None:
-        scale_params = tf.minimum(scale_params, max_log_scale)
+    scale_params = rlu.functional.clip_by_value(scale_params, min_log_scale, max_log_scale)
     scale_params = tf.math.softplus(scale_params)
     distribution = make_independent_normal(loc_params, scale_params, ndims=ndims)
     return distribution

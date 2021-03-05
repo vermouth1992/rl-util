@@ -120,7 +120,7 @@ class SACAgent(tf.keras.Model):
         if self.auto_alpha:
             with tf.GradientTape() as alpha_tape:
                 alpha = self.log_alpha()
-                alpha_loss = alpha * (log_prob + self.target_entropy)
+                alpha_loss = alpha * (tf.stop_gradient(log_prob) + self.target_entropy)
                 if weights is not None:
                     alpha_loss = alpha_loss * weights
                 alpha_loss = -tf.reduce_mean(alpha_loss, axis=0)
