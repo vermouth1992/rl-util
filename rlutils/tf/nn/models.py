@@ -4,7 +4,7 @@ Implementing dynamics model to perform Model-based RL
 
 import tensorflow as tf
 import tensorflow_probability as tfp
-from rlutils.future.optimizer import get_adam_optimizer, minimize
+from rlutils.tf.future import get_adam_optimizer, minimize
 from rlutils.tf.callbacks import EpochLoggerCallback
 from rlutils.tf.distributions import make_independent_normal_from_params
 from rlutils.tf.functional import expand_ensemble_dim
@@ -296,11 +296,11 @@ class EnsembleDynamicsModel(tf.keras.Model):
         return next_state, reward, dones
 
     @tf.function
-    def predict_obs(self, state, action, sample=True):
+    def predict_on_batch_tf(self, state, action, sample=tf.constant(True)):
         """
         Args:
             state: (None, ob_dim)
             action: (None, ac_dim)
         Returns: (None, ob_dim), (None), (None,)
         """
-        return self(inputs=(state, action, sample), training=False)
+        return self(inputs=(state, action, sample), training=tf.constant(False))

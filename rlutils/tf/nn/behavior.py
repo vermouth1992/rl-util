@@ -39,7 +39,7 @@ class AbstractBehaviorPolicy(ABC):
 
 
 class BehaviorPolicy(ConditionalBetaVAE, AbstractBehaviorPolicy):
-    def __init__(self, out_dist, obs_dim, act_dim, mlp_hidden=256, beta=1.):
+    def __init__(self, obs_dim, act_dim, mlp_hidden=256, beta=1., out_dist='normal'):
         self.out_dist = out_dist
         self.obs_dim = obs_dim
         self.act_dim = act_dim

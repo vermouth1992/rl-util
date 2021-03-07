@@ -25,7 +25,7 @@ class EpochLoggerCallback(tf.keras.callbacks.Callback):
         super(EpochLoggerCallback, self).__init__()
 
     def on_train_begin(self, logs=None):
-        self.t = trange(self.epochs, desc=self.decs)
+        self.t = trange(self.epochs, desc=self.decs, leave=False)
 
     def on_train_end(self, logs=None):
         self.t.close()

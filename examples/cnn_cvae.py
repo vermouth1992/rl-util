@@ -12,7 +12,7 @@ tfd = tfp.distributions
 
 from rlutils.tf.generative_models.vae.base import ConditionalBetaVAE
 from rlutils.tf.distributions import make_independent_normal_from_params
-from rlutils.future.optimizer import get_adam_optimizer
+from rlutils.tf.future import get_adam_optimizer
 from rlutils.infra.runner import run_func_as_main
 from tensorboardX import SummaryWriter
 import torchvision

@@ -13,10 +13,9 @@ import numpy as np
 import rlutils.tf as rlu
 import tensorflow as tf
 import tensorflow_probability as tfp
-from rlutils.future.optimizer import get_adam_optimizer, minimize
+from rlutils.infra.runner import TFRunner
 from rlutils.logx import EpochLogger
 from rlutils.replay_buffers import PyUniformReplayBuffer
-from rlutils.infra.runner import TFRunner
 from tqdm.auto import tqdm, trange
 
 tfd = tfp.distributions
@@ -65,21 +64,21 @@ class BRACPAgent(tf.keras.Model):
         self.behavior_lr = behavior_lr
         self.policy_net = rlu.nn.SquashedGaussianMLPActor(ob_dim, ac_dim, policy_mlp_hidden)
         self.target_policy_net = rlu.nn.SquashedGaussianMLPActor(ob_dim, ac_dim, policy_mlp_hidden)
-        self.policy_net.optimizer = get_adam_optimizer(lr=self.policy_lr)
+        self.policy_net.optimizer = rlu.future.get_adam_optimizer(lr=self.policy_lr)
         rlu.functional.hard_update(self.target_policy_net, self.policy_net)
         self.q_network = rlu.nn.EnsembleMinQNet(ob_dim, ac_dim, q_mlp_hidden)
-        self.q_network.compile(optimizer=get_adam_optimizer(q_lr))
+        self.q_network.compile(optimizer=rlu.future.get_adam_optimizer(q_lr))
         self.target_q_network = rlu.nn.EnsembleMinQNet(ob_dim, ac_dim, q_mlp_hidden)
         rlu.functional.hard_update(self.target_q_network, self.q_network)
 
         self.log_beta = rlu.nn.LagrangeLayer(initial_value=alpha)
-        self.log_beta.compile(optimizer=get_adam_optimizer(alpha_lr))
+        self.log_beta.compile(optimizer=rlu.future.get_adam_optimizer(alpha_lr))
 
         self.log_alpha = rlu.nn.LagrangeLayer(initial_value=alpha)
-        self.log_alpha.compile(optimizer=get_adam_optimizer(alpha_lr))
+        self.log_alpha.compile(optimizer=rlu.future.get_adam_optimizer(alpha_lr))
 
         self.log_gp = rlu.nn.LagrangeLayer(initial_value=gp_weight, min_value=gp_weight)
-        self.log_gp.compile(optimizer=get_adam_optimizer(alpha_lr))
+        self.log_gp.compile(optimizer=rlu.future.get_adam_optimizer(alpha_lr))
 
         self.target_entropy = target_entropy
 
@@ -293,7 +292,7 @@ class BRACPAgent(tf.keras.Model):
             else:
                 raise NotImplementedError
 
-        minimize(policy_loss, policy_tape, self.policy_net)
+        rlu.future.minimize(policy_loss, policy_tape, self.policy_net)
 
         if self.entropy_reg:
             with tf.GradientTape() as beta_tape:
@@ -306,7 +305,7 @@ class BRACPAgent(tf.keras.Model):
                     beta_loss = -tf.reduce_mean(beta * (log_prob + self.target_entropy))
                 else:
                     raise NotImplementedError
-            minimize(beta_loss, beta_tape, self.log_beta)
+            rlu.future.minimize(beta_loss, beta_tape, self.log_beta)
         else:
             beta_loss = 0.
 
@@ -316,7 +315,7 @@ class BRACPAgent(tf.keras.Model):
             penalty = delta * alpha
             alpha_loss = -tf.reduce_mean(penalty, axis=0)
 
-        minimize(alpha_loss, alpha_tape, self.log_alpha)
+        rlu.future.minimize(alpha_loss, alpha_tape, self.log_alpha)
 
         info = dict(
             LossPi=policy_loss,
@@ -348,7 +347,7 @@ class BRACPAgent(tf.keras.Model):
             else:
                 policy_loss = tf.reduce_mean(loss, axis=0)
 
-        minimize(policy_loss, policy_tape, self.policy_net)
+        rlu.future.minimize(policy_loss, policy_tape, self.policy_net)
 
         if self.entropy_reg:
             with tf.GradientTape() as beta_tape:
@@ -360,7 +359,7 @@ class BRACPAgent(tf.keras.Model):
                     beta_loss = -tf.reduce_mean(beta * (log_prob + self.target_entropy), axis=0)
                 else:
                     raise NotImplementedError
-            minimize(beta_loss, beta_tape, self.log_beta)
+            rlu.future.minimize(beta_loss, beta_tape, self.log_beta)
 
         info = dict(
             KL=loss,
@@ -441,7 +440,7 @@ class BRACPAgent(tf.keras.Model):
                 gp_weight = 0.
             loss = tf.reduce_mean(loss, axis=0)
 
-        minimize(loss, q_tape, self.q_network)
+        rlu.future.minimize(loss, q_tape, self.q_network)
 
         if self.use_gp and (self.max_ood_grad_norm is not None):
             with tf.GradientTape() as gp_weight_tape:
@@ -450,7 +449,7 @@ class BRACPAgent(tf.keras.Model):
                 delta_gp = (gp - self.max_ood_grad_norm) * raw_gp_weight
                 loss_gp_weight = -tf.reduce_mean(delta_gp, axis=0)
 
-            minimize(loss_gp_weight, gp_weight_tape, self.log_gp)
+            rlu.future.minimize(loss_gp_weight, gp_weight_tape, self.log_gp)
 
         info = dict(
             Q1Vals=q_values[0],
@@ -529,15 +528,16 @@ class BRACPAgent(tf.keras.Model):
     def set_pretrain_policy_net_optimizer(self, epochs, steps_per_epoch):
         # set learning rate decay
         interval = epochs * steps_per_epoch // 5
-        self.policy_net.optimizer = get_adam_optimizer(lr=self.get_decayed_lr_schedule(lr=self.policy_behavior_lr,
-                                                                                       interval=interval))
+        self.policy_net.optimizer = rlu.future.get_adam_optimizer(
+            lr=self.get_decayed_lr_schedule(lr=self.policy_behavior_lr,
+                                            interval=interval))
 
     def set_policy_net_optimizer(self):
         # reset learning rate
         self.hard_update_policy_target()
         # reset policy net learning rate
-        self.policy_net.optimizer = get_adam_optimizer(lr=self.policy_lr)
-        self.log_beta.optimizer = get_adam_optimizer(lr=1e-3)
+        self.policy_net.optimizer = rlu.future.get_adam_optimizer(lr=self.policy_lr)
+        self.log_beta.optimizer = rlu.future.get_adam_optimizer(lr=1e-3)
 
     def pretrain_cloning(self, epochs, steps_per_epoch, replay_buffer):
         EpochLogger.log(f'Training cloning policy')
@@ -557,8 +557,9 @@ class BRACPAgent(tf.keras.Model):
 
     def set_behavior_policy_optimizer(self, epochs, steps_per_epoch):
         interval = epochs * steps_per_epoch // 5
-        self.behavior_policy.optimizer = get_adam_optimizer(lr=self.get_decayed_lr_schedule(lr=self.behavior_lr,
-                                                                                            interval=interval))
+        self.behavior_policy.optimizer = rlu.future.get_adam_optimizer(
+            lr=self.get_decayed_lr_schedule(lr=self.behavior_lr,
+                                            interval=interval))
 
     def pretrain_behavior_policy(self, epochs, steps_per_epoch, replay_buffer):
         EpochLogger.log(f'Training behavior policy')

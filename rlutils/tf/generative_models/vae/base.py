@@ -75,9 +75,9 @@ class BetaVAE(tf.keras.Model):
         return -log_likelihood, kl_divergence
 
     def train_step(self, data):
-        data = data[0]
+        x, y, sample_weights = tf.keras.utils.unpack_x_y_sample_weight(data)
         with tf.GradientTape() as tape:
-            nll, kld = self(data, training=True)
+            nll, kld = self(x, training=True)
             loss = nll + kld * self.beta
             loss = tf.reduce_mean(loss, axis=0)
         gradients = tape.gradient(loss, self.trainable_variables)
@@ -89,8 +89,8 @@ class BetaVAE(tf.keras.Model):
         }
 
     def test_step(self, data):
-        data = data[0]
-        nll, kld = self(data, training=False)
+        x, y, sample_weights = tf.keras.utils.unpack_x_y_sample_weight(data)
+        nll, kld = self(x, training=False)
         loss = nll + kld * self.beta
         loss = tf.reduce_mean(loss, axis=0)
         return {

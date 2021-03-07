@@ -9,7 +9,7 @@ import gym
 import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
-from rlutils.future.optimizer import get_adam_optimizer, minimize
+from rlutils.tf.future import get_adam_optimizer, minimize
 from rlutils.logx import EpochLogger
 from rlutils.replay_buffers import PyUniformReplayBuffer
 from rlutils.infra.runner import TFRunner
