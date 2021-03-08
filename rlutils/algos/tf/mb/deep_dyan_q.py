@@ -2,11 +2,22 @@
 Deep reinforcement learning for DyanQ+ with priority sweeping
 """
 
+from typing import Callable
+
+import numpy as np
 import rlutils.infra as rl_infra
 import rlutils.np as rln
 import rlutils.tf as rlu
 import tensorflow as tf
 from rlutils.algos.tf.mf.sac import SACAgent
+from rlutils.replay_buffers import PyPrioritizedReplayBuffer
+
+EPS = 1e-6
+
+
+def compute_priority(td_error):
+    priority = np.log1p(td_error + EPS)
+    return priority
 
 
 class DyanQUpdater(rl_infra.OffPolicyUpdater):
@@ -19,17 +30,21 @@ class DyanQUpdater(rl_infra.OffPolicyUpdater):
                                                             initial_p=0.4)
 
     def update(self, global_step):
-        if global_step % self.update_every == 0:
-            for _ in range(self.update_per_step * self.update_every):
-                batch, idx = self.replay_buffer.sample(beta=self.beta_scheduler.value(global_step))
-                batch['update_target'] = ((self.policy_updates + 1) % self.policy_delay == 0)
-                priorities = self.agent.train_on_batch(data=batch)
-                self.policy_updates += 1
-                self.replay_buffer.update_priorities(idx=idx, priorities=priorities,
-                                                     min_priority=1e-4,
-                                                     max_priority=50)
-        if global_step % self.model_update_every:
+        if global_step % self.model_update_every == 0:
             self.agent.update_model(self.replay_buffer.get())
+
+        if global_step % self.update_every == 0:
+            for _ in range(self.update_every):
+                for _ in range(self.update_per_step):
+                    batch, idx = self.replay_buffer.sample(beta=self.beta_scheduler.value(global_step))
+                    batch['update_target'] = ((self.policy_updates + 1) % self.policy_delay == 0)
+                    info = self.agent.train_on_batch(data=batch)
+                    td_error = info.get('TDError')
+                    priorities = compute_priority(td_error)
+                    self.policy_updates += 1
+                    self.replay_buffer.update_priorities(idx=idx, priorities=priorities,
+                                                         min_priority=1e-4,
+                                                         max_priority=50)
 
 
 class DeepDyanQ(tf.keras.Model):
@@ -50,9 +65,8 @@ class DeepDyanQ(tf.keras.Model):
                                                            reward_fn=reward_fn, terminate_fn=terminate_fn)
         self.agent = SACAgent(obs_spec=obs_spec, act_spec=act_spec, policy_mlp_hidden=policy_mlp_hidden,
                               policy_lr=policy_lr, q_mlp_hidden=policy_mlp_hidden, q_lr=policy_lr, alpha=0.02,
-                              alpha_lr=policy_lr, tau=5e-3, gamma=0.99, target_entropy=None, auto_alpha=True)
-        self.behavior_policy = rlu.nn.BehaviorPolicy(obs_dim=self.obs_dim, act_dim=self.act_dim,
-                                                     mlp_hidden=behavior_mlp_hidden, beta=1.0)
+                              alpha_lr=policy_lr, tau=5e-3, gamma=0.99, target_entropy=-(self.act_dim // 2),
+                              auto_alpha=True)
 
     def set_logger(self, logger):
         self.dynamics_model.set_logger(logger)
@@ -63,21 +77,27 @@ class DeepDyanQ(tf.keras.Model):
         self.dynamics_model.log_tabular()
 
     def update_model(self, data):
-        self.dynamics_model.update(inputs=data, sample_weights=None, batch_size=256, num_epochs=100,
+        self.dynamics_model.update(inputs=data, sample_weights=None, batch_size=512, num_epochs=100,
                                    patience=5, validation_split=0.1, shuffle=True)
 
-    def train_on_batch(self, data, **kwargs):
-        obs = data['obs']
-        weights = data['weights']
-        act = self.behavior_policy.act_batch(tf.convert_to_tensor(obs)).numpy()
+    @tf.function
+    def unroll_trajectory(self, obs):
+        act = self.agent.act_batch_explore_tf(obs)
         next_obs, rew, done = self.dynamics_model.predict_on_batch_tf(obs, act)
-        data['act'] = act
-        data['next_obs'] = next_obs
-        data['rew'] = rew
-        data['done'] = done
-        data['weights'] = weights
-        info = self.agent.train_on_batch(**data)
-        self.logger.store(**rlu.functional.to_numpy_or_python_type(info))
+        done = tf.cast(done, tf.float32)
+        return dict(
+            act=act,
+            next_obs=next_obs,
+            rew=rew,
+            done=done
+        )
+
+    def train_on_batch(self, data, **kwargs):
+        data = tf.nest.map_structure(lambda x: tf.convert_to_tensor(x), data)
+        obs = data['obs']
+        trajectory = self.unroll_trajectory(obs)
+        data.update(trajectory)
+        return self.agent.train_on_batch(data=data)
 
     def act_batch_explore(self, obs):
         return self.agent.act_batch_explore(obs)
@@ -88,40 +108,72 @@ class DeepDyanQ(tf.keras.Model):
 
 class Runner(rl_infra.runner.TFOffPolicyRunner):
     def setup_updater(self, update_after, policy_delay, update_per_step, update_every):
-        pass
+        self.update_after = update_after
+        self.updater = DyanQUpdater(total_steps=self.epochs * self.steps_per_epoch,
+                                    model_update_every=self.steps_per_epoch // 4,
+                                    agent=self.agent,
+                                    replay_buffer=self.replay_buffer,
+                                    policy_delay=policy_delay,
+                                    update_per_step=update_per_step,
+                                    update_every=update_every
+                                    )
 
     def setup_agent(self, agent_cls, **kwargs):
         from rlutils.gym import static
         static_fn = static.get_static_fn(self.env_name)
-        self.agent = DeepDyanQ(obs_spec=self.env.single_observation_space,
+        self.agent = agent_cls(obs_spec=self.env.single_observation_space,
                                act_spec=self.env.single_action_space,
                                reward_fn=None,
-                               terminate_fn=static_fn.terminate_fn_tf_batch)
+                               terminate_fn=static_fn.terminate_fn_tf_batch,
+                               **kwargs)
+
+    def setup_replay_buffer(self,
+                            replay_size,
+                            batch_size,
+                            replay_alpha=0.6):
+        self.replay_buffer = PyPrioritizedReplayBuffer.from_vec_env(self.env, capacity=replay_size,
+                                                                    batch_size=batch_size,
+                                                                    alpha=replay_alpha)
 
     @classmethod
     def main(cls,
              env_name,
-             env_fn=None,
-             exp_name=None,
-             steps_per_epoch=10000,
+             env_fn: Callable = None,
+             exp_name: str = None,
+             steps_per_epoch=1000,
              epochs=100,
-             start_steps=10000,
-             update_after=5000,
-             update_every=1,
-             update_per_step=1,
-             policy_delay=1,
-             batch_size=256,
+             start_steps=1000,
+             update_after=750,
+             update_every=50,
+             update_per_step=20,
+             policy_delay=2,
+             batch_size=400,
              num_parallel_env=1,
              num_test_episodes=30,
              seed=1,
-             # agent args
-             agent_cls=None,
-             agent_kwargs={},
              # replay
              replay_size=int(1e6),
-             logger_path=None
+             logger_path: str = None
              ):
-        pass
+        config = locals()
+        runner = cls(seed=seed, steps_per_epoch=steps_per_epoch, epochs=epochs, exp_name=None,
+                     logger_path=logger_path)
+        runner.setup_env(env_name=env_name, env_fn=env_fn, num_parallel_env=1, asynchronous=False,
+                         num_test_episodes=num_test_episodes)
+        agent_kwargs = dict(
+
+        )
+        runner.setup_agent(agent_cls=DeepDyanQ, **agent_kwargs)
+        runner.setup_replay_buffer(replay_size=replay_size,
+                                   batch_size=batch_size)
+        runner.setup_sampler(start_steps=start_steps)
+        runner.setup_tester(num_test_episodes=num_test_episodes)
+        runner.setup_updater(update_after=update_after,
+                             policy_delay=policy_delay,
+                             update_per_step=update_per_step,
+                             update_every=update_every)
+        runner.setup_logger(config=config, tensorboard=False)
+        runner.run()
 
 
 if __name__ == '__main__':

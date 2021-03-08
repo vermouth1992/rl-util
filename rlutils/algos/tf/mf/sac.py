@@ -58,6 +58,7 @@ class SACAgent(tf.keras.Model):
         self.logger.log_tabular('LogPi', average_only=True)
         self.logger.log_tabular('LossPi', average_only=True)
         self.logger.log_tabular('LossQ', average_only=True)
+        self.logger.log_tabular('TDError', average_only=True)
         self.logger.log_tabular('Alpha', average_only=True)
         self.logger.log_tabular('LossAlpha', average_only=True)
 
@@ -77,11 +78,11 @@ class SACAgent(tf.keras.Model):
         # compute target Q values
         next_q_values = self._compute_next_obs_q(next_obs)
         q_target = rlu.functional.compute_target_value(rew, self.gamma, done, next_q_values)
-        q_target = rlu.functional.expand_ensemble_dim(q_target, num_ensembles=self.q_network.num_ensembles)
+        q_target_ensemble = rlu.functional.expand_ensemble_dim(q_target, num_ensembles=self.q_network.num_ensembles)
         # q loss
         with tf.GradientTape() as q_tape:
             q_values = self.q_network((obs, act, tf.constant(False)))  # (num_ensembles, None)
-            q_values_loss = 0.5 * tf.square(q_target - q_values)
+            q_values_loss = 0.5 * tf.square(q_target_ensemble - q_values)
             # apply importance weights if needed
             if weights is not None:
                 weights = rlu.functional.expand_ensemble_dim(weights, num_ensembles=self.q_network.num_ensembles)
@@ -95,8 +96,11 @@ class SACAgent(tf.keras.Model):
 
         self.update_target_q()
 
+        td_error = tf.abs(tf.reduce_min(q_values, axis=0) - q_target)
+
         info = dict(
             LossQ=q_values_loss,
+            TDError=td_error,
         )
         for i in range(self.q_network.num_ensembles):
             info[f'Q{i + 1}Vals'] = q_values[i]
@@ -145,6 +149,7 @@ class SACAgent(tf.keras.Model):
             actor_info = self._update_actor(obs)
             info.update(actor_info)
         self.logger.store(**rlu.functional.to_numpy_or_python_type(info))
+        return info
 
     @tf.function
     def act_batch_explore_tf(self, obs):

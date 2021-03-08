@@ -2,12 +2,13 @@
 Implementing dynamics model to perform Model-based RL
 """
 
+import sklearn
 import tensorflow as tf
 import tensorflow_probability as tfp
-from rlutils.tf.future import get_adam_optimizer, minimize
 from rlutils.tf.callbacks import EpochLoggerCallback
 from rlutils.tf.distributions import make_independent_normal_from_params
 from rlutils.tf.functional import expand_ensemble_dim
+from rlutils.tf.future import get_adam_optimizer, minimize
 from rlutils.tf.preprocessing import StandardScaler
 
 from .functional import build_mlp
@@ -214,12 +215,13 @@ class EnsembleDynamicsModel(tf.keras.Model):
         self.set_statistics(obs, actions, next_obs, rewards)
 
         callbacks = [EpochLoggerCallback(keys=[('TrainModelLoss', 'loss'), ('ValModelLoss', 'val_loss')],
-                                         epochs=num_epochs, logger=self.logger)]
+                                         epochs=num_epochs, logger=self.logger, decs='Training Model')]
 
         if patience is not None:
             callbacks.append(tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=patience,
                                                               restore_best_weights=True))
 
+        obs, actions, next_obs, rewards = sklearn.utils.shuffle(obs, actions, next_obs, rewards)
         self.fit(x=(obs, actions), y=(next_obs, rewards), sample_weight=sample_weights, epochs=num_epochs,
                  batch_size=batch_size, verbose=False, validation_split=validation_split,
                  callbacks=callbacks, shuffle=shuffle)
@@ -259,10 +261,10 @@ class EnsembleDynamicsModel(tf.keras.Model):
         state, action, sample = inputs
         batch_size = tf.shape(state)[0]
         print(f'Tracing _predict_obs with state={state}, action={action}')
-        norm_state = self.state_normalizer(state)
+        norm_state = self.obs_normalizer(state)
         norm_action = self.action_normalizer(action)
-        sa = tf.concat((norm_state, norm_action), axis=-1)
-        output = self.model(inputs=(sa,), training=training)[0]  # (num_ensembles, None, ob_dim)
+        inputs = tf.concat((norm_state, norm_action), axis=-1)
+        output = self.model(inputs=inputs, training=training)  # (num_ensembles, None, ob_dim)
 
         if sample:
             output = output.sample()
@@ -277,13 +279,13 @@ class EnsembleDynamicsModel(tf.keras.Model):
         if self.reward_fn is None:
             delta_state_norm = output[:, :-1]
             reward_norm = output[:, -1]
-            reward = self.reward_normalizer.inverse_call(reward_norm)
-            delta_state = self.delta_state_normalizer.inverse_call(delta_state_norm)
+            reward = self.rew_normalizer.inverse_call(reward_norm)
+            delta_state = self.delta_obs_normalizer.inverse_call(delta_state_norm)
             next_state = delta_state + state
         else:
             print('Using external reward function')
             delta_state_norm = output
-            delta_state = self.delta_state_normalizer.inverse_call(delta_state_norm)
+            delta_state = self.delta_obs_normalizer.inverse_call(delta_state_norm)
             next_state = delta_state + state
             reward = self.reward_fn(state, action, next_state)
 

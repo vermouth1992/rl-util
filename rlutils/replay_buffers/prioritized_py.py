@@ -6,6 +6,7 @@ from typing import Dict
 
 import gym.spaces
 import numpy as np
+from rlutils.np.functional import shuffle_dict_data
 
 from .uniform_py import PyUniformReplayBuffer
 from .utils import segtree
@@ -50,9 +51,43 @@ class PyPrioritizedReplayBuffer(PyUniformReplayBuffer):
         return data, idx
 
     def update_priorities(self, idx, priorities, min_priority=None, max_priority=None):
+        assert idx.shape == priorities.shape
         priorities = np.abs(priorities) + EPS
         if min_priority is not None or max_priority is not None:
             priorities = np.clip(priorities, a_min=min_priority, a_max=max_priority)
         self.segtree[idx] = priorities ** self.alpha
         self.max_priority = max(self.max_priority, np.max(priorities))
         self.min_priority = min(self.min_priority, np.min(priorities))
+
+    @classmethod
+    def from_data_dict(cls, data: Dict[str, np.ndarray], batch_size, shuffle=False, alpha=0.6, seed=None):
+        if shuffle:
+            data = shuffle_dict_data(data)
+        data_spec = {key: gym.spaces.Space(shape=item.shape[1:], dtype=item.dtype) for key, item in data.items()}
+        capacity = list(data.values())[0].shape[0]
+        replay_buffer = cls(data_spec=data_spec, capacity=capacity, batch_size=batch_size, seed=seed, alpha=alpha)
+        replay_buffer.append(data=data)
+        assert replay_buffer.is_full()
+        return replay_buffer
+
+    @classmethod
+    def from_vec_env(cls, vec_env, capacity, batch_size, alpha=0.6, seed=None):
+        data_spec = {
+            'obs': vec_env.single_observation_space,
+            'act': vec_env.single_action_space,
+            'next_obs': vec_env.single_observation_space,
+            'rew': gym.spaces.Space(shape=None, dtype=np.float32),
+            'done': gym.spaces.Space(shape=None, dtype=np.float32)
+        }
+        return cls(data_spec=data_spec, capacity=capacity, batch_size=batch_size, seed=seed, alpha=alpha)
+
+    @classmethod
+    def from_env(cls, env, capacity, batch_size, alpha=0.6, seed=None):
+        data_spec = {
+            'obs': env.observation_space,
+            'act': env.action_space,
+            'next_obs': env.observation_space,
+            'rew': gym.spaces.Space(shape=None, dtype=np.float32),
+            'done': gym.spaces.Space(shape=None, dtype=np.float32)
+        }
+        return cls(data_spec=data_spec, capacity=capacity, batch_size=batch_size, seed=seed, alpha=alpha)

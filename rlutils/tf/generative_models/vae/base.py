@@ -135,7 +135,7 @@ class ConditionalBetaVAE(BetaVAE):
         kl_divergence = tfd.kl_divergence(posterior, self.prior)
         return -log_likelihood, kl_divergence
 
-    def sample(self, cond, full_path=True):
+    def sample(self, cond, full_path=tf.constant(True)):
         print(f'Tracing sample with cond={cond}')
         z = self.prior.sample(sample_shape=tf.shape(cond)[0])  # (None, z_dim)
         out_dist = self.decode_distribution(z=(z, cond))
