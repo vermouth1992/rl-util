@@ -7,3 +7,4 @@ from . import distributions
 from . import functional
 from . import preprocessing
 from . import nn
+from . import future

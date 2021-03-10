@@ -1,8 +1,52 @@
+"""
+This file is used for specifying various schedules that evolve over time throughout the execution of the algorithm,
+such as:
+ - learning rate for the optimizer
+ - exploration epsilon for the epsilon greedy exploration strategy
+ - beta parameter for beta parameter in prioritized replay
+Each schedule has a function `value(t)` which returns the current value
+of the parameter given the timestep t of the optimization procedure.
+Some codes are directly copied from https://github.com/openai/baselines/blob/master/baselines/common/schedules.py
+"""
+
+
+class Schedule(object):
+    def value(self, t):
+        """Value of the schedule at time t"""
+        raise NotImplementedError()
+
+
+class ExponentialScheduler(Schedule):
+    def __init__(self, epsilon=1.0, decay=1e-4, minimum=0.01):
+        self.epsilon = epsilon
+        self.decay = decay
+        self.minimum = minimum
+
+    def value(self, t):
+        explore_p = self.minimum + (self.epsilon - self.minimum) * np.exp(-self.decay * t)
+        return explore_p
+
+
+class ConstantSchedule(Schedule):
+    def __init__(self, value):
+        """Value remains constant over time.
+        Parameters
+        ----------
+        value: float
+            Constant value of the schedule
+        """
+        self._v = value
+
+    def value(self, t):
+        """See Schedule.value"""
+        return self._v
+
+
 def linear_interpolation(l, r, alpha):
     return l + alpha * (r - l)
 
 
-class PiecewiseSchedule(object):
+class PiecewiseSchedule(Schedule):
     def __init__(self, endpoints, interpolation=linear_interpolation, outside_value=None):
         """Piecewise schedule.
         endpoints: [(int, int)]
@@ -40,3 +84,28 @@ class PiecewiseSchedule(object):
         # t does not belong to any of the pieces, so doom.
         assert self._outside_value is not None
         return self._outside_value
+
+
+class LinearSchedule(Schedule):
+    def __init__(self, schedule_timesteps, final_p, initial_p=1.0):
+        """Linear interpolation between initial_p and final_p over
+        schedule_timesteps. After this many timesteps pass final_p is
+        returned.
+        Parameters
+        ----------
+        schedule_timesteps: int
+            Number of timesteps for which to linearly anneal initial_p
+            to final_p
+        initial_p: float
+            initial output value
+        final_p: float
+            final output value
+        """
+        self.schedule_timesteps = schedule_timesteps
+        self.final_p = final_p
+        self.initial_p = initial_p
+
+    def value(self, t):
+        """See Schedule.value"""
+        fraction = min(float(t) / self.schedule_timesteps, 1.0)
+        return self.initial_p + fraction * (self.final_p - self.initial_p)

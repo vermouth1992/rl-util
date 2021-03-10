@@ -21,7 +21,7 @@ class TestEnsembleModel(unittest.TestCase):
                 for j in range(num_ensembles):
                     if j != i:
                         # the grad must be all zero for all others
-                        assert np.allclose(g.numpy()[j], 0.)
+                        self.assertTrue(np.allclose(g.numpy()[j], 0.))
 
 
 if __name__ == '__main__':

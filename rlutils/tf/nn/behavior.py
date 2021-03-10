@@ -6,8 +6,10 @@ from abc import ABC, abstractmethod
 
 import numpy as np
 import rlutils.tf as rlu
+import sklearn
 import tensorflow as tf
 import tensorflow_probability as tfp
+from rlutils.tf.callbacks import EpochLoggerCallback
 from rlutils.tf.generative_models.vae import ConditionalBetaVAE
 
 tfd = tfp.distributions
@@ -39,7 +41,7 @@ class AbstractBehaviorPolicy(ABC):
 
 
 class BehaviorPolicy(ConditionalBetaVAE, AbstractBehaviorPolicy):
-    def __init__(self, out_dist, obs_dim, act_dim, mlp_hidden=256, beta=1.):
+    def __init__(self, obs_dim, act_dim, mlp_hidden=256, beta=1., out_dist='normal'):
         self.out_dist = out_dist
         self.obs_dim = obs_dim
         self.act_dim = act_dim
@@ -119,12 +121,39 @@ class BehaviorPolicy(ConditionalBetaVAE, AbstractBehaviorPolicy):
         model = tf.keras.Model(inputs=[latent_input, obs_input], outputs=output)
         return model
 
+    def set_logger(self, logger):
+        self.logger = logger
+
+    def log_tabular(self):
+        self.logger.log_tabular('TrainBehaviorLoss', average_only=True)
+        self.logger.log_tabular('ValBehaviorLoss', average_only=True)
+
     @tf.function
     def act_batch(self, obs):
         print(f'Tracing vae act_batch with obs {obs}')
         pi_final = self.sample(cond=obs, full_path=False)
         pi_final = tf.tanh(pi_final)
         return pi_final
+
+    def update(self, inputs, sample_weights=None, batch_size=64, num_epochs=60, patience=None,
+               validation_split=0.1, shuffle=True):
+        obs = inputs['obs']
+        actions = inputs['act']
+
+        obs, actions = sklearn.utils.shuffle(obs, actions)
+        raw_actions = self.inverse_transform_action(actions)
+
+        callbacks = [EpochLoggerCallback(keys=[('TrainBehaviorLoss', 'loss'), ('ValBehaviorLoss', 'val_loss')],
+                                         epochs=num_epochs, logger=self.logger,
+                                         decs='Training Behavior Policy')]
+
+        if patience is not None:
+            callbacks.append(tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=patience,
+                                                              restore_best_weights=True))
+
+        self.fit(x=(raw_actions, obs), sample_weight=sample_weights, epochs=num_epochs,
+                 batch_size=batch_size, verbose=False, validation_split=validation_split,
+                 callbacks=callbacks, shuffle=shuffle)
 
 
 class EnsembleBehaviorPolicy(BehaviorPolicy):
