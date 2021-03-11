@@ -3,8 +3,7 @@ import numpy as np
 import rlutils.gym
 
 
-def create_vector_env(env_name=None,
-                      env_fn=None,
+def create_vector_env(env_fn=None,
                       normalize_action_space=True,
                       num_parallel_env=1,
                       asynchronous=False
@@ -14,12 +13,8 @@ def create_vector_env(env_name=None,
     run Pendulum-v0 using env_name from commandline.
     Other complicated wrappers should be included in env_fn.
     """
-    assert (env_name is not None) or (env_fn is not None)
-    if env_fn is not None:
-        original_env_fn = env_fn
-    else:
-        original_env_fn = lambda: gym.make(env_name)
-
+    assert env_fn is not None
+    original_env_fn = env_fn
     dummy_env = original_env_fn()
 
     wrappers = []

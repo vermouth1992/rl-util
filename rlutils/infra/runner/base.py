@@ -8,7 +8,6 @@ Common in the runner:
 
 import pprint
 import random
-import time
 from abc import abstractmethod, ABC
 
 import numpy as np
@@ -81,9 +80,12 @@ class BaseRunner(ABC):
                   num_parallel_env=1,
                   asynchronous=False,
                   num_test_episodes=None):
+        import gym
         self.env_name = env_name
-        self.env = rlutils.gym.utils.create_vector_env(env_name=env_name,
-                                                       env_fn=env_fn,
+        if env_fn is None:
+            env_fn = lambda: gym.make(env_name)
+        self.env_fn = env_fn
+        self.env = rlutils.gym.utils.create_vector_env(env_fn=env_fn,
                                                        normalize_action_space=True,
                                                        num_parallel_env=num_parallel_env,
                                                        asynchronous=asynchronous)
@@ -98,8 +100,7 @@ class BaseRunner(ABC):
         self.seeds_info['test_env'] = test_env_seed
         self.seeds_info['test_env_action_space'] = test_env_action_space_seed
         if num_test_episodes is not None:
-            self.test_env = rlutils.gym.utils.create_vector_env(env_name=env_name,
-                                                                env_fn=env_fn,
+            self.test_env = rlutils.gym.utils.create_vector_env(env_fn=env_fn,
                                                                 normalize_action_space=True,
                                                                 num_parallel_env=num_test_episodes,
                                                                 asynchronous=asynchronous)
@@ -294,7 +295,37 @@ class OffPolicyRunner(BaseRunner):
         runner.run()
 
 
-class OfflineRunner(BaseRunner):
+class OfflineRunner(OffPolicyRunner):
+    def run_one_step(self, t):
+        self.updater.update(self.global_step)
+
+    def setup_sampler(self, start_steps):
+        # create a dummy sampler
+        self.sampler = rl_infra.samplers.Sampler(env=self.test_env)
+
+    def setup_env(self,
+                  env_name,
+                  env_fn=None,
+                  num_parallel_env=1,
+                  asynchronous=False,
+                  num_test_episodes=None):
+        import gym
+        self.env_name = env_name
+        if env_fn is None:
+            env_fn = lambda: gym.make(env_name)
+        self.env_fn = env_fn
+        test_env_seed = self.seeder.generate_seed()
+        test_env_action_space_seed = self.seeder.generate_seed()
+        self.seeds_info['test_env'] = test_env_seed
+        self.seeds_info['test_env_action_space'] = test_env_action_space_seed
+        if num_test_episodes is not None:
+            self.test_env = rlutils.gym.utils.create_vector_env(env_fn=env_fn,
+                                                                normalize_action_space=True,
+                                                                num_parallel_env=num_test_episodes,
+                                                                asynchronous=asynchronous)
+            self.test_env.seed(test_env_seed)
+            self.test_env.action_space.seed(test_env_action_space_seed)
+
     def setup_replay_buffer(self,
                             batch_size,
                             dataset=None,
@@ -305,6 +336,7 @@ class OfflineRunner(BaseRunner):
         if dataset is None:
             # modify d4rl keys
             import d4rl
+            self.dummy_env = self.env_fn()
             dataset = d4rl.qlearning_dataset(env=self.dummy_env)
             dataset['obs'] = dataset.pop('observations').astype(np.float32)
             dataset['act'] = dataset.pop('actions').astype(np.float32)
@@ -324,20 +356,3 @@ class OfflineRunner(BaseRunner):
             data=dataset,
             batch_size=batch_size
         )
-
-    def setup_agent(self, agent_cls, **kwargs):
-        self.agent = agent_cls(obs_spec=self.obs_data_spec, act_spec=self.act_data_spec, **kwargs)
-        self.agent.set_logger(self.logger)
-
-    def on_epoch_end(self, epoch):
-        info = self.test_agent(get_action=self.get_action_batch_test, name=self.agent.__class__.__name__)
-        self.logger.store(**info)
-
-        # Log info about epoch
-        self.logger.log_tabular('Epoch', epoch)
-        self.logger.log_tabular('TestEpRet', with_min_and_max=True)
-        self.logger.log_tabular('TestEpLen', average_only=True)
-        self.agent.log_tabular()
-        self.logger.log_tabular('GradientSteps', epoch * self.steps_per_epoch)
-        self.logger.log_tabular('Time', time.time() - self.start_time)
-        self.logger.dump_tabular()

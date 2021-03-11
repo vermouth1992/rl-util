@@ -98,10 +98,11 @@ class DynamicsModelRNNCell(tf.keras.layers.AbstractRNNCell):
 
 
 class EnsembleDynamicsModel(tf.keras.Model):
-    def __init__(self, obs_dim, act_dim, mlp_hidden=64, num_ensembles=5, lr=1e-3,
+    def __init__(self, obs_dim, act_dim, mlp_hidden=64, num_layers=4, num_ensembles=5, lr=1e-3,
                  reward_fn=None, terminate_fn=None):
         super(EnsembleDynamicsModel, self).__init__()
         self.lr = lr
+        self.num_layers = num_layers
         self.mlp_hidden = mlp_hidden
         self.num_ensembles = num_ensembles
         self.obs_dim = obs_dim
@@ -146,7 +147,7 @@ class EnsembleDynamicsModel(tf.keras.Model):
         inputs_ph = tf.keras.Input(shape=(self.obs_dim + self.act_dim))
         inputs = tf.tile(tf.expand_dims(inputs_ph, axis=0), (self.num_ensembles, 1, 1))
         mlp = build_mlp(self.obs_dim + self.act_dim, output_dim, mlp_hidden=self.mlp_hidden,
-                        num_ensembles=self.num_ensembles, squeeze=False, layer_norm=True, num_layers=3,
+                        num_ensembles=self.num_ensembles, squeeze=False, batch_norm=True, num_layers=self.num_layers,
                         activation='relu')
         mlp.add(tfl.DistributionLambda(make_distribution_fn=lambda t: make_independent_normal_from_params(t)))
         outputs = mlp(inputs)

@@ -4,30 +4,17 @@ Deep reinforcement learning for DyanQ+ with priority sweeping
 
 from typing import Callable
 
-import numpy as np
 import rlutils.infra as rl_infra
-import rlutils.np as rln
 import rlutils.tf as rlu
 import tensorflow as tf
 from rlutils.algos.tf.mf.sac import SACAgent
-from rlutils.replay_buffers import PyPrioritizedReplayBuffer
-
-EPS = 1e-6
 
 
-def compute_priority(td_error):
-    priority = np.log1p(td_error + EPS)
-    return priority
-
-
-class DyanQUpdater(rl_infra.OffPolicyUpdater):
+class MBPOUpdater(rl_infra.OffPolicyUpdater):
     def __init__(self, total_steps, model_update_every, **kwargs):
-        super(DyanQUpdater, self).__init__(**kwargs)
+        super(MBPOUpdater, self).__init__(**kwargs)
         self.model_update_every = model_update_every
         self.total_steps = total_steps
-        self.beta_scheduler = rln.schedulers.LinearSchedule(schedule_timesteps=total_steps,
-                                                            final_p=1.0,
-                                                            initial_p=0.4)
 
     def update(self, global_step):
         if global_step % self.model_update_every == 0:
@@ -36,22 +23,17 @@ class DyanQUpdater(rl_infra.OffPolicyUpdater):
         if global_step % self.update_every == 0:
             for _ in range(self.update_every):
                 for _ in range(self.update_per_step):
-                    batch, idx = self.replay_buffer.sample(beta=self.beta_scheduler.value(global_step))
+                    batch = self.replay_buffer.sample()
                     batch['update_target'] = ((self.policy_updates + 1) % self.policy_delay == 0)
-                    info = self.agent.train_on_batch(data=batch)
-                    td_error = info.get('TDError')
-                    priorities = compute_priority(td_error)
+                    self.agent.train_on_batch(data=batch)
                     self.policy_updates += 1
-                    self.replay_buffer.update_priorities(idx=idx, priorities=priorities,
-                                                         min_priority=1e-4,
-                                                         max_priority=50)
 
 
-class DeepDyanQ(tf.keras.Model):
+class MBPO(tf.keras.Model):
     def __init__(self, obs_spec, act_spec,
                  model_mlp_hidden=512, model_lr=1e-4, model_num_ensembles=5, reward_fn=None, terminate_fn=None,
-                 policy_mlp_hidden=256, policy_lr=3e-4, behavior_mlp_hidden=256):
-        super(DeepDyanQ, self).__init__()
+                 policy_mlp_hidden=256, policy_lr=3e-4):
+        super(MBPO, self).__init__()
         self.obs_spec = obs_spec
         self.act_spec = act_spec
         self.act_dim = self.act_spec.shape[0]
@@ -60,7 +42,7 @@ class DeepDyanQ(tf.keras.Model):
         else:
             raise NotImplementedError
         self.dynamics_model = rlu.nn.EnsembleDynamicsModel(obs_dim=self.obs_dim, act_dim=self.act_dim,
-                                                           mlp_hidden=model_mlp_hidden,
+                                                           mlp_hidden=model_mlp_hidden, num_layers=4,
                                                            num_ensembles=model_num_ensembles, lr=model_lr,
                                                            reward_fn=reward_fn, terminate_fn=terminate_fn)
         self.agent = SACAgent(obs_spec=obs_spec, act_spec=act_spec, policy_mlp_hidden=policy_mlp_hidden,
@@ -109,14 +91,14 @@ class DeepDyanQ(tf.keras.Model):
 class Runner(rl_infra.runner.TFOffPolicyRunner):
     def setup_updater(self, update_after, policy_delay, update_per_step, update_every):
         self.update_after = update_after
-        self.updater = DyanQUpdater(total_steps=self.epochs * self.steps_per_epoch,
-                                    model_update_every=self.steps_per_epoch // 4,
-                                    agent=self.agent,
-                                    replay_buffer=self.replay_buffer,
-                                    policy_delay=policy_delay,
-                                    update_per_step=update_per_step,
-                                    update_every=update_every
-                                    )
+        self.updater = MBPOUpdater(total_steps=self.epochs * self.steps_per_epoch,
+                                   model_update_every=self.steps_per_epoch // 4,
+                                   agent=self.agent,
+                                   replay_buffer=self.replay_buffer,
+                                   policy_delay=policy_delay,
+                                   update_per_step=update_per_step,
+                                   update_every=update_every
+                                   )
 
     def setup_agent(self, agent_cls, **kwargs):
         from rlutils.gym import static
@@ -127,14 +109,6 @@ class Runner(rl_infra.runner.TFOffPolicyRunner):
                                terminate_fn=static_fn.terminate_fn_tf_batch,
                                **kwargs)
 
-    def setup_replay_buffer(self,
-                            replay_size,
-                            batch_size,
-                            replay_alpha=0.6):
-        self.replay_buffer = PyPrioritizedReplayBuffer.from_vec_env(self.env, capacity=replay_size,
-                                                                    batch_size=batch_size,
-                                                                    alpha=replay_alpha)
-
     @classmethod
     def main(cls,
              env_name,
@@ -144,9 +118,9 @@ class Runner(rl_infra.runner.TFOffPolicyRunner):
              epochs=100,
              start_steps=1000,
              update_after=750,
-             update_every=50,
-             update_per_step=20,
-             policy_delay=2,
+             update_every=1,
+             update_per_step=5,
+             policy_delay=1,
              batch_size=400,
              num_parallel_env=1,
              num_test_episodes=30,
@@ -163,7 +137,7 @@ class Runner(rl_infra.runner.TFOffPolicyRunner):
         agent_kwargs = dict(
 
         )
-        runner.setup_agent(agent_cls=DeepDyanQ, **agent_kwargs)
+        runner.setup_agent(agent_cls=MBPO, **agent_kwargs)
         runner.setup_replay_buffer(replay_size=replay_size,
                                    batch_size=batch_size)
         runner.setup_sampler(start_steps=start_steps)
