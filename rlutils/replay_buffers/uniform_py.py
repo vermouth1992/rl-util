@@ -1,107 +1,13 @@
-from typing import Dict
-
-import gym.spaces
 import numpy as np
-from rlutils.np.functional import flatten_leading_dims, shuffle_dict_data
+from rlutils.np.functional import flatten_leading_dims
 
-from .base import BaseReplayBuffer
-from .utils import combined_shape
+from .base import PyReplayBuffer
 
 
-class PyUniformReplayBuffer(BaseReplayBuffer):
+class PyUniformReplayBuffer(PyReplayBuffer):
     """
     A simple FIFO experience replay buffer for SAC agents.
     """
-
-    def __init__(self,
-                 data_spec: Dict[str, gym.spaces.Space],
-                 capacity,
-                 batch_size,
-                 seed=None):
-        super(PyUniformReplayBuffer, self).__init__(seed=seed)
-        self.max_size = capacity
-        self.storage = {key: np.zeros(combined_shape(self.capacity, item.shape), dtype=item.dtype)
-                        for key, item in data_spec.items()}
-        self.batch_size = batch_size
-        self.reset()
-
-    def reset(self):
-        self.ptr, self.size = 0, 0
-
-    def __len__(self):
-        return self.size
-
-    def __getitem__(self, item):
-        """ Make it compatible with Pytorch data loaders """
-        return {key: data[item] for key, data in self.storage.items()}
-
-    @property
-    def capacity(self):
-        return self.max_size
-
-    @classmethod
-    def from_data_dict(cls, data: Dict[str, np.ndarray], batch_size, shuffle=False, seed=None):
-        if shuffle:
-            data = shuffle_dict_data(data)
-        data_spec = {key: gym.spaces.Space(shape=item.shape[1:], dtype=item.dtype) for key, item in data.items()}
-        capacity = list(data.values())[0].shape[0]
-        replay_buffer = cls(data_spec=data_spec, capacity=capacity, batch_size=batch_size, seed=seed)
-        replay_buffer.append(data=data)
-        assert replay_buffer.is_full()
-        return replay_buffer
-
-    @classmethod
-    def from_vec_env(cls, vec_env, capacity, batch_size, seed=None):
-        data_spec = {
-            'obs': vec_env.single_observation_space,
-            'act': vec_env.single_action_space,
-            'next_obs': vec_env.single_observation_space,
-            'rew': gym.spaces.Space(shape=None, dtype=np.float32),
-            'done': gym.spaces.Space(shape=None, dtype=np.float32)
-        }
-        return cls(data_spec=data_spec, capacity=capacity, batch_size=batch_size, seed=seed)
-
-    @classmethod
-    def from_env(cls, env, capacity, batch_size, seed=None):
-        data_spec = {
-            'obs': env.observation_space,
-            'act': env.action_space,
-            'next_obs': env.observation_space,
-            'rew': gym.spaces.Space(shape=None, dtype=np.float32),
-            'done': gym.spaces.Space(shape=None, dtype=np.float32)
-        }
-        return cls(data_spec=data_spec, capacity=capacity, batch_size=batch_size, seed=seed)
-
-    def append(self, data: Dict[str, np.ndarray]):
-        batch_size = list(data.values())[0].shape[0]
-        for key, item in data.items():
-            assert batch_size == item.shape[0], 'Mismatch batch size in the dataset'
-
-        if self.ptr + batch_size > self.capacity:
-            print(f'Truncated dataset due to limited capacity. Original size {batch_size}. '
-                  f'Truncated size {self.capacity - self.ptr}')
-        for key, item in data.items():
-            self.storage[key][self.ptr:self.ptr + batch_size] = item
-
-        self.ptr = (self.ptr + batch_size) % self.capacity
-        self.size = min(self.size + batch_size, self.capacity)
-
-    def get(self):
-        idxs = np.arange(self.size)
-        return self.__getitem__(idxs)
-
-    def add(self, data: Dict[str, np.ndarray]):
-        batch_size = list(data.values())[0].shape[0]
-        for key, item in data.items():
-            assert batch_size == item.shape[0], 'The batch size in the data is not consistent'
-            if self.ptr + batch_size > self.max_size:
-                print('Reaches the end of the replay buffer')
-                self.storage[key][self.ptr:] = item[:self.max_size - self.ptr]
-                self.storage[key][:batch_size - (self.max_size - self.ptr)] = item[self.max_size - self.ptr:]
-            else:
-                self.storage[key][self.ptr:self.ptr + batch_size] = item
-        self.ptr = (self.ptr + batch_size) % self.capacity
-        self.size = min(self.size + batch_size, self.capacity)
 
     def sample(self):
         assert not self.is_empty()
@@ -109,7 +15,7 @@ class PyUniformReplayBuffer(BaseReplayBuffer):
         return self.__getitem__(idxs)
 
 
-class PyUniformParallelEnvReplayBufferFrame(BaseReplayBuffer):
+class PyUniformParallelEnvReplayBufferFrame(PyReplayBuffer):
     def __init__(self,
                  num_parallel_env,
                  obs_spec,

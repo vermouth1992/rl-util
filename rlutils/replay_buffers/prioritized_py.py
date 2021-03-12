@@ -1,20 +1,19 @@
 """
-Adapted from https://github.com/thu-ml/tianshou/blob/master/tianshou/data/buffer.py
+Adapted from https://github.com/thu-ml/tianshou/
 """
 
 from typing import Dict
 
 import gym.spaces
 import numpy as np
-from rlutils.np.functional import shuffle_dict_data
 
-from .uniform_py import PyUniformReplayBuffer
+from .base import PyReplayBuffer
 from .utils import segtree
 
 EPS = np.finfo(np.float32).eps.item()
 
 
-class PyPrioritizedReplayBuffer(PyUniformReplayBuffer):
+class PyPrioritizedReplayBuffer(PyReplayBuffer):
     """
     A simple implementation of PER based on pure numpy. No advanced data structure is used.
     """
@@ -35,7 +34,7 @@ class PyPrioritizedReplayBuffer(PyUniformReplayBuffer):
             priority = np.ones(shape=(batch_size,), dtype=np.float32) * self.max_priority
         assert np.all(priority > 0.), f'Priority must be all greater than zero. Got {priority}'
         idx = np.arange(self.ptr, self.ptr + batch_size)
-        self.segtree[idx] = priority
+        self.segtree[idx] = priority ** self.alpha
         self.max_priority = max(self.max_priority, np.max(priority))
         self.min_priority = min(self.min_priority, np.min(priority))
         super(PyPrioritizedReplayBuffer, self).add(data=data)
@@ -60,34 +59,13 @@ class PyPrioritizedReplayBuffer(PyUniformReplayBuffer):
         self.min_priority = min(self.min_priority, np.min(priorities))
 
     @classmethod
-    def from_data_dict(cls, data: Dict[str, np.ndarray], batch_size, shuffle=False, alpha=0.6, seed=None):
-        if shuffle:
-            data = shuffle_dict_data(data)
-        data_spec = {key: gym.spaces.Space(shape=item.shape[1:], dtype=item.dtype) for key, item in data.items()}
-        capacity = list(data.values())[0].shape[0]
-        replay_buffer = cls(data_spec=data_spec, capacity=capacity, batch_size=batch_size, seed=seed, alpha=alpha)
-        replay_buffer.append(data=data)
-        assert replay_buffer.is_full()
-        return replay_buffer
+    def from_data_dict(cls, alpha=0.6, **kwargs):
+        return super(PyPrioritizedReplayBuffer, cls).from_data_dict(alpha=alpha, **kwargs)
 
     @classmethod
-    def from_vec_env(cls, vec_env, capacity, batch_size, alpha=0.6, seed=None):
-        data_spec = {
-            'obs': vec_env.single_observation_space,
-            'act': vec_env.single_action_space,
-            'next_obs': vec_env.single_observation_space,
-            'rew': gym.spaces.Space(shape=None, dtype=np.float32),
-            'done': gym.spaces.Space(shape=None, dtype=np.float32)
-        }
-        return cls(data_spec=data_spec, capacity=capacity, batch_size=batch_size, seed=seed, alpha=alpha)
+    def from_vec_env(cls, alpha=0.6, **kwargs):
+        return super(PyPrioritizedReplayBuffer, cls).from_vec_env(alpha=alpha, **kwargs)
 
     @classmethod
-    def from_env(cls, env, capacity, batch_size, alpha=0.6, seed=None):
-        data_spec = {
-            'obs': env.observation_space,
-            'act': env.action_space,
-            'next_obs': env.observation_space,
-            'rew': gym.spaces.Space(shape=None, dtype=np.float32),
-            'done': gym.spaces.Space(shape=None, dtype=np.float32)
-        }
-        return cls(data_spec=data_spec, capacity=capacity, batch_size=batch_size, seed=seed, alpha=alpha)
+    def from_env(cls, alpha=0.6, **kwargs):
+        return super(PyPrioritizedReplayBuffer, cls).from_env(alpha=alpha, **kwargs)
