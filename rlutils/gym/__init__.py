@@ -20,6 +20,12 @@ register(
 )
 
 register(
+    id='PendulumResetObs-v0',
+    entry_point='rlutils.gym.envs:PendulumEnvResetObs',
+    max_episode_steps=200,
+)
+
+register(
     id='HopperResetObs-v2',
     entry_point='rlutils.gym.envs:HopperEnvResetObs',
     max_episode_steps=1000,

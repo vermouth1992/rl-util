@@ -3,10 +3,8 @@ Copied from https://github.com/openai/gym/blob/master/gym/vector/sync_vector_env
 Modified on done. Instead of directly reset, we add reset_done to reset after observing next_obs.
 """
 
-from copy import deepcopy
-
 import numpy as np
-from gym.vector.utils import concatenate, create_empty_array
+from gym.vector.utils import create_empty_array
 
 from .vector_env import VectorEnv
 
@@ -63,40 +61,57 @@ class SyncVectorEnv(VectorEnv):
         for env, seed in zip(self.envs, seeds):
             env.seed(seed)
 
-    def reset_done(self):
-        for i, (env, action) in enumerate(zip(self.envs, self._actions)):
+    """
+    reset done
+    """
+
+    def reset_done_wait(self):
+        for i, env in enumerate(self.envs):
             if self._dones[i]:
                 self.observations[i] = env.reset()
-        return np.copy(self.observations)
+        return np.copy(self.observations) if self.copy else self.observations
 
-    def reset_obs(self, obs):
+    """
+    reset obs
+    """
+
+    def reset_obs_async(self, obs, mask=None):
+        self._reset_obs = obs
+        self._reset_mask = mask if mask is not None else np.ones(shape=(self.num_envs,), dtype=np.bool_)
+
+    def reset_obs_wait(self, **kwargs):
         for i, env in enumerate(self.envs):
-            env.reset_obs(obs[i])
+            if self._reset_mask[i]:
+                self.observations[i] = env.reset_obs(self._reset_obs[i])
+        return np.copy(self.observations) if self.copy else self.observations
+
+    """
+    reset
+    """
 
     def reset_wait(self):
-        self._dones[:] = False
-        observations = []
-        for env in self.envs:
-            observation = env.reset()
-            observations.append(observation)
-        concatenate(observations, self.observations, self.single_observation_space)
-
+        for i, env in enumerate(self.envs):
+            self.observations[i] = env.reset()
         return np.copy(self.observations) if self.copy else self.observations
+
+    """
+    step
+    """
 
     def step_async(self, actions, mask=None):
         self._actions = actions
-        self._mask = mask if mask is not None else np.zeros(shape=(self.num_envs,), dtype=np.bool_)
+        self._mask = mask if mask is not None else np.ones(shape=(self.num_envs,), dtype=np.bool_)
 
     def step_wait(self):
         observations, infos = [], []
         for i, (env, action, mask) in enumerate(zip(self.envs, self._actions, self._mask)):
-            if not mask:
+            if mask:
                 self.observations[i], self._rewards[i], self._dones[i], info = env.step(action)
                 infos.append(info)
             else:
                 infos.append({})
 
-        return (deepcopy(self.observations) if self.copy else self.observations,
+        return (np.copy(self.observations) if self.copy else self.observations,
                 np.copy(self._rewards), np.copy(self._dones), infos)
 
     def close_extras(self, **kwargs):

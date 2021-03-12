@@ -8,4 +8,4 @@ class HalfCheetahEnv(half_cheetah.HalfCheetahEnv):
         qpos = state[:self.model.nq]
         qvel = state[self.model.nq:]
         self.set_state(qpos, qvel)
-        return obs
+        return self._get_obs()

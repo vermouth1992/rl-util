@@ -34,8 +34,6 @@ class AsyncState(Enum):
 class AsyncVectorEnv(VectorEnv):
     def __init__(self, env_fns, observation_space=None, action_space=None,
                  shared_memory=True, copy=True, context=None, daemon=True, worker=None):
-        assert NotImplemented('Please use synchronous version')
-
         try:
             ctx = mp.get_context(context)
         except AttributeError:
@@ -86,7 +84,27 @@ class AsyncVectorEnv(VectorEnv):
 
         self._state = AsyncState.DEFAULT
         self._check_observation_spaces()
+
+        self.rewards = np.zeros(shape=[self.num_envs], dtype=np.float32)
         self.dones = np.zeros(shape=[self.num_envs], dtype=np.bool_)
+
+    def seed(self, seeds=None):
+        self._assert_is_running()
+        if seeds is None:
+            seeds = [None for _ in range(self.num_envs)]
+        if isinstance(seeds, int):
+            seeds = [seeds + i for i in range(self.num_envs)]
+        assert len(seeds) == self.num_envs
+
+        if self._state != AsyncState.DEFAULT:
+            raise AlreadyPendingCallError('Calling `seed` while waiting '
+                                          'for a pending call to `{0}` to complete.'.format(
+                self._state.value), self._state.value)
+
+        for pipe, seed in zip(self.parent_pipes, seeds):
+            pipe.send(('seed', seed))
+        _, successes = zip(*[pipe.recv() for pipe in self.parent_pipes])
+        self._raise_if_errors(successes)
 
     """
     reset done
@@ -114,34 +132,35 @@ class AsyncVectorEnv(VectorEnv):
             raise mp.TimeoutError('The call to `reset_done_wait` has timed out after '
                                   '{0} second{1}.'.format(timeout, 's' if timeout > 1 else ''))
 
+        successes = []
         for i, pipe in enumerate(self.parent_pipes):
             if self.dones[i]:
                 result, success = pipe.recv()
-                assert success
+                successes.append(success)
                 if not self.shared_memory:
                     self.observations[i] = result
+            else:
+                successes.append(True)
+        self._raise_if_errors(successes)
 
         self._state = AsyncState.DEFAULT
 
         return deepcopy(self.observations) if self.copy else self.observations
 
-    def reset_done(self):
-        self.reset_done_async()
-        return self.reset_done_wait()
-
     """
     reset obs
     """
 
-    def reset_obs_async(self, obs):
+    def reset_obs_async(self, obs, mask=None):
         self._assert_is_running()
         if self._state != AsyncState.DEFAULT:
             raise AlreadyPendingCallError('Calling `reset_obs_async` while waiting '
                                           'for a pending call to `{0}` to complete'.format(
                 self._state.value), self._state.value)
-
-        for pipe, ob in zip(self.parent_pipes, obs):
-            pipe.send(('reset_obs', ob))
+        self._reset_mask = mask if mask is not None else np.ones(shape=(self.num_envs,), dtype=np.bool_)
+        for i, (pipe, ob) in enumerate(zip(self.parent_pipes, obs)):
+            if self._reset_mask[i]:
+                pipe.send(('reset_obs', ob))
         self._state = AsyncState.WAITING_RESET_OBS
 
     def reset_obs_wait(self, timeout=None):
@@ -155,36 +174,20 @@ class AsyncVectorEnv(VectorEnv):
             raise mp.TimeoutError('The call to `reset_wait` has timed out after '
                                   '{0} second{1}.'.format(timeout, 's' if timeout > 1 else ''))
 
-        results, successes = zip(*[pipe.recv() for pipe in self.parent_pipes])
-        self._raise_if_errors(successes)
+        successes = []
+        for i, pipe in enumerate(self.parent_pipes):
+            if self._reset_mask[i]:
+                result, success = pipe.recv()
+                successes.append(success)
+                if not self.shared_memory:
+                    self.observations[i] = result
+            else:
+                successes.append(True)
+        self._raise_if_errors(successes=successes)
+
         self._state = AsyncState.DEFAULT
 
-        if not self.shared_memory:
-            concatenate(results, self.observations, self.single_observation_space)
-
         return deepcopy(self.observations) if self.copy else self.observations
-
-    def reset_obs(self, obs):
-        self.reset_obs_async(obs)
-        return self.reset_obs_wait()
-
-    def seed(self, seeds=None):
-        self._assert_is_running()
-        if seeds is None:
-            seeds = [None for _ in range(self.num_envs)]
-        if isinstance(seeds, int):
-            seeds = [seeds + i for i in range(self.num_envs)]
-        assert len(seeds) == self.num_envs
-
-        if self._state != AsyncState.DEFAULT:
-            raise AlreadyPendingCallError('Calling `seed` while waiting '
-                                          'for a pending call to `{0}` to complete.'.format(
-                self._state.value), self._state.value)
-
-        for pipe, seed in zip(self.parent_pipes, seeds):
-            pipe.send(('seed', seed))
-        _, successes = zip(*[pipe.recv() for pipe in self.parent_pipes])
-        self._raise_if_errors(successes)
 
     """
     reset
@@ -237,21 +240,23 @@ class AsyncVectorEnv(VectorEnv):
     step
     """
 
-    def step_async(self, actions):
+    def step_async(self, actions, mask=None):
         """
         Parameters
         ----------
         actions : iterable of samples from `action_space`
             List of actions.
         """
+        self._mask = mask if mask is not None else np.ones(shape=(self.num_envs,), dtype=np.bool_)
         self._assert_is_running()
         if self._state != AsyncState.DEFAULT:
             raise AlreadyPendingCallError('Calling `step_async` while waiting '
                                           'for a pending call to `{0}` to complete.'.format(
                 self._state.value), self._state.value)
 
-        for pipe, action in zip(self.parent_pipes, actions):
-            pipe.send(('step', action))
+        for i, (pipe, action) in enumerate(zip(self.parent_pipes, actions)):
+            if self._mask[i]:
+                pipe.send(('step', action))
         self._state = AsyncState.WAITING_STEP
 
     def step_wait(self, timeout=None):
@@ -286,17 +291,28 @@ class AsyncVectorEnv(VectorEnv):
             raise mp.TimeoutError('The call to `step_wait` has timed out after '
                                   '{0} second{1}.'.format(timeout, 's' if timeout > 1 else ''))
 
-        results, successes = zip(*[pipe.recv() for pipe in self.parent_pipes])
-        self._raise_if_errors(successes)
-        self._state = AsyncState.DEFAULT
-        observations_list, rewards, dones, infos = zip(*results)
+        infos = []
+        successes = []
+        for i, pipe in enumerate(self.parent_pipes):
+            if self._mask[i]:
+                result, success = pipe.recv()
+                successes.append(success)
+                observation, reward, done, info = result
+                self.rewards[i] = reward
+                self.dones[i] = done
+                infos.append(info)
+                if not self.shared_memory:
+                    self.observations[i] = observation
+            else:
+                infos.append({})
+                successes.append(True)
+        self._raise_if_errors(successes=successes)
 
-        if not self.shared_memory:
-            concatenate(observations_list, self.observations,
-                        self.single_observation_space)
+        self._state = AsyncState.DEFAULT
 
         return (deepcopy(self.observations) if self.copy else self.observations,
-                np.array(rewards), np.array(dones, dtype=np.bool_), infos)
+                np.copy(self.rewards) if self.copy else self.rewards,
+                np.array(self.dones, dtype=np.bool_) if self.copy else self.dones, infos)
 
     def close_extras(self, timeout=None, terminate=False):
         """
@@ -441,8 +457,6 @@ def _worker_shared_memory(index, env_fn, pipe, parent_pipe, shared_memory, error
                 pipe.send((None, True))
             elif command == 'step':
                 observation, reward, done, info = env.step(data)
-                if done:
-                    observation = env.reset()
                 write_to_shared_memory(index, observation, shared_memory,
                                        observation_space)
                 pipe.send(((None, reward, done, info), True))

@@ -4,3 +4,4 @@ from .hopper import HopperEnv
 from .inverted_pendulum import InvertedPendulumEnv
 from .swimmer import SwimmerEnv
 from .walker2d import Walker2dEnv
+from .pendulum import PendulumEnv

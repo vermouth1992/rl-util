@@ -58,4 +58,4 @@ def make(id, num_envs=1, asynchronous=True, wrappers=None, **kwargs):
         return env
 
     env_fns = [_make_env for _ in range(num_envs)]
-    return AsyncVectorEnv(env_fns) if asynchronous else SyncVectorEnv(env_fns)
+    return AsyncVectorEnv(env_fns, shared_memory=False, **kwargs) if asynchronous else SyncVectorEnv(env_fns, **kwargs)
