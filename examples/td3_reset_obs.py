@@ -2,179 +2,101 @@
 TD3 if we can reset to any state in the environment. How it can help improve the sample efficiency
 """
 
-"""
-Twin Delayed DDPG. https://arxiv.org/abs/1802.09477.
-To obtain DDPG, set target smooth to zero and Q network ensembles to 1.
-"""
-
-import rlutils.tf as rlu
+import numpy as np
+import rlutils.infra as rl_infra
+import rlutils.np as rln
 import tensorflow as tf
-from rlutils.infra.runner import TFOffPolicyRunner
+from rlutils.algos.tf.mf import td3
 
 
-class TD3Agent(tf.keras.Model):
-    def __init__(self,
-                 obs_spec,
-                 act_spec,
-                 num_q_ensembles=2,
-                 policy_mlp_hidden=256,
-                 policy_lr=3e-4,
-                 q_mlp_hidden=256,
-                 q_lr=3e-4,
-                 tau=5e-3,
-                 gamma=0.99,
-                 actor_noise=0.1,
-                 target_noise=0.2,
-                 noise_clip=0.5,
-                 out_activation='tanh'
-                 ):
-        super(TD3Agent, self).__init__()
-        self.obs_spec = obs_spec
-        self.act_spec = act_spec
-        self.act_dim = self.act_spec.shape[0]
-        self.act_lim = act_spec.high[0]
-        self.actor_noise = actor_noise * self.act_lim
-        self.target_noise = target_noise * self.act_lim
-        self.noise_clip = noise_clip * self.act_lim
-        self.tau = tau
-        self.gamma = gamma
-        if out_activation == 'sin':
-            out_activation = tf.sin
-        elif out_activation == 'tanh':
-            out_activation = tf.tanh
-        else:
-            raise ValueError('Unknown output activation function')
-        if len(self.obs_spec.shape) == 1:  # 1D observation
-            self.obs_dim = self.obs_spec.shape[0]
-            self.policy_net = rlu.nn.DeterministicMLPActor(ob_dim=self.obs_dim, ac_dim=self.act_dim,
-                                                           mlp_hidden=policy_mlp_hidden,
-                                                           out_activation=out_activation)
-            self.target_policy_net = rlu.nn.DeterministicMLPActor(ob_dim=self.obs_dim, ac_dim=self.act_dim,
-                                                                  mlp_hidden=policy_mlp_hidden,
-                                                                  out_activation=out_activation)
-            rlu.functional.hard_update(self.target_policy_net, self.policy_net)
-            self.q_network = rlu.nn.EnsembleMinQNet(self.obs_dim, self.act_dim, q_mlp_hidden,
-                                                    num_ensembles=num_q_ensembles)
-            self.target_q_network = rlu.nn.EnsembleMinQNet(self.obs_dim, self.act_dim, q_mlp_hidden,
-                                                           num_ensembles=num_q_ensembles)
-            rlu.functional.hard_update(self.target_q_network, self.q_network)
-        else:
-            raise NotImplementedError
+class TD3Agent(td3.TD3Agent):
+    @tf.function
+    def compute_q_values_tf(self, obs):
+        act = self.policy_net(obs)
+        return self.q_network((obs, act, tf.constant(True)))
 
-        self.policy_optimizer = tf.keras.optimizers.Adam(lr=policy_lr)
-        self.q_optimizer = tf.keras.optimizers.Adam(lr=q_lr)
+    def compute_q_values(self, obs):
+        return self.compute_q_values_tf(tf.convert_to_tensor(obs)).numpy()
 
-    def set_logger(self, logger):
-        self.logger = logger
+
+class BatchSamplerResetObs(rl_infra.samplers.BatchSampler):
+    def __init__(self, agent, **kwargs):
+        self.agent = agent
+        super(BatchSamplerResetObs, self).__init__(**kwargs)
+
+    def reset(self):
+        self._global_env_step_reset = 0
+        self._global_env_step_reset_obs = 0
+        self.reset_obs = False
+        super(BatchSamplerResetObs, self).reset()
 
     def log_tabular(self):
-        for i in range(self.q_network.num_ensembles):
-            self.logger.log_tabular(f'Q{i + 1}Vals', with_min_and_max=True)
-        self.logger.log_tabular('LossPi', average_only=True)
-        self.logger.log_tabular('LossQ', average_only=True)
-
-    @tf.function
-    def update_target_q(self):
-        rlu.functional.soft_update(self.target_q_network, self.q_network, self.tau)
-
-    @tf.function
-    def update_target_policy(self):
-        rlu.functional.soft_update(self.target_policy_net, self.policy_net, self.tau)
-
-    def _compute_next_obs_q(self, next_obs):
-        next_action = self.target_policy_net(next_obs)
-        # Target policy smoothing
-        if self.target_noise > 0.:
-            epsilon = tf.random.normal(shape=[tf.shape(next_obs)[0], self.act_dim]) * self.target_noise
-            epsilon = tf.clip_by_value(epsilon, -self.noise_clip, self.noise_clip)
-            next_action = next_action + epsilon
-            next_action = tf.clip_by_value(next_action, -self.act_lim, self.act_lim)
-        next_q_value = self.target_q_network((next_obs, next_action, tf.constant(True)))
-        return next_q_value
-
-    @tf.function
-    def _update_q_nets(self, obs, act, next_obs, done, rew):
-        print(f'Tracing _update_nets with obs={obs}, actions={act}')
-        # compute target q
-        next_q_value = self._compute_next_obs_q(next_obs)
-        q_target = rlu.functional.compute_target_value(rew, self.gamma, done, next_q_value)
-        # q loss
-        with tf.GradientTape() as q_tape:
-            q_tape.watch(self.q_network.trainable_variables)
-            q_values = self.q_network((obs, act, tf.constant(False)))  # (num_ensembles, None)
-            q_values_loss = 0.5 * tf.square(tf.expand_dims(q_target, axis=0) - q_values)
-            # (num_ensembles, None)
-            q_values_loss = tf.reduce_sum(q_values_loss, axis=0)  # (None,)
-            # apply importance weights
-            q_values_loss = tf.reduce_mean(q_values_loss)
-        q_gradients = q_tape.gradient(q_values_loss, self.q_network.trainable_variables)
-        self.q_optimizer.apply_gradients(zip(q_gradients, self.q_network.trainable_variables))
-
-        self.update_target_q()
-
-        info = dict(
-            LossQ=q_values_loss,
-        )
-        for i in range(self.q_network.num_ensembles):
-            info[f'Q{i + 1}Vals'] = q_values[i]
-        return info
-
-    @tf.function
-    def _update_actor(self, obs):
-        print(f'Tracing _update_actor with obs={obs}')
-        # policy loss
-        with tf.GradientTape() as policy_tape:
-            policy_tape.watch(self.policy_net.trainable_variables)
-            a = self.policy_net(obs)
-            q = self.q_network((obs, a, tf.constant(True)))
-            policy_loss = -tf.reduce_mean(q, axis=0)
-        policy_gradients = policy_tape.gradient(policy_loss, self.policy_net.trainable_variables)
-        self.policy_optimizer.apply_gradients(zip(policy_gradients, self.policy_net.trainable_variables))
-
-        self.update_target_policy()
-
-        info = dict(
-            LossPi=policy_loss,
-        )
-        return info
-
-    def train_on_batch(self, data, **kwargs):
-        update_target = data.pop('update_target')
-        obs = data['obs']
-        info = self._update_q_nets(**data)
-        if update_target:
-            actor_info = self._update_actor(obs)
-            info.update(actor_info)
-        self.logger.store(**rlu.functional.to_numpy_or_python_type(info))
-
-    @tf.function
-    def act_batch_test_tf(self, obs):
-        return self.policy_net(obs)
-
-    @tf.function
-    def act_batch_explore_tf(self, obs):
-        print('Tracing act_batch_explore')
-        pi_final = self.policy_net(obs)
-        noise = tf.random.normal(shape=[tf.shape(obs)[0], self.act_dim], dtype=tf.float32) * self.actor_noise
-        pi_final_noise = pi_final + noise
-        pi_final_noise = tf.clip_by_value(pi_final_noise, -self.act_lim, self.act_lim)
-        return pi_final_noise
-
-    def act_batch_test(self, obs):
-        return self.act_batch_test_tf(tf.convert_to_tensor(obs)).numpy()
-
-    def act_batch_explore(self, obs):
-        return self.act_batch_explore_tf(tf.convert_to_tensor(obs)).numpy()
+        super(BatchSamplerResetObs, self).log_tabular()
+        self.logger.log_tabular('TotalEnvInteractsResetDone', self._global_env_step_reset)
+        self.logger.log_tabular('TotalEnvInteractsResetObs', self._global_env_step_reset_obs)
 
 
-class Runner(TFOffPolicyRunner):
+    def sample(self, num_steps, collect_fn, replay_buffer):
+        for _ in range(num_steps):
+            a = collect_fn(self.o)
+            assert not np.any(np.isnan(a)), f'NAN action: {a}'
+            # Step the env
+            o2, r, d, infos = self.env.step(a)
+            self.ep_ret += r
+            self.ep_len += 1
+
+            timeouts = rln.gather_dict_key(infos=infos, key='TimeLimit.truncated', default=False, dtype=np.bool)
+            # Ignore the "done" signal if it comes from hitting the time
+            # horizon (that is, when it's an artificial terminal signal
+            # that isn't based on the agent's state)
+            true_d = np.logical_and(d, np.logical_not(timeouts))
+
+            # Store experience to replay buffer
+            replay_buffer.add(dict(
+                obs=self.o,
+                act=a,
+                rew=r,
+                next_obs=o2,
+                done=true_d
+            ))
+
+            # Super critical, easy to overlook step: make sure to update
+            # most recent observation!
+            self.o = o2
+
+            # End of trajectory handling
+            if np.any(d):
+                self.logger.store(EpRet=self.ep_ret[d], EpLen=self.ep_len[d])
+                self.ep_ret[d] = 0
+                self.ep_len[d] = 0
+                # instead of reset to the initial state, reset to the state which has the highest
+                # q value from a random batch
+                if self._global_env_step_reset_obs > self._global_env_step_reset:
+                    self.reset_obs = False
+                    self.o = self.env.reset_done()
+                else:
+                    self.reset_obs = True
+                    batch = replay_buffer.sample()
+                    q_values = self.agent.compute_q_values(batch['obs'])
+                    argmax = np.argsort(q_values, axis=0)[::-1][:self.env.num_envs]
+                    self.o = self.env.reset_obs(batch['obs'][argmax], mask=d)
+
+            self._global_env_step += self.env.num_envs
+            if self.reset_obs:
+                self._global_env_step_reset_obs += self.env.num_envs
+            else:
+                self._global_env_step_reset += self.env.num_envs
 
 
+class Runner(rl_infra.runner.TFOffPolicyRunner):
+    def setup_sampler(self, start_steps):
+        self.start_steps = start_steps
+        self.sampler = BatchSamplerResetObs(env=self.env, agent=self.agent)
 
     @classmethod
     def main(cls,
              env_name,
-             epochs=200,
+             epochs=300,
              policy_mlp_hidden=256,
              policy_lr=1e-3,
              q_mlp_hidden=256,
@@ -182,7 +104,7 @@ class Runner(TFOffPolicyRunner):
              actor_noise=0.1,
              target_noise=0.2,
              noise_clip=0.5,
-             out_activation='tanh',
+             out_activation='sin',
              tau=5e-3,
              gamma=0.99,
              seed=1,
@@ -211,3 +133,6 @@ class Runner(TFOffPolicyRunner):
                                 logger_path=logger_path,
                                 **kwargs)
 
+
+if __name__ == '__main__':
+    rl_infra.runner.run_func_as_main(Runner.main)

@@ -22,7 +22,7 @@ def thunk_pytorch(**kwargs):
     eval(f'{algo}.Runner.main')(**kwargs)
 
 
-class Benchmark(unittest.TestCase):
+class BenchmarkMujoco(unittest.TestCase):
     env_lst = ['Hopper-v2', 'Walker2d-v2', 'HalfCheetah-v2', 'Ant-v2']
     update_lst = [50, 1]
     seeds = list(range(110, 120))
@@ -61,11 +61,34 @@ class Benchmark(unittest.TestCase):
         algo = 'td3'
         experiments = rl_infra.runner.ExperimentGrid()
         experiments.add(key='env_name', vals=self.env_lst, shorthand='ENV')
-        experiments.add(key='update_every', vals=self.update_lst, in_name=True, shorthand='UPDATE')
+        experiments.add(key='update_every', vals=[1], in_name=True, shorthand='UPDATE')
         experiments.add(key='algo', vals=algo, in_name=True, shorthand='ALG')
         experiments.add(key='epochs', vals=300)
         experiments.add(key='seed', vals=self.seeds)
         experiments.add(key='out_activation', vals='sin', in_name=True)
+        experiments.run(thunk=thunk, data_dir='benchmark_results')
+
+
+class BenchmarkMujocoNT(unittest.TestCase):
+    env_lst = ['HopperNT-v2', 'Walker2dNT-v2', 'AntNT-v2']
+    seeds = list(range(110, 120))
+
+    def test_sac(self):
+        algo = 'sac'
+        experiments = rl_infra.runner.ExperimentGrid()
+        experiments.add(key='env_name', vals=self.env_lst, shorthand='ENV', in_name=True)
+        experiments.add(key='algo', vals=algo, in_name=True, shorthand='ALG')
+        experiments.add(key='epochs', vals=300)
+        experiments.add(key='seed', vals=self.seeds)
+        experiments.run(thunk=thunk, data_dir='benchmark_results')
+
+    def test_td3(self):
+        algo = 'td3'
+        experiments = rl_infra.runner.ExperimentGrid()
+        experiments.add(key='env_name', vals=self.env_lst, shorthand='ENV')
+        experiments.add(key='algo', vals=algo, in_name=True, shorthand='ALG')
+        experiments.add(key='epochs', vals=300)
+        experiments.add(key='seed', vals=self.seeds)
         experiments.run(thunk=thunk, data_dir='benchmark_results')
 
 

@@ -6,48 +6,43 @@ from . import wrappers
 
 __all__ = ['make']
 
-register(
-    id='AntTruncated-v2',
-    entry_point='rlutils.gym.envs:AntEnvTruncated',
-    max_episode_steps=1000,
-    reward_threshold=6000.0,
-)
+for var in ['TruncatedObs', 'ResetObs', 'NT']:
+    register(
+        id=f'Ant{var}-v2',
+        entry_point=f'rlutils.gym.envs:Ant{var}Env',
+        max_episode_steps=1000,
+        reward_threshold=6000.0,
+    )
 
-register(
-    id='HumanoidTruncated-v2',
-    entry_point='rlutils.gym.envs:HumanoidEnvTruncated',
-    max_episode_steps=1000,
-)
+    register(
+        id=f'Hopper{var}-v2',
+        entry_point=f'rlutils.gym.envs:Hopper{var}Env',
+        max_episode_steps=1000,
+        reward_threshold=6000.0,
+    )
+
+    register(
+        id=f'Walker2d{var}-v2',
+        entry_point=f'rlutils.gym.envs:Walker2d{var}Env',
+        max_episode_steps=1000,
+    )
+
+    register(
+        id=f'Humanoid{var}-v2',
+        entry_point=f'rlutils.gym.envs:Humanoid{var}Env',
+        max_episode_steps=1000,
+    )
+
+    if var != 'NT':
+        register(
+            id=f'HalfCheetah{var}-v2',
+            entry_point=f'rlutils.gym.envs:HalfCheetah{var}Env',
+            max_episode_steps=1000,
+            reward_threshold=4800.0,
+        )
 
 register(
     id='PendulumResetObs-v0',
-    entry_point='rlutils.gym.envs:PendulumEnvResetObs',
+    entry_point='rlutils.gym.envs:PendulumResetObsEnv',
     max_episode_steps=200,
-)
-
-register(
-    id='HopperResetObs-v2',
-    entry_point='rlutils.gym.envs:HopperEnvResetObs',
-    max_episode_steps=1000,
-    reward_threshold=3800.0,
-)
-
-register(
-    id='Walker2dResetObs-v2',
-    entry_point='rlutils.gym.envs:Walker2dEnvResetObs',
-    max_episode_steps=1000,
-)
-
-register(
-    id='HalfCheetahResetObs-v2',
-    entry_point='rlutils.gym.envs:HalfCheetahEnvResetObs',
-    max_episode_steps=1000,
-    reward_threshold=4800.0,
-)
-
-register(
-    id='AntResetObs-v2',
-    entry_point='rlutils.gym.envs:AntEnvResetObs',
-    max_episode_steps=1000,
-    reward_threshold=6000.0,
 )

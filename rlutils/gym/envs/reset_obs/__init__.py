@@ -1,7 +1,7 @@
-from .ant import AntEnv
-from .half_cheetah import HalfCheetahEnv
-from .hopper import HopperEnv
-from .inverted_pendulum import InvertedPendulumEnv
-from .swimmer import SwimmerEnv
-from .walker2d import Walker2dEnv
-from .pendulum import PendulumEnv
+from .ant import AntEnv as AntResetObsEnv
+from .half_cheetah import HalfCheetahEnv as HalfCheetahResetObsEnv
+from .hopper import HopperEnv as HopperResetObsEnv
+from .inverted_pendulum import InvertedPendulumEnv as InvertedPendulumResetObsEnv
+from .pendulum import PendulumEnv as PendulumResetObsEnv
+from .swimmer import SwimmerEnv as SwimmerResetObsEnv
+from .walker2d import Walker2dEnv as Walker2dResetObsEnv
