@@ -6,7 +6,7 @@ from . import wrappers
 
 __all__ = ['make']
 
-for var in ['TruncatedObs', 'ResetObs', 'NT']:
+for var in ['ResetObs']:
     register(
         id=f'Ant{var}-v2',
         entry_point=f'rlutils.gym.envs:Ant{var}Env',
@@ -33,13 +33,26 @@ for var in ['TruncatedObs', 'ResetObs', 'NT']:
         max_episode_steps=1000,
     )
 
-    if var != 'NT':
-        register(
-            id=f'HalfCheetah{var}-v2',
-            entry_point=f'rlutils.gym.envs:HalfCheetah{var}Env',
-            max_episode_steps=1000,
-            reward_threshold=4800.0,
-        )
+    register(
+        id=f'HalfCheetah{var}-v2',
+        entry_point=f'rlutils.gym.envs:HalfCheetah{var}Env',
+        max_episode_steps=1000,
+        reward_threshold=4800.0,
+    )
+
+for var in ['TruncatedObs']:
+    register(
+        id=f'Ant{var}-v2',
+        entry_point=f'rlutils.gym.envs:Ant{var}Env',
+        max_episode_steps=1000,
+        reward_threshold=6000.0,
+    )
+
+    register(
+        id=f'Humanoid{var}-v2',
+        entry_point=f'rlutils.gym.envs:Humanoid{var}Env',
+        max_episode_steps=1000,
+    )
 
 register(
     id='PendulumResetObs-v0',
