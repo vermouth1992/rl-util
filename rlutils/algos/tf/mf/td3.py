@@ -168,6 +168,7 @@ class Runner(TFOffPolicyRunner):
     def main(cls,
              env_name,
              epochs=200,
+             num_q_ensembles=2,
              policy_mlp_hidden=256,
              policy_lr=1e-3,
              q_mlp_hidden=256,
@@ -175,7 +176,7 @@ class Runner(TFOffPolicyRunner):
              actor_noise=0.1,
              target_noise=0.2,
              noise_clip=0.5,
-             out_activation='tanh',
+             out_activation='sin',
              tau=5e-3,
              gamma=0.99,
              seed=1,
@@ -183,6 +184,7 @@ class Runner(TFOffPolicyRunner):
              **kwargs
              ):
         agent_kwargs = dict(
+            num_q_ensembles=num_q_ensembles,
             policy_mlp_hidden=policy_mlp_hidden,
             policy_lr=policy_lr,
             q_mlp_hidden=q_mlp_hidden,

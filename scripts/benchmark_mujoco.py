@@ -68,6 +68,17 @@ class BenchmarkMujoco(unittest.TestCase):
         experiments.add(key='out_activation', vals='sin', in_name=True)
         experiments.run(thunk=thunk, data_dir='benchmark_results')
 
+    def test_td3_num_ensembles(self):
+        algo = 'td3'
+        experiments = rl_infra.runner.ExperimentGrid()
+        experiments.add(key='env_name', vals=self.env_lst, shorthand='ENV', in_name=True)
+        experiments.add(key='update_every', vals=[1], in_name=True, shorthand='UPDATE')
+        experiments.add(key='algo', vals=algo, in_name=True, shorthand='ALG')
+        experiments.add(key='epochs', vals=300)
+        experiments.add(key='seed', vals=self.seeds)
+        experiments.add(key='num_q_ensembles', vals=[4, 6, 8], in_name=True)
+        experiments.run(thunk=thunk, data_dir='benchmark_results')
+
 
 if __name__ == '__main__':
     unittest.main()
