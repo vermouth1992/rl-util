@@ -7,10 +7,10 @@ import unittest
 
 import gym
 import numpy as np
-import rlutils.gym
 import rlutils.infra as rl_infra
 import rlutils.tf as rlu
 import tensorflow as tf
+from gym.wrappers import RescaleAction
 
 os.environ['TF_DETERMINISTIC_OPS'] = '1'
 from tqdm.auto import tqdm
@@ -36,10 +36,10 @@ class TestInfra(unittest.TestCase):
             num_envs = 5
             seed = 11
             num_test_episodes = 30
-            env = rlutils.gym.vector.make(id, num_envs=num_envs, asynchronous=asynchronous)
-            env.seed(seed)
-            mlp = rlu.nn.build_mlp(input_dim=env.single_observation_space.shape[0],
-                                   output_dim=env.single_action_space.shape[0],
+            env_fn = lambda: gym.make(id)
+            env = env_fn()
+            mlp = rlu.nn.build_mlp(input_dim=env.observation_space.shape[0],
+                                   output_dim=env.action_space.shape[0],
                                    mlp_hidden=8,
                                    out_activation='tanh')
 
@@ -49,14 +49,15 @@ class TestInfra(unittest.TestCase):
                 obs = np.expand_dims(obs, axis=0)
                 return get_action(obs)[0]
 
-            tester = rl_infra.Tester(test_env=env)
+            tester = rl_infra.Tester(env_fn=env_fn, num_parallel_env=num_envs,
+                                     asynchronous=asynchronous, seed=seed)
             ep_ret, ep_len = tester.test_agent(get_action=get_action, name='random',
                                                num_test_episodes=num_test_episodes)
 
             # ep_ret_1, ep_len_1 = tester.test_agent(get_action=get_action, name='random',
             #                                        num_test_episodes=num_test_episodes)
             # make 20 individual envs, run them independently
-            env_lst = [gym.make(id) for _ in range(num_envs)]
+            env_lst = [RescaleAction(gym.make(id), -1., 1.) for _ in range(num_envs)]
             for i, e in enumerate(env_lst):
                 e.seed(seed + i)
 

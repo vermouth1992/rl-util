@@ -6,6 +6,7 @@ Common in the runner:
 4. Run
 """
 
+import os
 import pprint
 import random
 from abc import abstractmethod, ABC
@@ -91,21 +92,13 @@ class BaseRunner(ABC):
                                                        asynchronous=asynchronous)
         env_seed = self.seeder.generate_seed()
         env_action_space_seed = self.seeder.generate_seed()
-        test_env_seed = self.seeder.generate_seed()
-        test_env_action_space_seed = self.seeder.generate_seed()
         self.env.seed(env_seed)
         self.env.action_space.seed(env_action_space_seed)
         self.seeds_info['env'] = env_seed
         self.seeds_info['env_action_space'] = env_action_space_seed
-        self.seeds_info['test_env'] = test_env_seed
-        self.seeds_info['test_env_action_space'] = test_env_action_space_seed
-        if num_test_episodes is not None:
-            self.test_env = rlutils.gym.utils.create_vector_env(env_fn=env_fn,
-                                                                normalize_action_space=True,
-                                                                num_parallel_env=num_test_episodes,
-                                                                asynchronous=asynchronous)
-            self.test_env.seed(test_env_seed)
-            self.test_env.action_space.seed(test_env_action_space_seed)
+
+        self.num_test_episodes = num_test_episodes
+        self.asynchronous = asynchronous
 
     def setup_agent(self, agent_cls, **kwargs):
         self.agent = agent_cls(obs_spec=self.env.single_observation_space,
@@ -131,6 +124,16 @@ class BaseRunner(ABC):
 
     def load_checkpoint(self, path=None):
         pass
+
+    def save_agent(self, path=None):
+        if path is None:
+            path = os.path.join(self.logger.output_dir, 'agent.tf')
+        self.agent.save_weights(path)
+
+    def load_agent(self, path=None):
+        if path is None:
+            path = os.path.join(self.logger.output_dir, 'agent.tf')
+        self.agent.load_weights(path)
 
 
 class OnPolicyRunner(BaseRunner):
@@ -197,8 +200,11 @@ class OffPolicyRunner(BaseRunner):
         self.updater.set_logger(self.logger)
 
     def setup_tester(self, num_test_episodes):
+        test_env_seed = self.seeder.generate_seed()
+        self.seeds_info['test_env'] = test_env_seed
         self.num_test_episodes = num_test_episodes
-        self.tester = rl_infra.Tester(self.test_env)
+        self.tester = rl_infra.Tester(env_fn=self.env_fn, num_parallel_env=num_test_episodes,
+                                      asynchronous=self.asynchronous, seed=test_env_seed)
 
     def setup_replay_buffer(self,
                             replay_size,

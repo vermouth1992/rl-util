@@ -1,4 +1,7 @@
+import time
+
 import numpy as np
+import rlutils
 from rlutils.gym.vector import VectorEnv
 from tqdm.auto import tqdm
 
@@ -8,8 +11,12 @@ class Tester(object):
     A tester is bound to a single environment. It can be used to test different agents.
     """
 
-    def __init__(self, test_env: VectorEnv, seed=None):
-        self.test_env = test_env
+    def __init__(self, env_fn, num_parallel_env, asynchronous=False, seed=None):
+        self.env_fn = env_fn
+        self.test_env = rlutils.gym.utils.create_vector_env(env_fn=env_fn,
+                                                            normalize_action_space=True,
+                                                            num_parallel_env=num_parallel_env,
+                                                            asynchronous=asynchronous)
         self.seed = seed
         self.logger = None
 
@@ -20,6 +27,23 @@ class Tester(object):
         assert self.logger is not None
         self.logger.log_tabular('TestEpRet', with_min_and_max=True)
         self.logger.log_tabular('TestEpLen', average_only=True)
+
+    def watch_agent(self, get_action, render=True, num_episodes=1):
+        env = self.env_fn()
+        for i in range(1, num_episodes + 1):
+            done = False
+            obs = env.reset()
+            total_reward = 0.
+            ep_len = 0
+            while not done:
+                if render:
+                    env.render()
+                a = get_action(np.expand_dims(obs, axis=0).astype(np.float32))[0]
+                obs, reward, done, info = env.step(a)
+                total_reward += reward
+                ep_len += 1
+                time.sleep(0.01)
+            print(f'Episode: {i}. Total Reward: {total_reward:.2f}. Episode Length: {ep_len}')
 
     def test_agent(self, get_action, name, num_test_episodes):
         if self.seed is not None:

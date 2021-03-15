@@ -71,6 +71,7 @@ class PyReplayBuffer(BaseReplayBuffer):
                  **kwargs):
         super(PyReplayBuffer, self).__init__(seed=seed)
         self.max_size = capacity
+        self.data_spec = data_spec
         self.storage = {key: np.zeros(combined_shape(self.capacity, item.shape), dtype=item.dtype)
                         for key, item in data_spec.items()}
         self.batch_size = batch_size
