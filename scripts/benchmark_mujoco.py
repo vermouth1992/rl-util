@@ -69,28 +69,5 @@ class BenchmarkMujoco(unittest.TestCase):
         experiments.run(thunk=thunk, data_dir='benchmark_results')
 
 
-class BenchmarkMujocoNT(unittest.TestCase):
-    env_lst = ['HopperNT-v2', 'Walker2dNT-v2', 'AntNT-v2']
-    seeds = list(range(110, 120))
-
-    def test_sac(self):
-        algo = 'sac'
-        experiments = rl_infra.runner.ExperimentGrid()
-        experiments.add(key='env_name', vals=self.env_lst, shorthand='ENV', in_name=True)
-        experiments.add(key='algo', vals=algo, in_name=True, shorthand='ALG')
-        experiments.add(key='epochs', vals=300)
-        experiments.add(key='seed', vals=self.seeds)
-        experiments.run(thunk=thunk, data_dir='benchmark_results')
-
-    def test_td3(self):
-        algo = 'td3'
-        experiments = rl_infra.runner.ExperimentGrid()
-        experiments.add(key='env_name', vals=self.env_lst, shorthand='ENV')
-        experiments.add(key='algo', vals=algo, in_name=True, shorthand='ALG')
-        experiments.add(key='epochs', vals=300)
-        experiments.add(key='seed', vals=self.seeds)
-        experiments.run(thunk=thunk, data_dir='benchmark_results')
-
-
 if __name__ == '__main__':
     unittest.main()
