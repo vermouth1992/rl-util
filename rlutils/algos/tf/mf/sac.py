@@ -1,5 +1,8 @@
 """
-Implement soft actor critic agent here
+Implement soft actor critic agent. To make fair comparison with td3, we
+1. Add target policy net
+2. Delay policy update by 2
+3. Use the same hyper-parameter as TD3
 """
 
 import rlutils.tf as rlu
@@ -12,7 +15,7 @@ class SACAgent(tf.keras.Model):
                  obs_spec,
                  act_spec,
                  num_ensembles=2,
-                 policy_mlp_hidden=128,
+                 policy_mlp_hidden=256,
                  policy_lr=3e-4,
                  q_mlp_hidden=256,
                  q_lr=3e-4,
@@ -30,6 +33,7 @@ class SACAgent(tf.keras.Model):
         if len(self.obs_spec.shape) == 1:  # 1D observation
             self.obs_dim = self.obs_spec.shape[0]
             self.policy_net = rlu.nn.SquashedGaussianMLPActor(self.obs_dim, self.act_dim, policy_mlp_hidden)
+            self.target_policy_net = rlu.nn.SquashedGaussianMLPActor(self.obs_dim, self.act_dim, policy_mlp_hidden)
             self.q_network = rlu.nn.EnsembleMinQNet(self.obs_dim, self.act_dim, q_mlp_hidden,
                                                     num_ensembles=num_ensembles)
             self.target_q_network = rlu.nn.EnsembleMinQNet(self.obs_dim, self.act_dim, q_mlp_hidden,
@@ -37,6 +41,7 @@ class SACAgent(tf.keras.Model):
         else:
             raise NotImplementedError
         rlu.functional.hard_update(self.target_q_network, self.q_network)
+        rlu.functional.hard_update(self.target_policy_net, self.policy_net)
 
         self.policy_optimizer = tf.keras.optimizers.Adam(lr=policy_lr)
         self.q_optimizer = tf.keras.optimizers.Adam(lr=q_lr)
@@ -63,12 +68,16 @@ class SACAgent(tf.keras.Model):
         self.logger.log_tabular('LossAlpha', average_only=True)
 
     @tf.function
+    def update_target_policy(self):
+        rlu.functional.soft_update(self.target_policy_net, self.policy_net, self.tau)
+
+    @tf.function
     def update_target_q(self):
         rlu.functional.soft_update(self.target_q_network, self.q_network, self.tau)
 
     def _compute_next_obs_q(self, next_obs):
         alpha = self.log_alpha()
-        next_action, next_action_log_prob, _, _ = self.policy_net((next_obs, tf.constant(False)))
+        next_action, next_action_log_prob, _, _ = self.target_policy_net((next_obs, tf.constant(False)))
         next_q_values = self.target_q_network(
             (next_obs, next_action, tf.constant(True))) - alpha * next_action_log_prob
         return next_q_values
@@ -133,6 +142,8 @@ class SACAgent(tf.keras.Model):
         else:
             alpha_loss = 0.
 
+        self.update_target_policy()
+
         info = dict(
             LogPi=log_prob,
             Alpha=alpha,
@@ -190,9 +201,9 @@ class Runner(TFOffPolicyRunner):
              epochs=100,
              # sac args
              policy_mlp_hidden=256,
-             policy_lr=3e-4,
+             policy_lr=1e-3,
              q_mlp_hidden=256,
-             q_lr=3e-4,
+             q_lr=1e-3,
              alpha=0.2,
              tau=5e-3,
              gamma=0.99,
@@ -217,7 +228,7 @@ class Runner(TFOffPolicyRunner):
             epochs=epochs,
             agent_cls=SACAgent,
             agent_kwargs=agent_kwargs,
-            policy_delay=1,
+            policy_delay=2,
             seed=seed,
             logger_path=logger_path,
             **kwargs
