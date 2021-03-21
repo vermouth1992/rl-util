@@ -1,0 +1,31 @@
+{
+    "agent_cls":	"SACAgent",
+    "agent_kwargs":	{
+        "alpha":	0.2,
+        "alpha_lr":	0.001,
+        "gamma":	0.99,
+        "policy_lr":	0.001,
+        "policy_mlp_hidden":	256,
+        "q_lr":	0.001,
+        "q_mlp_hidden":	256,
+        "target_entropy":	null,
+        "tau":	0.005
+    },
+    "batch_size":	256,
+    "cls":	"Runner",
+    "env_fn":	null,
+    "env_name":	"Walker2d-v2",
+    "epochs":	300,
+    "exp_name":	"env=walker2d-v2_alg=sac",
+    "logger_path":	"benchmark_results",
+    "num_parallel_env":	1,
+    "num_test_episodes":	30,
+    "policy_delay":	2,
+    "replay_size":	1000000,
+    "seed":	116,
+    "start_steps":	10000,
+    "steps_per_epoch":	10000,
+    "update_after":	5000,
+    "update_every":	1,
+    "update_per_step":	1
+}

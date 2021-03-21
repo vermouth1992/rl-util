@@ -25,6 +25,7 @@ class SACAgent(tf.keras.Model):
                  gamma=0.99,
                  target_entropy=None,
                  auto_alpha=True,
+                 exploration_bonus=True,
                  ):
         super(SACAgent, self).__init__()
         self.obs_spec = obs_spec
@@ -50,6 +51,7 @@ class SACAgent(tf.keras.Model):
         self.alpha_optimizer = tf.keras.optimizers.Adam(lr=alpha_lr)
         self.target_entropy = -self.act_dim if target_entropy is None else target_entropy
         self.auto_alpha = auto_alpha
+        self.exploration_bonus = exploration_bonus
 
         self.tau = tau
         self.gamma = gamma
@@ -78,8 +80,9 @@ class SACAgent(tf.keras.Model):
     def _compute_next_obs_q(self, next_obs):
         alpha = self.log_alpha()
         next_action, next_action_log_prob, _, _ = self.target_policy_net((next_obs, tf.constant(False)))
-        next_q_values = self.target_q_network(
-            (next_obs, next_action, tf.constant(True))) - alpha * next_action_log_prob
+        next_q_values = self.target_q_network((next_obs, next_action, tf.constant(True)))
+        if self.exploration_bonus:
+            next_q_values = next_q_values - alpha * next_action_log_prob
         return next_q_values
 
     @tf.function
@@ -204,6 +207,7 @@ class Runner(TFOffPolicyRunner):
              policy_lr=1e-3,
              q_mlp_hidden=256,
              q_lr=1e-3,
+             policy_delay=2,
              alpha=0.2,
              tau=5e-3,
              gamma=0.99,
@@ -228,7 +232,7 @@ class Runner(TFOffPolicyRunner):
             epochs=epochs,
             agent_cls=SACAgent,
             agent_kwargs=agent_kwargs,
-            policy_delay=2,
+            policy_delay=policy_delay,
             seed=seed,
             logger_path=logger_path,
             **kwargs
