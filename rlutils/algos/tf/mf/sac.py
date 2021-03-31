@@ -26,6 +26,7 @@ class SACAgent(tf.keras.Model):
                  target_entropy=None,
                  auto_alpha=True,
                  exploration_bonus=True,
+                 target_policy=True,
                  ):
         super(SACAgent, self).__init__()
         self.obs_spec = obs_spec
@@ -34,7 +35,12 @@ class SACAgent(tf.keras.Model):
         if len(self.obs_spec.shape) == 1:  # 1D observation
             self.obs_dim = self.obs_spec.shape[0]
             self.policy_net = rlu.nn.SquashedGaussianMLPActor(self.obs_dim, self.act_dim, policy_mlp_hidden)
-            self.target_policy_net = rlu.nn.SquashedGaussianMLPActor(self.obs_dim, self.act_dim, policy_mlp_hidden)
+            if target_policy:
+                print('Use target policy for SAC')
+                self.target_policy_net = rlu.nn.SquashedGaussianMLPActor(self.obs_dim, self.act_dim, policy_mlp_hidden)
+            else:
+                print('No target policy for SAC')
+                self.target_policy_net = None
             self.q_network = rlu.nn.EnsembleMinQNet(self.obs_dim, self.act_dim, q_mlp_hidden,
                                                     num_ensembles=num_ensembles)
             self.target_q_network = rlu.nn.EnsembleMinQNet(self.obs_dim, self.act_dim, q_mlp_hidden,
@@ -42,7 +48,8 @@ class SACAgent(tf.keras.Model):
         else:
             raise NotImplementedError
         rlu.functional.hard_update(self.target_q_network, self.q_network)
-        rlu.functional.hard_update(self.target_policy_net, self.policy_net)
+        if self.target_policy_net is not None:
+            rlu.functional.hard_update(self.target_policy_net, self.policy_net)
 
         self.policy_optimizer = tf.keras.optimizers.Adam(lr=policy_lr)
         self.q_optimizer = tf.keras.optimizers.Adam(lr=q_lr)
@@ -79,9 +86,13 @@ class SACAgent(tf.keras.Model):
 
     def _compute_next_obs_q(self, next_obs):
         alpha = self.log_alpha()
-        next_action, next_action_log_prob, _, _ = self.target_policy_net((next_obs, tf.constant(False)))
+        if self.target_policy_net is not None:
+            next_action, next_action_log_prob, _, _ = self.target_policy_net((next_obs, tf.constant(False)))
+        else:
+            next_action, next_action_log_prob, _, _ = self.policy_net((next_obs, tf.constant(False)))
         next_q_values = self.target_q_network((next_obs, next_action, tf.constant(True)))
         if self.exploration_bonus:
+            print('Tracing exploration bonus')
             next_q_values = next_q_values - alpha * next_action_log_prob
         return next_q_values
 
@@ -145,7 +156,8 @@ class SACAgent(tf.keras.Model):
         else:
             alpha_loss = 0.
 
-        self.update_target_policy()
+        if self.target_policy_net is not None:
+            self.update_target_policy()
 
         info = dict(
             LogPi=log_prob,
@@ -212,6 +224,7 @@ class Runner(TFOffPolicyRunner):
              tau=5e-3,
              gamma=0.99,
              seed=1,
+             target_policy=True,
              logger_path: str = None,
              **kwargs
              ):
@@ -224,7 +237,8 @@ class Runner(TFOffPolicyRunner):
             alpha_lr=q_lr,
             tau=tau,
             gamma=gamma,
-            target_entropy=None
+            target_entropy=None,
+            target_policy=target_policy
         )
 
         super(Runner, cls).main(

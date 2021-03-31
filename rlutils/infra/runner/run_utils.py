@@ -311,7 +311,6 @@ class ExperimentGrid:
             # differently so that runs of the same experiment, with different 
             # seeds, will be grouped by experiment name.
             if (len(v) > 1 or inn) and not (k == 'seed'):
-
                 # Use the shorthand if available, otherwise the full name.
                 param_name = sh if sh is not None else k
                 param_name = valid_str(param_name)
@@ -319,13 +318,13 @@ class ExperimentGrid:
                 # Get variant value for parameter k
                 variant_val = get_val(variant, k)
 
-                # Append to name
-                if all_bools(v):
-                    # If this is a param which only takes boolean values,
-                    # only include in the name if it's True for this variant.
-                    var_name += ('_' + param_name) if variant_val else ''
-                else:
-                    var_name += '_' + param_name + '=' + valid_str(variant_val)
+                # # Append to name
+                # if all_bools(v):
+                #     # If this is a param which only takes boolean values,
+                #     # only include in the name if it's True for this variant.
+                #     var_name += ('_' + param_name) if variant_val else ''
+                # else:
+                var_name += '_' + param_name + '=' + valid_str(variant_val)
 
         return var_name.lstrip('_')
 
