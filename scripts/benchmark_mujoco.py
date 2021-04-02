@@ -23,9 +23,8 @@ def thunk_pytorch(**kwargs):
 
 
 class BenchmarkMujoco(unittest.TestCase):
-    env_lst = ['Hopper-v2', 'Walker2d-v2', 'HalfCheetah-v2', 'Ant-v2']
+    env_lst = ['Hopper-v2', 'HalfCheetah-v2', 'Ant-v2', 'Walker2d-v2']
     update_lst = [50, 1]
-    seeds = list(range(110, 120))
 
     def test_sac_pytorch_hopper(self):
         algo = 'sac_pytorch'
@@ -34,17 +33,29 @@ class BenchmarkMujoco(unittest.TestCase):
         experiments.add(key='update_every', vals=self.update_lst[0], in_name=True, shorthand='UPDATE')
         experiments.add(key='algo', vals=algo, in_name=True, shorthand='ALG')
         experiments.add(key='epochs', vals=300)
-        experiments.add(key='seed', vals=self.seeds)
+        experiments.add(key='seed', vals=SEEDS)
         experiments.run(thunk=thunk_pytorch, data_dir='benchmark_results')
 
-    def test_sac_update_every(self):
+    def test_sac_tf(self):
         algo = 'sac'
         experiments = rl_infra.runner.ExperimentGrid()
         experiments.add(key='env_name', vals=self.env_lst, shorthand='ENV', in_name=True)
-        experiments.add(key='update_every', vals=self.update_lst, in_name=True, shorthand='UPDATE')
         experiments.add(key='algo', vals=algo, in_name=True, shorthand='ALG')
         experiments.add(key='epochs', vals=300)
-        experiments.add(key='seed', vals=self.seeds)
+        experiments.add(key='seed', vals=SEEDS)
+        experiments.run(thunk=thunk, data_dir='benchmark_results')
+
+    def test_sac_original_tf(self):
+        algo = 'sac'
+        experiments = rl_infra.runner.ExperimentGrid()
+        experiments.add(key='env_name', vals=self.env_lst[::-1], shorthand='ENV', in_name=True)
+        experiments.add(key='algo', vals=algo, in_name=True, shorthand='ALG')
+        experiments.add(key='epochs', vals=300)
+        experiments.add(key='seed', vals=SEEDS)
+        experiments.add(key='policy_lr', vals=3e-4)
+        experiments.add(key='q_lr', vals=3e-4)
+        experiments.add(key='policy_delay', vals=[1], in_name=True)
+        experiments.add(key='target_policy', vals=[False], in_name=True)
         experiments.run(thunk=thunk, data_dir='benchmark_results')
 
     def test_td3_update_every(self):
@@ -54,7 +65,7 @@ class BenchmarkMujoco(unittest.TestCase):
         experiments.add(key='update_every', vals=self.update_lst, in_name=True, shorthand='UPDATE')
         experiments.add(key='algo', vals=algo, in_name=True, shorthand='ALG')
         experiments.add(key='epochs', vals=300)
-        experiments.add(key='seed', vals=self.seeds)
+        experiments.add(key='seed', vals=SEEDS)
         experiments.run(thunk=thunk, data_dir='benchmark_results')
 
     def test_td3_out_activation(self):
@@ -64,7 +75,7 @@ class BenchmarkMujoco(unittest.TestCase):
         experiments.add(key='update_every', vals=[1], in_name=True, shorthand='UPDATE')
         experiments.add(key='algo', vals=algo, in_name=True, shorthand='ALG')
         experiments.add(key='epochs', vals=300)
-        experiments.add(key='seed', vals=self.seeds)
+        experiments.add(key='seed', vals=SEEDS)
         experiments.add(key='out_activation', vals='sin', in_name=True)
         experiments.run(thunk=thunk, data_dir='benchmark_results')
 
@@ -75,10 +86,14 @@ class BenchmarkMujoco(unittest.TestCase):
         experiments.add(key='update_every', vals=[1], in_name=True, shorthand='UPDATE')
         experiments.add(key='algo', vals=algo, in_name=True, shorthand='ALG')
         experiments.add(key='epochs', vals=300)
-        experiments.add(key='seed', vals=self.seeds)
+        experiments.add(key='seed', vals=SEEDS)
         experiments.add(key='num_q_ensembles', vals=[4, 6, 8], in_name=True)
         experiments.run(thunk=thunk, data_dir='benchmark_results')
 
 
 if __name__ == '__main__':
+    import os
+
+    SEEDS = os.environ.get('SEEDS').split()
+    SEEDS = [int(s) for s in SEEDS]
     unittest.main()
