@@ -26,7 +26,7 @@ class BaseRunner(ABC):
         self.steps_per_epoch = steps_per_epoch
         self.epochs = epochs
         self.seed = seed
-        self.global_step = 0
+        self.global_step = 1
         self.total_steps = steps_per_epoch * epochs
         self.seeder = rl_infra.Seeder(seed=seed)
         self.timer = rl_infra.StopWatch()

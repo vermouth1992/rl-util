@@ -147,7 +147,7 @@ class EnsembleDynamicsModel(tf.keras.Model):
         inputs_ph = tf.keras.Input(shape=(self.obs_dim + self.act_dim))
         inputs = tf.tile(tf.expand_dims(inputs_ph, axis=0), (self.num_ensembles, 1, 1))
         mlp = build_mlp(self.obs_dim + self.act_dim, output_dim, mlp_hidden=self.mlp_hidden,
-                        num_ensembles=self.num_ensembles, squeeze=False, batch_norm=True, num_layers=self.num_layers,
+                        num_ensembles=self.num_ensembles, squeeze=False, layer_norm=True, num_layers=self.num_layers,
                         activation='relu')
         mlp.add(tfl.DistributionLambda(make_distribution_fn=lambda t: make_independent_normal_from_params(t)))
         outputs = mlp(inputs)
