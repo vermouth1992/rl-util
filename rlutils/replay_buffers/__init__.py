@@ -1,4 +1,4 @@
-from .base import BaseReplayBuffer
+from .base import BaseReplayBuffer, PyReplayBuffer
 from .pg_py import GAEBuffer
 from .prioritized_py import PyPrioritizedReplayBuffer
 from .reverb import ReverbReplayBuffer, ReverbTransitionReplayBuffer

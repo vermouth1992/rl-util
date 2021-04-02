@@ -1,8 +1,11 @@
+import sklearn
 import tensorflow as tf
 import tensorflow_probability as tfp
+from rlutils.tf.callbacks import EpochLoggerCallback
 from rlutils.tf.distributions import make_independent_normal_from_params, apply_squash_log_prob, \
     make_independent_centered_beta_from_params, make_independent_truncated_normal, make_independent_normal
 from rlutils.tf.functional import clip_atanh
+from rlutils.tf.future import minimize
 
 from .functional import build_mlp
 
@@ -33,6 +36,17 @@ def get_pi_action_categorical(deterministic, pi_distribution):
 
 
 class StochasticActor(tf.keras.Model):
+    def __init__(self):
+        super(StochasticActor, self).__init__()
+        self.logger = None
+
+    def set_logger(self, logger):
+        self.logger = logger
+
+    def log_tabular(self):
+        self.logger.log_tabular('TrainPolicyLoss', average_only=True)
+        self.logger.log_tabular('ValPolicyLoss', average_only=True)
+
     @property
     def pi_dist_layer(self):
         raise NotImplementedError
@@ -45,6 +59,47 @@ class StochasticActor(tf.keras.Model):
 
     def transform_raw_log_prob(self, raw_log_prob, raw_action):
         return raw_log_prob
+
+    def train_step(self, data):
+        x, y, sample_weight = tf.keras.utils.unpack_x_y_sample_weight(data)
+        raw_y = self.inverse_transform_action(y)
+        with tf.GradientTape() as tape:
+            params = self.net(x)
+            pi_distribution = self.pi_dist_layer(params)
+            log_prob = pi_distribution.log_prob(raw_y)
+            loss = -tf.reduce_mean(log_prob)
+        minimize(loss, tape, self.net, self.optimizer)
+
+        return {
+            'loss': loss
+        }
+
+    def test_step(self, data):
+        x, y, sample_weight = tf.keras.utils.unpack_x_y_sample_weight(data)
+        raw_y = self.inverse_transform_action(y)
+        params = self.net(x)
+        pi_distribution = self.pi_dist_layer(params)
+        log_prob = pi_distribution.log_prob(raw_y)
+        loss = -tf.reduce_mean(log_prob)
+        return {
+            'loss': loss
+        }
+
+    def update(self, inputs, sample_weights=None, batch_size=64, num_epochs=60, patience=None,
+               validation_split=0.1, shuffle=True):
+        """ Update the policy via maximum likelihood estimation """
+        obs = inputs['obs']
+        actions = inputs['act']
+        callbacks = [EpochLoggerCallback(keys=[('TrainPolicyLoss', 'loss'), ('ValPolicyLoss', 'val_loss')],
+                                         epochs=num_epochs, logger=self.logger, decs='Training Model')]
+
+        if patience is not None:
+            callbacks.append(tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=patience,
+                                                              restore_best_weights=True))
+        obs, actions = sklearn.utils.shuffle(obs, actions)
+        self.fit(x=obs, y=actions, sample_weight=sample_weights, epochs=num_epochs,
+                 batch_size=batch_size, verbose=False, validation_split=validation_split,
+                 callbacks=callbacks, shuffle=shuffle)
 
 
 class CategoricalActor(StochasticActor):
