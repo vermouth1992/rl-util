@@ -4,7 +4,7 @@ from .base import ModelBasedStaticFn
 
 
 class InvertedPendulumBulletEnvFn(ModelBasedStaticFn):
-    env_name = 'InvertedPendulumBulletEnv-v0'
+    env_name = ['InvertedPendulumBulletEnv-v0']
     terminate = True
     reward = True
 
@@ -53,7 +53,7 @@ class InvertedPendulumBulletEnvFn(ModelBasedStaticFn):
 
 
 class InvertedPendulumSwingupBulletEnvFn(ModelBasedStaticFn):
-    env_name = 'InvertedPendulumSwingupBulletEnv-v0'
+    env_name = ['InvertedPendulumSwingupBulletEnv-v0']
     reward = True
     terminate = True
 
@@ -71,7 +71,7 @@ class InvertedPendulumSwingupBulletEnvFn(ModelBasedStaticFn):
 
 
 class ReacherBulletEnvFn(ModelBasedStaticFn):
-    env_name = 'ReacherBulletEnv-v0'
+    env_name = ['ReacherBulletEnv-v0']
     terminate = True
     reward = True
 
@@ -139,7 +139,7 @@ class ReacherBulletEnvFn(ModelBasedStaticFn):
 
 
 class HopperBulletEnvFn(ModelBasedStaticFn):
-    env_name = 'HopperBulletEnv-v0'
+    env_name = ['HopperBulletEnv-v0']
     terminate = True
     reward = False
 
@@ -169,17 +169,17 @@ class HopperBulletEnvFn(ModelBasedStaticFn):
 
 
 class Walker2DBulletEnvFn(HopperBulletEnvFn):
-    env_name = 'Walker2DBulletEnv-v0'
+    env_name = ['Walker2DBulletEnv-v0']
 
 
 class HalfCheetahBulletEnvFn(HopperBulletEnvFn):
-    env_name = 'HalfCheetahBulletEnv-v0'
+    env_name = ['HalfCheetahBulletEnv-v0']
     terminate = True
     reward = False
 
 
 class AntBulletEnvFn(HopperBulletEnvFn):
-    env_name = 'AntBulletEnv-v0'
+    env_name = ['AntBulletEnv-v0']
     terminate = True
     reward = False
 
@@ -212,7 +212,8 @@ model_based_wrapper_dict = {}
 def register():
     for name, obj in inspect.getmembers(sys.modules[__name__]):
         if inspect.isclass(obj):
-            model_based_wrapper_dict[obj().env_name] = obj
+            for name in obj().env_name:
+                model_based_wrapper_dict[name] = obj
 
 
 if len(model_based_wrapper_dict) == 0:

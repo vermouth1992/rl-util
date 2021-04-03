@@ -11,13 +11,13 @@ model_based_wrapper_dict = {}
 class ReacherFn(ModelBasedStaticFn):
     reward = False
     terminate = True
-    env_name = 'Reacher-v2'
+    env_name = ['Reacher-v2']
 
 
 class HopperFn(ModelBasedStaticFn):
     reward = False
     terminate = True
-    env_name = 'Hopper-v2'
+    env_name = ['Hopper-v2']
 
     @staticmethod
     def terminate_fn_tf_batch(states, actions, next_states):
@@ -59,7 +59,7 @@ class HopperFn(ModelBasedStaticFn):
 class Walker2dFn(ModelBasedStaticFn):
     reward = False
     terminate = True
-    env_name = 'Walker2d-v2'
+    env_name = ['Walker2d-v2']
 
     @staticmethod
     def terminate_fn_tf_batch(states, actions, next_states):
@@ -98,7 +98,7 @@ class Walker2dFn(ModelBasedStaticFn):
 class HalfCheetahFn(ModelBasedStaticFn):
     reward = False
     terminate = True
-    env_name = 'HalfCheetah-v2'
+    env_name = ['HalfCheetah-v2']
 
 
 class AntFn(ModelBasedStaticFn):
@@ -136,7 +136,7 @@ class AntFn(ModelBasedStaticFn):
 class HumanoidFn(ModelBasedStaticFn):
     reward = False
     terminate = True
-    env_name = 'Humanoid-v2'
+    env_name = ['Humanoid-v2']
 
     @staticmethod
     def terminate_fn_numpy_batch(states, actions, next_states):

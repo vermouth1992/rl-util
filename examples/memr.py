@@ -244,7 +244,7 @@ class Runner(rl_infra.runner.TFOffPolicyRunner):
              epochs=100,
              start_steps=3000,
              update_after=750,
-             update_every=50,
+             update_every=1,
              update_per_step=10,
              policy_delay=1,
              batch_size=4000,

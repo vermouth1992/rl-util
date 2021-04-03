@@ -4,7 +4,7 @@ from .base import ModelBasedStaticFn
 
 
 class PendulumFn(ModelBasedStaticFn):
-    env_name = 'Pendulum-v0'
+    env_name = ['Pendulum-v0']
     terminate = True
     reward = True
 
@@ -43,7 +43,8 @@ model_based_wrapper_dict = {}
 def register():
     for name, obj in inspect.getmembers(sys.modules[__name__]):
         if inspect.isclass(obj):
-            model_based_wrapper_dict[obj().env_name] = obj
+            for name in obj().env_name:
+                model_based_wrapper_dict[name] = obj
 
 
 if len(model_based_wrapper_dict) == 0:
