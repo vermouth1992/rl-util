@@ -61,7 +61,7 @@ class MEMRUpdater(rl_infra.OffPolicyUpdater):
         self.model_replay_buffer = model_replay_buffer
         self.model_rollout_freq = model_rollout_freq
         self.beta_scheduler = rln.schedulers.LinearSchedule(total_steps, initial_p=0.4, final_p=1.0)
-        self.update_scheduler = rln.schedulers.LinearSchedule(total_steps, initial_p=1, final_p=self.update_per_step)
+        self.update_scheduler = rln.schedulers.LinearSchedule(total_steps, initial_p=5, final_p=self.update_per_step)
 
     def log_tabular(self):
         super(MEMRUpdater, self).log_tabular()
