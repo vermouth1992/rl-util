@@ -1,10 +1,23 @@
-from setuptools import setup
+import os
+
+from setuptools import setup, find_packages
+
+dir_path = os.path.dirname(os.path.realpath(__file__))
+
+with open(os.path.join(dir_path, 'rlutils', 'VERSION.txt')) as f:
+    version = f.read()
+
+with open(os.path.join(dir_path, 'README.md'), encoding='utf-8') as f:
+    long_description = f.read()
 
 setup(
-    name='rlutils',
-    version='0.1',
-    packages=['rlutils'],
-    url='https://github.com/vermouth1992/rl-util',
+    name='rlutils-python',
+    long_description=long_description,
+    long_description_content_type='text/markdown',
+    version=version,
+    packages=find_packages(),
+    include_package_data=True,
+    url='https://github.com/vermouth1992/rlutils',
     license='Apache 2.0',
     author='Chi Zhang',
     author_email='czhangseu@gmail.com',
