@@ -35,3 +35,7 @@ def make_independent_normal(loc, scale, ndims=1):
     distribution = td.Independent(base_distribution=td.Normal(loc=loc, scale=scale),
                                   reinterpreted_batch_ndims=ndims)
     return distribution
+
+
+def make_independent_categorical_from_params(params, ndims=1):
+    return td.Independent(td.Categorical(logits=params), reinterpreted_batch_ndims=ndims)

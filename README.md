@@ -5,6 +5,12 @@ or Pytorch.
 
 ## Install
 
+Note that the dependencies will not be installed automatically. Please check dependencies by running
+
+```bash
+python -m rlutils.check_dependencies
+```
+
 ## Documentation
 
 TODO

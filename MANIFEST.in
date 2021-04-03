@@ -1,1 +1,3 @@
 include rlutils/VERSION.txt
+include LICENSE
+include requirement.txt

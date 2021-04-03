@@ -1,3 +1,4 @@
 from .actors import SquashedGaussianMLPActor
-from .layers import EnsembleDense, SqueezeLayer, LagrangeLayer
+from .functional import build_mlp
+from .layers import EnsembleDense, SqueezeLayer, LagrangeLayer, LambdaLayer
 from .values import EnsembleMinQNet

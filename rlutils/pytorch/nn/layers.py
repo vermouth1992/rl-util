@@ -62,3 +62,12 @@ class LagrangeLayer(nn.Module):
 
     def forward(self):
         return F.softplus(self.log_alpha)
+
+
+class LambdaLayer(nn.Module):
+    def __init__(self, function):
+        super(LambdaLayer, self).__init__()
+        self.function = function
+
+    def forward(self, x):
+        return self.function(x)

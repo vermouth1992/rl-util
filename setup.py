@@ -4,10 +4,10 @@ from setuptools import setup, find_packages
 
 dir_path = os.path.dirname(os.path.realpath(__file__))
 
-with open(os.path.join(dir_path, 'rlutils', 'VERSION.txt')) as f:
+with open(os.path.join(dir_path, 'rlutils', 'VERSION.txt'), 'r') as f:
     version = f.read()
 
-with open(os.path.join(dir_path, 'README.md'), encoding='utf-8') as f:
+with open(os.path.join(dir_path, 'README.md'), 'r', encoding='utf-8') as f:
     long_description = f.read()
 
 setup(
