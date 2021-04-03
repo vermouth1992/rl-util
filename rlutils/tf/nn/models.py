@@ -2,9 +2,9 @@
 Implementing dynamics model to perform Model-based RL
 """
 
-import sklearn
 import tensorflow as tf
 import tensorflow_probability as tfp
+from rlutils.np.functional import shuffle_dict_data
 from rlutils.tf.callbacks import EpochLoggerCallback
 from rlutils.tf.distributions import make_independent_normal_from_params
 from rlutils.tf.functional import expand_ensemble_dim
@@ -97,9 +97,77 @@ class DynamicsModelRNNCell(tf.keras.layers.AbstractRNNCell):
         raise NotImplementedError
 
 
+class RewardModel(tf.keras.Model):
+    def __init__(self, obs_dim, act_dim, mlp_hidden=64, num_layers=4, lr=1e-3):
+        super(RewardModel, self).__init__()
+        self.num_layers = num_layers
+        self.mlp_hidden = mlp_hidden
+        self.obs_dim = obs_dim
+        self.act_dim = act_dim
+        self.lr = lr
+        self.model = build_mlp(input_dim=obs_dim + act_dim + obs_dim, output_dim=1, mlp_hidden=mlp_hidden,
+                               squeeze=True)
+        self.compile(optimizer=get_adam_optimizer(lr=self.lr))
+
+    def call(self, inputs, training=None, mask=None):
+        return self.model(inputs=inputs, training=training)
+
+    def set_logger(self, logger):
+        self.logger = logger
+
+    def log_tabular(self):
+        self.logger.log_tabular('TrainRewardLoss', average_only=True)
+        self.logger.log_tabular('ValRewardLoss', average_only=True)
+
+    def train_step(self, data):
+        x, y, sample_weight = tf.keras.utils.unpack_x_y_sample_weight(data=data)
+        obs, act, next_obs = x
+        rew = y
+        inputs = tf.concat((obs, act, next_obs), axis=-1)
+        with tf.GradientTape() as tape:
+            tape.watch(self.model.trainable_variables)
+            output = self.model(inputs, training=True)  # (ensemble, None)
+            loss = tf.reduce_mean(0.5 * (rew - output) ** 2, axis=0)
+
+        minimize(loss, tape, self.model, optimizer=self.optimizer)
+
+        return {
+            'loss': loss
+        }
+
+    def test_step(self, data):
+        x, y, sample_weight = tf.keras.utils.unpack_x_y_sample_weight(data=data)
+        obs, act, next_obs = x
+        rew = y
+        inputs = tf.concat((obs, act, next_obs), axis=-1)
+        output = self.model(inputs, training=True)  # (ensemble, None)
+        loss = tf.reduce_mean(0.5 * (rew - output) ** 2, axis=0)
+
+        return {
+            'loss': loss
+        }
+
+    def update(self, inputs, sample_weights=None, batch_size=64, num_epochs=60, patience=None,
+               validation_split=0.1, shuffle=True):
+        obs = inputs['obs']
+        actions = inputs['act']
+        next_obs = inputs['next_obs']
+        rew = inputs['rew']
+
+        callbacks = [EpochLoggerCallback(keys=[('TrainRewardLoss', 'loss'), ('ValRewardLoss', 'val_loss')],
+                                         epochs=num_epochs, logger=self.logger, decs='Training Reward Model')]
+
+        if patience is not None:
+            callbacks.append(tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=patience,
+                                                              restore_best_weights=True))
+
+        self.fit(x=(obs, actions, next_obs), y=rew, sample_weight=sample_weights, epochs=num_epochs,
+                 batch_size=batch_size, verbose=False, validation_split=validation_split,
+                 callbacks=callbacks, shuffle=shuffle)
+
+
 class EnsembleDynamicsModel(tf.keras.Model):
-    def __init__(self, obs_dim, act_dim, mlp_hidden=64, num_layers=4, num_ensembles=5, lr=1e-3,
-                 reward_fn=None, terminate_fn=None):
+    def __init__(self, obs_dim, act_dim, mlp_hidden=64, num_layers=4, num_ensembles=5, lr=1e-3):
         super(EnsembleDynamicsModel, self).__init__()
         self.lr = lr
         self.num_layers = num_layers
@@ -107,43 +175,22 @@ class EnsembleDynamicsModel(tf.keras.Model):
         self.num_ensembles = num_ensembles
         self.obs_dim = obs_dim
         self.act_dim = act_dim
-        self.reward_fn = reward_fn
-        self.terminate_fn = terminate_fn
-        self.obs_normalizer = StandardScaler(input_shape=[None, self.obs_dim])
-        self.action_normalizer = StandardScaler(input_shape=[None, self.act_dim])
-        self.delta_obs_normalizer = StandardScaler(input_shape=[None, self.obs_dim])
-        if self.reward_fn is None:
-            self.rew_normalizer = StandardScaler(input_shape=[None])
-        else:
-            self.rew_normalizer = None
         self.logger = None
         self.model = self.build_computation_graph()
         self.compile(optimizer=get_adam_optimizer(lr=self.lr))
-
-    def set_statistics(self, obs, act, next_obs, rew):
-        self.obs_normalizer.adapt(data=obs)
-        self.action_normalizer.adapt(data=act)
-        self.delta_obs_normalizer.adapt(data=next_obs - obs)
-        if self.reward_fn is None:
-            self.rew_normalizer.adapt(data=rew)
 
     def set_logger(self, logger):
         self.logger = logger
 
     def log_tabular(self):
-        self.logger.log_tabular('TrainModelLoss', average_only=True)
-        self.logger.log_tabular('ValModelLoss', average_only=True)
+        self.logger.log_tabular('TrainDynamicsLoss', average_only=True)
+        self.logger.log_tabular('ValDynamicsLoss', average_only=True)
 
     def build_computation_graph(self):
         """
         The input is always without ensemble. It will output (ensemble, None, ...)
         """
-
-        if self.reward_fn is None:
-            output_dim = (self.obs_dim + 1) * 2
-        else:
-            output_dim = self.obs_dim * 2
-
+        output_dim = self.obs_dim * 2
         inputs_ph = tf.keras.Input(shape=(self.obs_dim + self.act_dim))
         inputs = tf.tile(tf.expand_dims(inputs_ph, axis=0), (self.num_ensembles, 1, 1))
         mlp = build_mlp(self.obs_dim + self.act_dim, output_dim, mlp_hidden=self.mlp_hidden,
@@ -157,17 +204,9 @@ class EnsembleDynamicsModel(tf.keras.Model):
     def train_step(self, data):
         x, y, sample_weight = tf.keras.utils.unpack_x_y_sample_weight(data=data)
         obs, act = x
-        next_obs, rew = y
-        delta_obs = next_obs - obs
-        norm_obs = self.obs_normalizer(obs)
-        norm_act = self.action_normalizer(act)
-        inputs = tf.concat((norm_obs, norm_act), axis=-1)
-        norm_delta_obs = self.delta_obs_normalizer(delta_obs)  # (None, obs_dim)
-        if self.reward_fn is None:
-            outputs = tf.concat((norm_delta_obs, tf.expand_dims(rew, axis=-1)), axis=-1)
-        else:
-            outputs = norm_delta_obs
-
+        delta_obs = y
+        inputs = tf.concat((obs, act), axis=-1)
+        outputs = delta_obs
         outputs = expand_ensemble_dim(outputs, num_ensembles=self.num_ensembles)
         with tf.GradientTape() as tape:
             tape.watch(self.model.trainable_variables)
@@ -179,23 +218,15 @@ class EnsembleDynamicsModel(tf.keras.Model):
         minimize(loss, tape, self.model, optimizer=self.optimizer)
 
         return {
-            'loss': loss / self.num_ensembles
+            'loss': loss / self.num_ensembles / self.obs_dim
         }
 
     def test_step(self, data):
         x, y, sample_weight = tf.keras.utils.unpack_x_y_sample_weight(data=data)
         obs, act = x
-        next_obs, rew = y
-        delta_obs = next_obs - obs
-        norm_obs = self.obs_normalizer(obs)
-        norm_act = self.action_normalizer(act)
-        inputs = tf.concat((norm_obs, norm_act), axis=-1)
-        norm_delta_obs = self.delta_obs_normalizer(delta_obs)  # (None, obs_dim)
-        if self.reward_fn is None:
-            outputs = tf.concat((norm_delta_obs, tf.expand_dims(rew, axis=-1)), axis=-1)
-        else:
-            outputs = norm_delta_obs
-
+        delta_obs = y
+        inputs = tf.concat((obs, act), axis=-1)
+        outputs = delta_obs
         outputs = expand_ensemble_dim(outputs, num_ensembles=self.num_ensembles)
         out_dist = self.model(inputs, training=False)
         nll = -out_dist.log_prob(outputs)  # (ensemble, None)
@@ -203,29 +234,88 @@ class EnsembleDynamicsModel(tf.keras.Model):
         loss = tf.reduce_mean(nll, axis=0)
 
         return {
-            'loss': loss / self.num_ensembles
+            'loss': loss / self.num_ensembles / self.obs_dim
         }
 
     def update(self, inputs, sample_weights=None, batch_size=64, num_epochs=60, patience=None,
                validation_split=0.1, shuffle=True):
         obs = inputs['obs']
         actions = inputs['act']
-        next_obs = inputs['next_obs']
-        rewards = inputs['rew']
-        # get data statistic
-        self.set_statistics(obs, actions, next_obs, rewards)
-
-        callbacks = [EpochLoggerCallback(keys=[('TrainModelLoss', 'loss'), ('ValModelLoss', 'val_loss')],
-                                         epochs=num_epochs, logger=self.logger, decs='Training Model')]
+        delta_obs = inputs['delta_obs']
+        callbacks = [EpochLoggerCallback(keys=[('TrainDynamicsLoss', 'loss'), ('ValDynamicsLoss', 'val_loss')],
+                                         epochs=num_epochs, logger=self.logger, decs='Training Dynamics Model')]
 
         if patience is not None:
             callbacks.append(tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=patience,
                                                               restore_best_weights=True))
 
-        obs, actions, next_obs, rewards = sklearn.utils.shuffle(obs, actions, next_obs, rewards)
-        self.fit(x=(obs, actions), y=(next_obs, rewards), sample_weight=sample_weights, epochs=num_epochs,
+        self.fit(x=(obs, actions), y=delta_obs, sample_weight=sample_weights, epochs=num_epochs,
                  batch_size=batch_size, verbose=False, validation_split=validation_split,
                  callbacks=callbacks, shuffle=shuffle)
+
+
+class EnsembleWorldModel(tf.keras.Model):
+    def __init__(self, obs_dim, act_dim, mlp_hidden=64, num_layers=4, num_ensembles=5, lr=1e-3,
+                 reward_fn=None, terminate_fn=None):
+        super(EnsembleWorldModel, self).__init__()
+        self.obs_dim = obs_dim
+        self.act_dim = act_dim
+        self.logger = None
+        self.dynamics_model = EnsembleDynamicsModel(obs_dim=obs_dim, act_dim=act_dim, mlp_hidden=mlp_hidden,
+                                                    num_layers=num_layers, num_ensembles=num_ensembles,
+                                                    lr=lr)
+        self.obs_normalizer = StandardScaler(input_shape=[None, self.obs_dim])
+        self.action_normalizer = StandardScaler(input_shape=[None, self.act_dim])
+        self.delta_obs_normalizer = StandardScaler(input_shape=[None, self.obs_dim])
+        self.reward_fn = reward_fn
+        self.terminate_fn = terminate_fn
+        if self.reward_fn is None:
+            self.rew_normalizer = StandardScaler(input_shape=[None])
+            self.rew_model = RewardModel(obs_dim=obs_dim, act_dim=act_dim, mlp_hidden=mlp_hidden,
+                                         num_layers=num_layers, lr=lr)
+
+    def set_logger(self, logger):
+        self.logger = logger
+        self.dynamics_model.set_logger(self.logger)
+        if self.reward_fn is None:
+            self.rew_model.set_logger(self.logger)
+
+    def log_tabular(self):
+        self.dynamics_model.log_tabular()
+        if self.reward_fn is None:
+            self.rew_model.log_tabular()
+
+    def set_statistics(self, obs, act, next_obs, rew):
+        self.obs_normalizer.adapt(data=obs)
+        self.action_normalizer.adapt(data=act)
+        self.delta_obs_normalizer.adapt(data=next_obs - obs)
+        if self.reward_fn is None:
+            self.rew_normalizer.adapt(data=rew)
+
+    def update(self, inputs, sample_weights=None, batch_size=64, num_epochs=60, patience=None,
+               validation_split=0.1, shuffle=True):
+        inputs = shuffle_dict_data(inputs)
+
+        obs = inputs['obs']
+        actions = inputs['act']
+        next_obs = inputs['next_obs']
+        rew = inputs['rew']
+        # get data statistic
+        self.set_statistics(obs, actions, next_obs, rew)
+
+        # get normalized data
+        inputs['delta_obs'] = self.delta_obs_normalizer(inputs['next_obs'] - inputs['obs'])
+        inputs['obs'] = self.obs_normalizer(inputs['obs'])
+        inputs['act'] = self.action_normalizer(inputs['act'])
+        inputs['next_obs'] = self.obs_normalizer(inputs['next_obs'])
+        inputs['rew'] = self.rew_normalizer(inputs['rew'])
+
+        self.dynamics_model.update(inputs=inputs, sample_weights=sample_weights, batch_size=batch_size,
+                                   num_epochs=num_epochs, patience=patience, validation_split=validation_split,
+                                   shuffle=shuffle)
+        self.rew_model.update(inputs=inputs, sample_weights=sample_weights, batch_size=batch_size,
+                              num_epochs=num_epochs, patience=patience, validation_split=validation_split,
+                              shuffle=shuffle)
 
     def build_ts_model(self, horizon, num_particles, policy=None):
         """ Given obs and a sequence of actions, generate a sequence of next_obs, rewards and dones. """
@@ -265,29 +355,29 @@ class EnsembleDynamicsModel(tf.keras.Model):
         norm_state = self.obs_normalizer(state)
         norm_action = self.action_normalizer(action)
         inputs = tf.concat((norm_state, norm_action), axis=-1)
-        output = self.model(inputs=inputs, training=training)  # (num_ensembles, None, ob_dim)
+        output = self.dynamics_model.model(inputs=inputs, training=training)  # (num_ensembles, None, ob_dim)
 
         if sample:
             output = output.sample()
             # randomly select one bootstrap for each data
             bootstrap_idx = tf.stack(
-                [tf.random.uniform(shape=(batch_size,), maxval=self.num_ensembles, dtype=tf.int32),
+                [tf.random.uniform(shape=(batch_size,), maxval=self.dynamics_model.num_ensembles, dtype=tf.int32),
                  tf.range(batch_size)], axis=-1)
             output = tf.gather_nd(output, bootstrap_idx)  # (None, ob_dim)
         else:
             output = tf.reduce_mean(output.mean(), axis=0)
 
+        delta_state_norm = output
+        delta_state = self.delta_obs_normalizer.inverse_call(delta_state_norm)
+        next_state = delta_state + state
+        norm_next_obs = self.obs_normalizer(next_state)
+
         if self.reward_fn is None:
-            delta_state_norm = output[:, :-1]
-            reward_norm = output[:, -1]
-            reward = self.rew_normalizer.inverse_call(reward_norm)
-            delta_state = self.delta_obs_normalizer.inverse_call(delta_state_norm)
-            next_state = delta_state + state
+            inputs = tf.concat((norm_state, norm_action, norm_next_obs), axis=-1)
+            norm_reward = self.rew_model.model(inputs, training=False)
+            reward = self.rew_normalizer.inverse_call(norm_reward)
         else:
             print('Using external reward function')
-            delta_state_norm = output
-            delta_state = self.delta_obs_normalizer.inverse_call(delta_state_norm)
-            next_state = delta_state + state
             reward = self.reward_fn(state, action, next_state)
 
         if self.terminate_fn is None:

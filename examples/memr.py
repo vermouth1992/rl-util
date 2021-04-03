@@ -79,7 +79,7 @@ class MEMRUpdater(rl_infra.OffPolicyUpdater):
             # sample obs and unroll transitions.
             data, idx = self.replay_buffer.sample(beta=self.beta_scheduler.value(global_step))
             transitions = self.agent.unroll_trajectory(data['obs'])
-            transitions['weights'] = data['weights']
+            transitions['weights'] = data['weights'] / np.mean(data['weights'])
             self.agent.behavior_policy.train_on_batch(x=transitions['obs'],
                                                       y=transitions['act'])
             # update the priority after update the behavior policy
@@ -121,12 +121,12 @@ class MEMRAgent(tf.keras.Model):
             self.obs_dim = self.obs_spec.shape[0]
         else:
             raise NotImplementedError
-        self.dynamics_model = rlu.nn.EnsembleDynamicsModel(obs_dim=self.obs_dim, act_dim=self.act_dim,
-                                                           mlp_hidden=model_mlp_hidden, num_layers=4,
-                                                           num_ensembles=model_num_ensembles, lr=model_lr,
-                                                           reward_fn=reward_fn, terminate_fn=terminate_fn)
+        self.dynamics_model = rlu.nn.EnsembleWorldModel(obs_dim=self.obs_dim, act_dim=self.act_dim,
+                                                        mlp_hidden=model_mlp_hidden, num_layers=4,
+                                                        num_ensembles=model_num_ensembles, lr=model_lr,
+                                                        reward_fn=reward_fn, terminate_fn=terminate_fn)
         self.agent = sac.SACAgent(obs_spec=obs_spec, act_spec=act_spec, policy_mlp_hidden=policy_mlp_hidden,
-                                  policy_lr=policy_lr, q_mlp_hidden=policy_mlp_hidden, q_lr=policy_lr, alpha=0.02,
+                                  policy_lr=policy_lr, q_mlp_hidden=policy_mlp_hidden, q_lr=policy_lr, alpha=1.0,
                                   alpha_lr=policy_lr, tau=5e-3, gamma=0.99, target_entropy=-(self.act_dim // 2),
                                   auto_alpha=True)
         self.behavior_policy = SquashedGaussianMLPActor(ob_dim=self.obs_dim, ac_dim=self.act_dim,
@@ -241,12 +241,12 @@ class Runner(rl_infra.runner.TFOffPolicyRunner):
              exp_name: str = None,
              steps_per_epoch=1000,
              epochs=100,
-             start_steps=1000,
+             start_steps=3000,
              update_after=750,
-             update_every=1,
+             update_every=50,
              update_per_step=10,
              policy_delay=1,
-             batch_size=100,
+             batch_size=4000,
              model_rollout_freq=50,
              num_model_rollouts=400,
              num_parallel_env=1,
