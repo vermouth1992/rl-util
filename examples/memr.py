@@ -61,7 +61,8 @@ class MEMRUpdater(rl_infra.OffPolicyUpdater):
         self.model_replay_buffer = model_replay_buffer
         self.model_rollout_freq = model_rollout_freq
         self.beta_scheduler = rln.schedulers.LinearSchedule(total_steps, initial_p=0.4, final_p=1.0)
-        self.update_scheduler = rln.schedulers.LinearSchedule(total_steps, initial_p=5, final_p=self.update_per_step)
+        self.update_scheduler = rln.schedulers.LinearSchedule(total_steps, initial_p=self.update_per_step,
+                                                              final_p=self.update_per_step)
 
     def log_tabular(self):
         super(MEMRUpdater, self).log_tabular()
@@ -111,7 +112,7 @@ class SquashedGaussianMLPActor(rlu.nn.SquashedGaussianMLPActor):
 
 class MEMRAgent(tf.keras.Model):
     def __init__(self, obs_spec, act_spec,
-                 model_mlp_hidden=512, model_lr=5e-3, model_num_ensembles=5, reward_fn=None, terminate_fn=None,
+                 model_mlp_hidden=512, model_lr=1e-3, model_num_ensembles=5, reward_fn=None, terminate_fn=None,
                  policy_mlp_hidden=256, policy_lr=3e-4):
         super(MEMRAgent, self).__init__()
         self.obs_spec = obs_spec
@@ -252,6 +253,12 @@ class Runner(rl_infra.runner.TFOffPolicyRunner):
              num_parallel_env=1,
              num_test_episodes=30,
              seed=1,
+             # agent
+             model_mlp_hidden=512,
+             model_lr=1e-3,
+             model_num_ensembles=5,
+             policy_mlp_hidden=256,
+             policy_lr=3e-4,
              # replay
              replay_size=int(1e6),
              logger_path='data'

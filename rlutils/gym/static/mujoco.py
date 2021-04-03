@@ -104,7 +104,7 @@ class HalfCheetahFn(ModelBasedStaticFn):
 class AntFn(ModelBasedStaticFn):
     reward = False
     terminate = True
-    env_name = 'Ant-v2'
+    env_name = ['Ant-v2', 'AntTruncatedObs-v2']
 
     @staticmethod
     def terminate_fn_numpy_batch(states, actions, next_states):
@@ -164,7 +164,8 @@ class HumanoidFn(ModelBasedStaticFn):
 def register():
     for name, obj in inspect.getmembers(sys.modules[__name__]):
         if inspect.isclass(obj):
-            model_based_wrapper_dict[obj().env_name] = obj
+            for name in obj().env_name:
+                model_based_wrapper_dict[name] = obj
 
 
 if len(model_based_wrapper_dict) == 0:
