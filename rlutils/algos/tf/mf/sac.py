@@ -26,7 +26,7 @@ class SACAgent(tf.keras.Model):
                  target_entropy=None,
                  auto_alpha=True,
                  exploration_bonus=True,
-                 target_policy=True,
+                 target_policy=False,
                  ):
         super(SACAgent, self).__init__()
         self.obs_spec = obs_spec
@@ -216,15 +216,15 @@ class Runner(TFOffPolicyRunner):
              epochs=100,
              # sac args
              policy_mlp_hidden=256,
-             policy_lr=1e-3,
+             policy_lr=3e-4,
              q_mlp_hidden=256,
-             q_lr=1e-3,
-             policy_delay=2,
+             q_lr=3e-4,
+             policy_delay=1,
              alpha=0.2,
              tau=5e-3,
              gamma=0.99,
              seed=1,
-             target_policy=True,
+             target_policy=False,
              logger_path: str = None,
              **kwargs
              ):
