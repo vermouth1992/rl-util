@@ -15,3 +15,11 @@ def set_device(d):
             print('CUDA is not available in this machine. Setting to cpu.')
             d = 'cpu'
     device = d
+
+
+def to_numpy(tensor):
+    return tensor.detach().cpu().numpy()
+
+
+def print_pytorch_version():
+    print(f'Tensorflow version: {torch.__version__}')
