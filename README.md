@@ -15,6 +15,9 @@ python -m rlutils.check_dependencies
 
 TODO
 
+## TODO
+* [ ] Update Pytorch version to have the same code as Tensorflow version
+
 ## LICENSE
 
 Apache License 2.0

@@ -17,6 +17,10 @@ def set_device(d):
     device = d
 
 
+def to_numpy(tensor):
+    return tensor.detach().cpu().numpy()
+
+
 cpu = torch.device('cpu')
 cuda = []
 for i in range(torch.cuda.device_count()):
