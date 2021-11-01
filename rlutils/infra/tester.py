@@ -3,10 +3,11 @@ import time
 import numpy as np
 import rlutils
 from rlutils.gym.vector import VectorEnv
+from rlutils.interface.logging import LogUser
 from tqdm.auto import tqdm
 
 
-class Tester(object):
+class Tester(LogUser):
     """
     A tester is bound to a single environment. It can be used to test different agents.
     """
@@ -19,9 +20,6 @@ class Tester(object):
                                                             asynchronous=asynchronous)
         self.seed = seed
         self.logger = None
-
-    def set_logger(self, logger):
-        self.logger = logger
 
     def log_tabular(self):
         assert self.logger is not None

@@ -1,7 +1,8 @@
 import time
+from rlutils.interface.logging import LogUser
 
 
-class StopWatch(object):
+class StopWatch(LogUser):
     def __init__(self):
         self.start_time = None
 
@@ -10,9 +11,6 @@ class StopWatch(object):
 
     def lap(self):
         self.current_time = time.time()
-
-    def set_logger(self, logger):
-        self.logger = logger
 
     def log_tabular(self):
         self.lap()

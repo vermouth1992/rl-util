@@ -3,20 +3,15 @@ from abc import ABC, abstractmethod
 import numpy as np
 import rlutils.np as rln
 from rlutils.gym.vector import VectorEnv
+from rlutils.interface.logging import LogUser
 from tqdm.auto import trange
 
 
-class Sampler(ABC):
+class Sampler(LogUser, ABC):
     def __init__(self, env: VectorEnv):
         self.env = env
 
     def reset(self):
-        pass
-
-    def set_logger(self, logger):
-        self.logger = logger
-
-    def log_tabular(self):
         pass
 
     @abstractmethod

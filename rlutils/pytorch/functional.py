@@ -6,13 +6,13 @@ import torch.nn as nn
 def soft_update(target: nn.Module, source: nn.Module, tau):
     with torch.no_grad():
         for target_param, param in zip(target.parameters(), source.parameters()):
-            target_param.data.copy_(target_param.data * (1.0 - tau) + param.data * tau)
+            target_param.data.copy_(target_param.data * (1.0 - tau) + param.data.to(target_param.data.device) * tau)
 
 
 def hard_update(target: nn.Module, source: nn.Module):
     with torch.no_grad():
         for target_param, param in zip(target.parameters(), source.parameters()):
-            target_param.data.copy_(param.data)
+            target_param.data.copy_(param.data.to(target_param.data.device))
 
 
 def compute_target_value(reward, gamma, done, next_q):
