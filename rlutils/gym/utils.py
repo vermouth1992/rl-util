@@ -3,6 +3,15 @@ import numpy as np
 import rlutils.gym
 
 
+def verify_continuous_action_space(act_spec: gym.spaces.Box):
+    assert np.max(act_spec.high) == np.min(act_spec.high), \
+        f'Not all the values in high are the same. Got {act_spec.high}'
+    assert np.max(act_spec.low) == np.min(act_spec.low), \
+        f'Not all the values in low are the same. Got {act_spec.low}'
+    assert act_spec.high[0] + act_spec.low[0] == 0., f'High is not equal to low'
+    assert act_spec.high[0] == 1.0
+
+
 def create_vector_env(env_fn=None,
                       normalize_action_space=True,
                       num_parallel_env=1,

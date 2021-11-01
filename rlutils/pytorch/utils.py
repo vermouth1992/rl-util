@@ -15,3 +15,13 @@ def set_device(d):
             print('CUDA is not available in this machine. Setting to cpu.')
             d = 'cpu'
     device = d
+
+
+cpu = torch.device('cpu')
+cuda = []
+for i in range(torch.cuda.device_count()):
+    cuda.append(torch.device(f'cuda:{i}'))
+
+
+def print_version():
+    print(f'Pytorch version: {torch.__version__}, git version: {torch.version.git_version}')

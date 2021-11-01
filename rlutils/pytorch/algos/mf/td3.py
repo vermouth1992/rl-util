@@ -9,12 +9,14 @@ import rlutils.pytorch.utils as ptu
 import torch
 import torch.nn as nn
 from rlutils.infra.runner import run_func_as_main, PytorchOffPolicyRunner
-from rlutils.pytorch.functional import soft_update, compute_target_value, to_numpy_or_python_type
+from rlutils.pytorch.functional import soft_update, hard_update, compute_target_value, to_numpy_or_python_type
 from rlutils.pytorch.nn import EnsembleMinQNet
 from rlutils.pytorch.nn.functional import build_mlp
+from rlutils.gym.utils import verify_continuous_action_space
+from rlutils.interface.agent import Agent
 
 
-class TD3Agent(nn.Module):
+class TD3Agent(nn.Module, Agent):
     def __init__(self,
                  obs_spec,
                  act_spec,
@@ -33,7 +35,8 @@ class TD3Agent(nn.Module):
         self.obs_spec = obs_spec
         self.act_spec = act_spec
         self.act_dim = self.act_spec.shape[0]
-        self.act_lim = 1.
+        verify_continuous_action_space(act_spec)
+        self.act_lim = act_spec.high[0]
         self.actor_noise = actor_noise
         self.target_noise = target_noise
         self.noise_clip = noise_clip
@@ -43,6 +46,13 @@ class TD3Agent(nn.Module):
             self.obs_dim = self.obs_spec.shape[0]
             self.policy_net = build_mlp(self.obs_dim, self.act_dim, mlp_hidden=policy_mlp_hidden, num_layers=3,
                                         out_activation='tanh').to(ptu.device)
+            # optimization for GPU-based implement. We create a separate inference network on CPU instead of sending
+            # small observation to GPU, which is bounded by PCIe.
+            if ptu.device == "cuda":
+                self.inference_net = copy.deepcopy(self.policy_net).cpu()
+            else:
+                self.inference_net = self.policy_net
+
             self.target_policy_net = copy.deepcopy(self.policy_net).to(ptu.device)
             self.q_network = EnsembleMinQNet(self.obs_dim, self.act_dim, q_mlp_hidden,
                                              num_ensembles=num_q_ensembles).to(ptu.device)
@@ -52,9 +62,6 @@ class TD3Agent(nn.Module):
 
         self.policy_optimizer = torch.optim.Adam(params=self.policy_net.parameters(), lr=policy_lr)
         self.q_optimizer = torch.optim.Adam(params=self.q_network.parameters(), lr=q_lr)
-
-    def set_logger(self, logger):
-        self.logger = logger
 
     def log_tabular(self):
         self.logger.log_tabular('Q1Vals', with_min_and_max=True)
@@ -132,21 +139,24 @@ class TD3Agent(nn.Module):
             info.update(actor_info)
             self.update_target()
 
+            if ptu.device == "cuda":
+                hard_update(self.inference_net, self.policy_net)
+
         self.logger.store(**to_numpy_or_python_type(info))
 
     def act_batch_test(self, obs):
-        obs = torch.as_tensor(obs, dtype=torch.float32, device=ptu.device)
+        obs = torch.as_tensor(obs, dtype=torch.float32)
         with torch.no_grad():
-            return self.policy_net(obs).cpu().numpy()
+            return self.policy_net(obs).numpy()
 
     def act_batch_explore(self, obs):
-        obs = torch.as_tensor(obs, dtype=torch.float32, device=ptu.device)
+        obs = torch.as_tensor(obs, dtype=torch.float32)
         with torch.no_grad():
-            pi_final = self.policy_net(obs)
+            pi_final = self.inference_net(obs)
             noise = torch.randn_like(pi_final) * self.actor_noise
             pi_final = pi_final + noise
             pi_final = torch.clip(pi_final, -self.act_lim, self.act_lim)
-            return pi_final.cpu().numpy()
+            return pi_final.numpy()
 
 
 class Runner(PytorchOffPolicyRunner):

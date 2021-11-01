@@ -160,9 +160,6 @@ class OnPolicyRunner(BaseRunner):
 
     def on_epoch_end(self, epoch):
         self.logger.log_tabular('Epoch', epoch)
-        self.sampler.log_tabular()
-        self.updater.log_tabular()
-        self.timer.log_tabular()
         self.logger.dump_tabular()
 
     def on_train_begin(self):
@@ -245,10 +242,6 @@ class OffPolicyRunner(BaseRunner):
                                num_test_episodes=self.num_test_episodes)
         # Log info about epoch
         self.logger.log_tabular('Epoch', epoch)
-        self.tester.log_tabular()
-        self.sampler.log_tabular()
-        self.updater.log_tabular()
-        self.timer.log_tabular()
         self.logger.dump_tabular()
 
     def on_train_begin(self):

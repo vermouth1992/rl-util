@@ -16,6 +16,8 @@ import numpy as np
 from rlutils.utils.serialization_utils import convert_json
 from tensorboardX import SummaryWriter
 
+from typing import Callable
+
 DEFAULT_DATA_DIR = 'data'
 FORCE_DATESTAMP = False
 
@@ -300,6 +302,18 @@ class EpochLogger(Logger):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.epoch_dict = dict()
+        self.callbacks = []
+
+    def register(self, fn: Callable):
+        """ Register a callback function to call before every dump_tabular
+
+        Args:
+            fn:
+
+        Returns:
+
+        """
+        self.callbacks.append(fn)
 
     def store(self, **kwargs):
         """
@@ -311,7 +325,12 @@ class EpochLogger(Logger):
         for k, v in kwargs.items():
             if not (k in self.epoch_dict.keys()):
                 self.epoch_dict[k] = []
-            self.epoch_dict[k].append(v)
+            if isinstance(v, int):
+                v = np.asarray(v)
+            elif isinstance(v, float):
+                v = np.asarray(v)
+            assert isinstance(v, np.ndarray), "The data must be a numpy array or raw data type. Got {}".format(type(v))
+            self.epoch_dict[k].append(v.flatten())
 
     def log_tabular(self, key, val=None, with_min_and_max=False, average_only=False):
         """
@@ -335,23 +354,15 @@ class EpochLogger(Logger):
         if val is not None:
             super().log_tabular(key, val)
         else:
-            v = self.epoch_dict[key]
-            if len(v) == 0:
-                super().log_tabular(key if average_only else 'Average' + key, np.nan)
-                if not (average_only):
-                    super().log_tabular('Std' + key, np.nan)
-                if with_min_and_max:
-                    super().log_tabular('Max' + key, np.nan)
-                    super().log_tabular('Min' + key, np.nan)
-            else:
-                vals = np.concatenate(v) if isinstance(v[0], np.ndarray) and len(v[0].shape) > 0 else v
-                stats = statistics_scalar(vals, with_min_and_max=with_min_and_max)
-                super().log_tabular(key if average_only else 'Average' + key, stats[0])
-                if not (average_only):
-                    super().log_tabular('Std' + key, stats[1])
-                if with_min_and_max:
-                    super().log_tabular('Max' + key, stats[3])
-                    super().log_tabular('Min' + key, stats[2])
+            v = self.epoch_dict.get(key, [np.array([0])])
+            val = np.concatenate(v, axis=0)
+            stats = statistics_scalar(val, with_min_and_max=with_min_and_max)
+            super().log_tabular(key if average_only else 'Average' + key, stats[0])
+            if not (average_only):
+                super().log_tabular('Std' + key, stats[1])
+            if with_min_and_max:
+                super().log_tabular('Max' + key, stats[3])
+                super().log_tabular('Min' + key, stats[2])
         self.epoch_dict[key] = []
 
     def get_stats(self, key):
@@ -366,6 +377,9 @@ class EpochLogger(Logger):
         return self.epoch_dict[key]
 
     def dump_tabular(self):
+        for fn in self.callbacks:
+            fn()
+
         super(EpochLogger, self).dump_tabular()
         for key in self.epoch_dict.keys():
             assert len(self.epoch_dict[key]) == 0, f'Key {key} is not called using log_tabular'

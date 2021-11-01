@@ -3,9 +3,10 @@ An updater updates the agent from the replay buffer. It also maintains statistic
 """
 
 from abc import ABC, abstractmethod
+from rlutils.interface.logging import LogUser
 
 
-class PolicyUpdater(ABC):
+class PolicyUpdater(LogUser, ABC):
     def __init__(self, agent, replay_buffer):
         self.agent = agent
         self.replay_buffer = replay_buffer
@@ -18,11 +19,7 @@ class PolicyUpdater(ABC):
     def reset(self):
         self.policy_updates = 0
 
-    def set_logger(self, logger):
-        self.logger = logger
-
     def log_tabular(self):
-        self.agent.log_tabular()
         self.logger.log_tabular('PolicyUpdates', self.num_policy_updates)
 
     @abstractmethod

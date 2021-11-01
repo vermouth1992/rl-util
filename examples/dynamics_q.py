@@ -1,6 +1,6 @@
 import rlutils.tf as rlu
 import tensorflow as tf
-from rlutils.algos.tf.mf import td3
+from rlutils.tf.algos.mf import td3
 from rlutils.infra.runner import TFOffPolicyRunner, run_func_as_main
 
 

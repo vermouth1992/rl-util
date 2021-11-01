@@ -9,14 +9,16 @@ import rlutils.infra as rl_infra
 
 
 def thunk(**kwargs):
-    from rlutils.algos.tf.mf import sac, td3
+    from rlutils.algos.tf.mf import sac
+    from rlutils.tf.algos.mf import td3
     temp = [sac, td3]
     algo = kwargs.pop('algo')
     eval(f'{algo}.Runner.main')(**kwargs)
 
 
 def thunk_pytorch(**kwargs):
-    from rlutils.algos.pytorch.mf import sac as sac_pytorch, td3 as td3_pytorch
+    from rlutils.pytorch.algos.mf import td3 as td3_pytorch
+    from rlutils.pytorch.algos.mf import sac as sac_pytorch
     temp = [sac_pytorch, td3_pytorch]
     algo = kwargs.pop('algo')
     eval(f'{algo}.Runner.main')(**kwargs)
