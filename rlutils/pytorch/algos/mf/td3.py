@@ -108,12 +108,14 @@ class TD3Agent(nn.Module, Agent):
 
     def _update_actor(self, obs):
         # policy loss
+        self.q_network.eval()
         self.policy_optimizer.zero_grad()
         a = self.policy_net(obs)
         q = self.q_network((obs, a), training=False)
         policy_loss = -torch.mean(q, dim=0)
         policy_loss.backward()
         self.policy_optimizer.step()
+        self.q_network.train()
         info = dict(
             LossPi=policy_loss,
         )

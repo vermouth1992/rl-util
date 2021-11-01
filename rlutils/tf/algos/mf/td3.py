@@ -6,9 +6,9 @@ To obtain DDPG, set target smooth to zero and Q network ensembles to 1.
 import rlutils.tf as rlu
 import tensorflow as tf
 from rlutils.infra.runner import TFOffPolicyRunner
+from rlutils.interface.agent import Agent
 
-
-class TD3Agent(tf.keras.Model):
+class TD3Agent(Agent, tf.keras.Model):
     def __init__(self,
                  obs_spec,
                  act_spec,
@@ -59,9 +59,6 @@ class TD3Agent(tf.keras.Model):
 
         self.policy_optimizer = tf.keras.optimizers.Adam(lr=policy_lr)
         self.q_optimizer = tf.keras.optimizers.Adam(lr=q_lr)
-
-    def set_logger(self, logger):
-        self.logger = logger
 
     def log_tabular(self):
         for i in range(self.q_network.num_ensembles):
