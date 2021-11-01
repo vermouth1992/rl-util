@@ -147,7 +147,7 @@ class TD3Agent(nn.Module, Agent):
     def act_batch_test(self, obs):
         obs = torch.as_tensor(obs, dtype=torch.float32)
         with torch.no_grad():
-            return self.policy_net(obs).numpy()
+            return self.inference_net(obs).numpy()
 
     def act_batch_explore(self, obs):
         obs = torch.as_tensor(obs, dtype=torch.float32)
