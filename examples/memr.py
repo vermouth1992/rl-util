@@ -15,7 +15,7 @@ import rlutils.tf as rlu
 import tensorflow as tf
 
 
-class PyPrioritizedReplayBuffer(replay_buffers.PyPrioritizedReplayBuffer):
+class PyPrioritizedReplayBuffer(replay_buffers.DictPrioritizedReplayBuffer):
     def reset(self):
         super(PyPrioritizedReplayBuffer, self).reset()
         self.last_priority_ptr = 0
@@ -26,7 +26,7 @@ class PyPrioritizedReplayBuffer(replay_buffers.PyPrioritizedReplayBuffer):
         return idx, self.__getitem__(idx)
 
 
-class SegmentReplayBuffer(replay_buffers.PyReplayBuffer):
+class SegmentReplayBuffer(replay_buffers.DictReplayBuffer):
     """
     When adding, the input size must be equal to the segment size.
     When sampling, first sample a segment, then sample the data.

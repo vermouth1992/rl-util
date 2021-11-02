@@ -10,7 +10,7 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 from rlutils.algos.tf.mf.sac import SACAgent
 from rlutils.np.schedulers import PiecewiseSchedule
-from rlutils.replay_buffers import PyPrioritizedReplayBuffer
+from rlutils.replay_buffers import DictPrioritizedReplayBuffer
 
 tfd = tfp.distributions
 
@@ -109,8 +109,8 @@ class Runner(rl_infra.runner.TFOffPolicyRunner):
     def setup_replay_buffer(self,
                             replay_size,
                             batch_size):
-        self.replay_buffer = PyPrioritizedReplayBuffer.from_vec_env(self.env, capacity=replay_size,
-                                                                    batch_size=batch_size)
+        self.replay_buffer = DictPrioritizedReplayBuffer.from_vec_env(self.env, capacity=replay_size,
+                                                                      batch_size=batch_size)
 
     def setup_updater(self, update_after, policy_delay, update_per_step, update_every):
         self.update_after = update_after

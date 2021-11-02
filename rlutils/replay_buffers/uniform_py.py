@@ -1,10 +1,21 @@
 import numpy as np
 from rlutils.np.functional import flatten_leading_dims
 
-from .base import PyReplayBuffer
+from .base import DictReplayBuffer
+from .utils import combined_shape
 
 
-class PyUniformReplayBuffer(PyReplayBuffer):
+class PyDictReplayBuffer(DictReplayBuffer):
+    def get(self):
+        idxs = np.arange(self.size)
+        return self.__getitem__(idxs)
+
+    def _create_storage(self):
+        return {key: np.zeros(combined_shape(self.capacity, item.shape), dtype=item.dtype)
+                for key, item in self.data_spec.items()}
+
+
+class PyUniformReplayBuffer(PyDictReplayBuffer):
     """
     A simple FIFO experience replay buffer for SAC agents.
     """
@@ -15,7 +26,7 @@ class PyUniformReplayBuffer(PyReplayBuffer):
         return self.__getitem__(idxs)
 
 
-class PyUniformParallelEnvReplayBufferFrame(PyReplayBuffer):
+class PyUniformParallelEnvReplayBufferFrame(DictReplayBuffer):
     def __init__(self,
                  num_parallel_env,
                  obs_spec,

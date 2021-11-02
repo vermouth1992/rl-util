@@ -7,22 +7,22 @@ from typing import Dict
 import gym.spaces
 import numpy as np
 
-from .base import PyReplayBuffer
+from .base import DictReplayBuffer
 from .utils import segtree
 
 EPS = np.finfo(np.float32).eps.item()
 
 
-class PyPrioritizedReplayBuffer(PyReplayBuffer):
+class DictPrioritizedReplayBuffer(DictReplayBuffer):
     """
     A simple implementation of PER based on pure numpy. No advanced data structure is used.
     """
 
     def __init__(self, data_spec: Dict[str, gym.spaces.Space], capacity, batch_size, alpha=0.6, seed=None):
-        super(PyPrioritizedReplayBuffer, self).__init__(data_spec=data_spec,
-                                                        capacity=capacity,
-                                                        batch_size=batch_size,
-                                                        seed=seed)
+        super(DictPrioritizedReplayBuffer, self).__init__(data_spec=data_spec,
+                                                          capacity=capacity,
+                                                          batch_size=batch_size,
+                                                          seed=seed)
         self.alpha = alpha
         self.max_priority = 1.0
         self.min_priority = 1.0
@@ -37,7 +37,7 @@ class PyPrioritizedReplayBuffer(PyReplayBuffer):
         self.segtree[idx] = priority ** self.alpha
         self.max_priority = max(self.max_priority, np.max(priority))
         self.min_priority = min(self.min_priority, np.min(priority))
-        super(PyPrioritizedReplayBuffer, self).add(data=data)
+        super(DictPrioritizedReplayBuffer, self).add(data=data)
 
     def sample(self, beta=0.4):
         scalar = self.np_random.rand(self.batch_size) * self.segtree.reduce()
@@ -60,12 +60,12 @@ class PyPrioritizedReplayBuffer(PyReplayBuffer):
 
     @classmethod
     def from_data_dict(cls, alpha=0.6, **kwargs):
-        return super(PyPrioritizedReplayBuffer, cls).from_data_dict(alpha=alpha, **kwargs)
+        return super(DictPrioritizedReplayBuffer, cls).from_data_dict(alpha=alpha, **kwargs)
 
     @classmethod
     def from_vec_env(cls, alpha=0.6, **kwargs):
-        return super(PyPrioritizedReplayBuffer, cls).from_vec_env(alpha=alpha, **kwargs)
+        return super(DictPrioritizedReplayBuffer, cls).from_vec_env(alpha=alpha, **kwargs)
 
     @classmethod
     def from_env(cls, alpha=0.6, **kwargs):
-        return super(PyPrioritizedReplayBuffer, cls).from_env(alpha=alpha, **kwargs)
+        return super(DictPrioritizedReplayBuffer, cls).from_env(alpha=alpha, **kwargs)

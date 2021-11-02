@@ -27,7 +27,7 @@ class TestReplayBuffer(unittest.TestCase):
 
     def test_py_priority(self):
         capacity = 100
-        replay = replay_buffers.PyPrioritizedReplayBuffer(
+        replay = replay_buffers.DictPrioritizedReplayBuffer(
             data_spec={'data': gym.spaces.Space(shape=None, dtype=np.int32)},
             capacity=capacity,
             batch_size=capacity,

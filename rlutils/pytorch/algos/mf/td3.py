@@ -161,7 +161,19 @@ class TD3Agent(nn.Module, Agent):
             return pi_final.numpy()
 
 
+from rlutils.replay_buffers import PytorchUniformReplayBuffer
+
+
 class Runner(PytorchOffPolicyRunner):
+    def setup_replay_buffer(self,
+                            replay_size,
+                            batch_size):
+        self.seeds_info['replay_buffer'] = self.seeder.generate_seed()
+        self.replay_buffer = PytorchUniformReplayBuffer.from_vec_env(self.env, capacity=replay_size,
+                                                                     batch_size=batch_size,
+                                                                     seed=self.seeds_info['replay_buffer'])
+        self.replay_buffer.to(ptu.device)
+
     @classmethod
     def main(cls,
              env_name,

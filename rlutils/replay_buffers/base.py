@@ -15,8 +15,6 @@ import numpy as np
 from gym.utils import seeding
 from rlutils.np.functional import shuffle_dict_data
 
-from .utils import combined_shape
-
 
 class BaseReplayBuffer(ABC):
     def __init__(self, seed=None):
@@ -58,9 +56,9 @@ class BaseReplayBuffer(ABC):
         return len(self) <= 0
 
 
-class PyReplayBuffer(BaseReplayBuffer):
+class DictReplayBuffer(BaseReplayBuffer):
     """
-    A simple FIFO experience replay buffer for SAC agents.
+    A simple replay buffer using dictionary as storage
     """
 
     def __init__(self,
@@ -69,13 +67,15 @@ class PyReplayBuffer(BaseReplayBuffer):
                  batch_size,
                  seed=None,
                  **kwargs):
-        super(PyReplayBuffer, self).__init__(seed=seed)
+        super(DictReplayBuffer, self).__init__(seed=seed)
         self.max_size = capacity
         self.data_spec = data_spec
-        self.storage = {key: np.zeros(combined_shape(self.capacity, item.shape), dtype=item.dtype)
-                        for key, item in data_spec.items()}
+        self.storage = self._create_storage()
         self.batch_size = batch_size
         self.reset()
+
+    def _create_storage(self):
+        raise NotImplementedError
 
     def reset(self):
         self.ptr, self.size = 0, 0
@@ -139,8 +139,7 @@ class PyReplayBuffer(BaseReplayBuffer):
         self.size = min(self.size + batch_size, self.capacity)
 
     def get(self):
-        idxs = np.arange(self.size)
-        return self.__getitem__(idxs)
+        raise NotImplementedError
 
     def add(self, data: Dict[str, np.ndarray]):
         batch_size = list(data.values())[0].shape[0]
