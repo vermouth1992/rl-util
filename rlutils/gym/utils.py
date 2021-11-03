@@ -43,7 +43,7 @@ def create_vector_env(env_fn=None,
         print(f'Original high: {dummy_env.action_space.high}, low: {dummy_env.action_space.low}')
         if not (high_all and low_all):
             print(f'Rescale action space to [-{act_lim}, {act_lim}]')
-            fn = lambda env: gym.wrappers.RescaleAction(env, a=-act_lim, b=act_lim)
+            fn = lambda env: gym.wrappers.RescaleAction(env, -act_lim, act_lim)
             wrappers.append(fn)
 
     def _make_env():
