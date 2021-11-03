@@ -4,3 +4,4 @@ from .prioritized_py import DictPrioritizedReplayBuffer
 from .reverb import ReverbReplayBuffer, ReverbTransitionReplayBuffer
 from .uniform_py import PyUniformReplayBuffer, PyUniformParallelEnvReplayBufferFrame
 from .uniform_torch import PytorchUniformReplayBuffer
+from .uniform_cpprb import CPPRBUniformReplayBuffer

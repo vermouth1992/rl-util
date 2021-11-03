@@ -15,7 +15,7 @@ import numpy as np
 import rlutils.gym
 import rlutils.infra as rl_infra
 from rlutils.logx import EpochLogger, setup_logger_kwargs
-from rlutils.replay_buffers import PyUniformReplayBuffer, GAEBuffer
+from rlutils.replay_buffers import CPPRBUniformReplayBuffer as ReplayBuffer, GAEBuffer
 from tqdm.auto import trange
 
 
@@ -207,9 +207,9 @@ class OffPolicyRunner(BaseRunner):
                             replay_size,
                             batch_size):
         self.seeds_info['replay_buffer'] = self.seeder.generate_seed()
-        self.replay_buffer = PyUniformReplayBuffer.from_vec_env(self.env, capacity=replay_size,
-                                                                batch_size=batch_size,
-                                                                seed=self.seeds_info['replay_buffer'])
+        self.replay_buffer = ReplayBuffer.from_vec_env(self.env, capacity=replay_size,
+                                                       batch_size=batch_size,
+                                                       seed=self.seeds_info['replay_buffer'])
 
     def setup_sampler(self, start_steps):
         self.start_steps = start_steps
@@ -351,7 +351,7 @@ class OfflineRunner(OffPolicyRunner):
 
         replay_size = dataset['obs'].shape[0]
         EpochLogger.log(f'Dataset size: {replay_size}')
-        self.replay_buffer = PyUniformReplayBuffer.from_data_dict(
+        self.replay_buffer = ReplayBuffer.from_data_dict(
             data=dataset,
             batch_size=batch_size
         )
