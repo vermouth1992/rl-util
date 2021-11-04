@@ -1,1 +1,1 @@
-from .base import Sampler, BatchSampler, TrajectorySampler
+from .base import Sampler, BatchSampler, TrajectorySampler, BatchFrameStackSampler

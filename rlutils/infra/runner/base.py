@@ -12,11 +12,13 @@ import random
 from abc import abstractmethod, ABC
 
 import numpy as np
+from tqdm.auto import trange
+
 import rlutils.gym
 import rlutils.infra as rl_infra
+from rlutils.interface.agent import Agent
 from rlutils.logx import EpochLogger, setup_logger_kwargs
 from rlutils.replay_buffers import CPPRBUniformReplayBuffer as ReplayBuffer, GAEBuffer
-from tqdm.auto import trange
 
 
 class BaseRunner(ABC):
@@ -104,6 +106,7 @@ class BaseRunner(ABC):
         self.agent = agent_cls(obs_spec=self.env.single_observation_space,
                                act_spec=self.env.single_action_space,
                                **kwargs)
+        assert isinstance(self.agent, Agent), f'agent must be an Agent class. Got {type(self.agent)}'
 
     def run(self):
         self.on_train_begin()
@@ -230,7 +233,7 @@ class OffPolicyRunner(BaseRunner):
                                 replay_buffer=self.replay_buffer)
         else:
             self.sampler.sample(num_steps=1,
-                                collect_fn=lambda obs: self.agent.act_batch_explore(obs),
+                                collect_fn=lambda obs: self.agent.act_batch_explore(obs, self.global_step),
                                 replay_buffer=self.replay_buffer)
         # Update handling
         if self.sampler.total_env_steps >= self.update_after:

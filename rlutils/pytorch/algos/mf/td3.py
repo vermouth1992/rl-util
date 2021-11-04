@@ -5,15 +5,16 @@ To obtain DDPG, set target smooth to zero and Q network ensembles to 1.
 
 import copy
 
-import rlutils.pytorch.utils as ptu
 import torch
 import torch.nn as nn
+
+import rlutils.pytorch.utils as ptu
+from rlutils.gym.utils import verify_continuous_action_space
 from rlutils.infra.runner import run_func_as_main, PytorchOffPolicyRunner
+from rlutils.interface.agent import Agent
 from rlutils.pytorch.functional import soft_update, hard_update, compute_target_value, to_numpy_or_python_type
 from rlutils.pytorch.nn import EnsembleMinQNet
 from rlutils.pytorch.nn.functional import build_mlp
-from rlutils.gym.utils import verify_continuous_action_space
-from rlutils.interface.agent import Agent
 
 
 class TD3Agent(nn.Module, Agent):
@@ -151,7 +152,7 @@ class TD3Agent(nn.Module, Agent):
         with torch.no_grad():
             return self.inference_net(obs).numpy()
 
-    def act_batch_explore(self, obs):
+    def act_batch_explore(self, obs, global_steps):
         obs = torch.as_tensor(obs, dtype=torch.float32)
         with torch.no_grad():
             pi_final = self.inference_net(obs)

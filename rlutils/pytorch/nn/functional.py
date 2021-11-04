@@ -82,3 +82,15 @@ def build_mlp(input_dim, output_dim, mlp_hidden, num_ensembles=None, num_layers=
         layers.append(SqueezeLayer(dim=-1))
     model = nn.Sequential(*layers)
     return model
+
+
+def conv2d_bn_activation_block(in_channels, out_channels, kernel_size, stride, padding, bias=True,
+                               normalize=True, activation=nn.ReLU):
+    """ conv2d + batchnorm (optional) + relu """
+    conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding, bias=bias)
+    layers = [conv]
+    if normalize:
+        layers.append(nn.BatchNorm2d(out_channels))
+    if activation is not None:
+        layers.append(activation(inplace=True))
+    return layers

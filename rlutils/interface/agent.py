@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+
 from .logging import LogUser
 
 
@@ -8,5 +9,5 @@ class Agent(LogUser, ABC):
         pass
 
     @abstractmethod
-    def act_batch_explore(self, obs):
+    def act_batch_explore(self, obs, global_steps):
         pass

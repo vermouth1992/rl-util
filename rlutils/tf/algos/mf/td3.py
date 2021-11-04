@@ -3,10 +3,12 @@ Twin Delayed DDPG. https://arxiv.org/abs/1802.09477.
 To obtain DDPG, set target smooth to zero and Q network ensembles to 1.
 """
 
-import rlutils.tf as rlu
 import tensorflow as tf
+
+import rlutils.tf as rlu
 from rlutils.infra.runner import TFOffPolicyRunner
 from rlutils.interface.agent import Agent
+
 
 class TD3Agent(Agent, tf.keras.Model):
     def __init__(self,
@@ -156,7 +158,7 @@ class TD3Agent(Agent, tf.keras.Model):
     def act_batch_test(self, obs):
         return self.act_batch_test_tf(tf.convert_to_tensor(obs)).numpy()
 
-    def act_batch_explore(self, obs):
+    def act_batch_explore(self, obs, global_steps):
         return self.act_batch_explore_tf(tf.convert_to_tensor(obs)).numpy()
 
 

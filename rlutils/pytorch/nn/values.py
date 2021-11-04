@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from rlutils.pytorch.nn.functional import build_mlp
+from rlutils.pytorch.nn.functional import build_mlp, conv2d_bn_activation_block
 
 
 class EnsembleMinQNet(nn.Module):
@@ -29,3 +29,30 @@ class EnsembleMinQNet(nn.Module):
             return q
         else:
             return torch.min(q, dim=0)[0]
+
+
+class AtariDuelQModule(nn.Module):
+    def __init__(self, frame_stack, action_dim):
+        super(AtariDuelQModule, self).__init__()
+        self.model = nn.Sequential(
+            *conv2d_bn_activation_block(frame_stack, 32, kernel_size=8, stride=4, padding=4, normalize=False),
+            *conv2d_bn_activation_block(32, 64, kernel_size=4, stride=2, padding=2, normalize=False),
+            *conv2d_bn_activation_block(64, 64, kernel_size=3, stride=1, padding=1, normalize=False),
+            nn.Flatten(),
+            nn.Linear(12 * 12 * 64, 512),
+            nn.ReLU()
+        )
+        self.adv_fc = nn.Linear(512, action_dim)
+        self.value_fc = nn.Linear(512, 1)
+
+    def forward(self, state: torch.Tensor, action=None):
+        state = state.to(torch.float32)
+        state = (state - 127.5) / 127.5
+        state = self.model.forward(state)
+        value = self.value_fc(state)
+        adv = self.adv_fc(state)
+        adv = adv - torch.mean(adv, dim=-1, keepdim=True)
+        out = value + adv
+        if action is not None:
+            out = out.gather(1, action.unsqueeze(1)).squeeze()
+        return out
