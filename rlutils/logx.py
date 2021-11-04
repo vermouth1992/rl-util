@@ -13,6 +13,8 @@ import shutil
 import time
 
 import numpy as np
+import torch
+
 from rlutils.utils.serialization_utils import convert_json
 from tensorboardX import SummaryWriter
 
@@ -327,8 +329,12 @@ class EpochLogger(Logger):
                 self.epoch_dict[k] = []
             if isinstance(v, int):
                 v = np.asarray(v)
+                v = v.flatten()
             elif isinstance(v, float):
                 v = np.asarray(v)
+                v = v.flatten()
+            elif isinstance(v, torch.Tensor):
+                v = torch.flatten(v.detach())  # if v is on GPU, keeps it there and only transfer back after concat
             assert isinstance(v, np.ndarray), "The data must be a numpy array or raw data type. Got {}".format(type(v))
             self.epoch_dict[k].append(v.flatten())
 
@@ -355,7 +361,12 @@ class EpochLogger(Logger):
             super().log_tabular(key, val)
         else:
             v = self.epoch_dict.get(key, [np.array([0])])
-            val = np.concatenate(v, axis=0)
+            if isinstance(v[0], np.ndarray):
+                val = np.concatenate(v, axis=0)
+            elif isinstance(v[0], torch.Tensor):
+                val = torch.cat(v, dim=0).cpu().numpy()
+            else:
+                raise ValueError(f'Unknown dtype {type(v[0])}')
             stats = statistics_scalar(val, with_min_and_max=with_min_and_max)
             super().log_tabular(key if average_only else 'Average' + key, stats[0])
             if not (average_only):

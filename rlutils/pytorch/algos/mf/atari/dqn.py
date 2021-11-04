@@ -81,16 +81,16 @@ class AtariDQN(Agent, nn.Module):
         done = data['done']
         rew = data['rew']
         update_target = data['update_target']
-        obs = torch.as_tensor(obs, device=ptu.device)
-        act = torch.as_tensor(act, device=ptu.device)
-        next_obs = torch.as_tensor(next_obs, device=ptu.device)
-        done = torch.as_tensor(done, dtype=torch.float32, device=ptu.device)
-        rew = torch.as_tensor(rew, dtype=torch.float32, device=ptu.device)
+        obs = torch.as_tensor(obs).pin_memory().to(ptu.device, non_blocking=True)
+        act = torch.as_tensor(act).pin_memory().to(ptu.device, non_blocking=True)
+        next_obs = torch.as_tensor(next_obs).pin_memory().to(ptu.device, non_blocking=True)
+        done = torch.as_tensor(done).pin_memory().to(ptu.device, non_blocking=True)
+        rew = torch.as_tensor(rew).pin_memory().to(ptu.device, non_blocking=True)
         info = self._update_nets(obs, act, next_obs, rew, done)
         if update_target:
             self.update_target()
 
-        self.logger.store(**rlu.functional.to_numpy_or_python_type(info))
+        self.logger.store(**info)
 
     def act_batch_explore(self, obs, global_steps):
         num_envs = obs.shape[0]
