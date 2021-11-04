@@ -15,6 +15,11 @@ class AtariRunner(OffPolicyRunner):
                                                                         batch_size=batch_size,
                                                                         seed=self.seeds_info['replay_buffer'])
 
+    def setup_tester(self, num_test_episodes):
+        env_fn = self.env_fn
+        self.env_fn = lambda: gym.wrappers.FrameStack(env_fn(), num_stack=4)
+        super(AtariRunner, self).setup_tester(num_test_episodes)
+
     def setup_env(self,
                   env_name,
                   env_fn=None,

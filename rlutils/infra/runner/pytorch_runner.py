@@ -2,6 +2,7 @@ import rlutils.pytorch.utils as ptu
 import torch
 
 from .base import BaseRunner, OffPolicyRunner, OnPolicyRunner
+from .atari_runner import AtariRunner
 
 
 class PytorchRunner(BaseRunner):
@@ -21,4 +22,8 @@ class PytorchOffPolicyRunner(OffPolicyRunner, PytorchRunner):
 
 
 class PytorchOnPolicyRunner(OnPolicyRunner, PytorchRunner):
+    pass
+
+
+class PytorchAtariRunner(AtariRunner, PytorchRunner):
     pass

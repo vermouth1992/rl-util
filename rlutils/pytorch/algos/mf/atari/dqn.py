@@ -110,7 +110,7 @@ class AtariDQN(Agent, nn.Module):
             return torch.argmax(q_values, dim=-1).cpu().numpy()
 
 
-class Runner(rl_infra.runner.AtariRunner):
+class Runner(rl_infra.runner.PytorchAtariRunner):
     @classmethod
     def main(cls,
              env_name,
