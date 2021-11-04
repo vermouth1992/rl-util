@@ -43,7 +43,7 @@ class OffPolicyUpdater(PolicyUpdater):
 
     def update(self, global_step):
         if global_step % self.update_every == 0:
-            for _ in range(self.update_per_step * self.update_every):
+            for _ in range(int(self.update_per_step * self.update_every)):
                 batch = self.replay_buffer.sample()
                 batch['update_target'] = ((self.policy_updates + 1) % self.policy_delay == 0)
                 self.agent.train_on_batch(data=batch)
