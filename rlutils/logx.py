@@ -335,7 +335,11 @@ class EpochLogger(Logger):
                 v = v.flatten()
             elif isinstance(v, torch.Tensor):
                 v = torch.flatten(v.detach())  # if v is on GPU, keeps it there and only transfer back after concat
-            assert isinstance(v, np.ndarray), "The data must be a numpy array or raw data type. Got {}".format(type(v))
+            elif isinstance(v, np.ndarray):
+                pass
+            else:
+                raise ValueError(f'Unknown dtype {type(v)}')
+            #assert isinstance(v, np.ndarray), "The data must be a numpy array or raw data type. Got {}".format(type(v))
             self.epoch_dict[k].append(v.flatten())
 
     def log_tabular(self, key, val=None, with_min_and_max=False, average_only=False):
