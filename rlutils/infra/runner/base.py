@@ -18,7 +18,7 @@ import rlutils.gym
 import rlutils.infra as rl_infra
 from rlutils.interface.agent import Agent
 from rlutils.logx import EpochLogger, setup_logger_kwargs
-from rlutils.replay_buffers import CPPRBUniformReplayBuffer as ReplayBuffer, GAEBuffer
+from rlutils.replay_buffers import PyUniformReplayBuffer as ReplayBuffer, GAEBuffer
 
 
 class BaseRunner(ABC):

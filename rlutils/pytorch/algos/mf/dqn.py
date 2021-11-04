@@ -14,34 +14,42 @@ import numpy as np
 from typing import Callable
 
 
-class AtariDQN(Agent, nn.Module):
+def gather_q_values(q_values, action):
+    return q_values.gather(1, action.unsqueeze(1)).squeeze(1)
+
+
+class DQN(Agent, nn.Module):
     def __init__(self,
                  obs_spec,
                  act_spec,
-                 frame_stack=4,
+                 mlp_hidden=128,
                  double_q=True,
-                 q_lr=1e-4,
+                 epsilon=0.1,
+                 q_lr=1e-3,
                  gamma=0.99,
                  tau=5e-3,
-                 epsilon_greedy_steps=1000000,
                  huber_delta=None
                  ):
-        super(AtariDQN, self).__init__()
+        super(DQN, self).__init__()
         self.tau = tau
         self.gamma = gamma
         self.double_q = double_q
         self.obs_spec = obs_spec
-        assert self.obs_spec.shape == (84, 84), 'The environment must be Atari Games with 84x84 input'
         self.act_dim = act_spec.n
-        self.q_network = rlu.nn.values.AtariDuelQModule(frame_stack=frame_stack, action_dim=self.act_dim).to(ptu.device)
-        self.target_q_network = copy.deepcopy(self.q_network).to(ptu.device)
+        if len(self.obs_spec.shape) == 1:  # 1D observation
+            self.q_network = rlu.nn.build_mlp(input_dim=self.obs_spec.shape[0], output_dim=self.act_dim,
+                                              mlp_hidden=mlp_hidden, num_layers=3).to(ptu.device)
+            self.target_q_network = copy.deepcopy(self.q_network).to(ptu.device)
+
+        else:
+            raise NotImplementedError
         self.q_optimizer = torch.optim.Adam(self.q_network.parameters(), lr=q_lr)
         # define loss function
         self.loss_fn = torch.nn.MSELoss() if huber_delta is None else torch.nn.HuberLoss(delta=huber_delta)
 
-        self.epsilon_greedy_scheduler = rln.schedulers.LinearSchedule(schedule_timesteps=epsilon_greedy_steps,
+        self.epsilon_greedy_scheduler = rln.schedulers.LinearSchedule(schedule_timesteps=1000,
                                                                       final_p=0.1,
-                                                                      initial_p=1.0)
+                                                                      initial_p=0.1)
 
     def log_tabular(self):
         self.logger.log_tabular('QVals', with_min_and_max=True)
@@ -54,7 +62,8 @@ class AtariDQN(Agent, nn.Module):
         with torch.no_grad():
             if self.double_q:
                 target_actions = torch.argmax(self.q_network(next_obs), dim=-1)  # (None,)
-                target_q_values = self.target_q_network(next_obs, target_actions)  # (None, act_dim)
+                target_q_values = self.target_q_network(next_obs)  # (None, act_dim)
+                target_q_values = gather_q_values(target_q_values, target_actions)
             else:
                 target_q_values = self.target_q_network(next_obs)
                 target_q_values = torch.max(target_q_values, dim=-1)[0]
@@ -64,7 +73,8 @@ class AtariDQN(Agent, nn.Module):
     def _update_nets(self, obs, act, next_obs, rew, done):
         target_q_values = self.compute_target_values(next_obs, rew, done)
         self.q_optimizer.zero_grad()
-        q_values = self.q_network(obs, act)
+        q_values = self.q_network(obs)
+        q_values = gather_q_values(q_values, act)
         loss = self.loss_fn(q_values, target_q_values)
         loss.backward()
         self.q_optimizer.step()
@@ -86,6 +96,7 @@ class AtariDQN(Agent, nn.Module):
         next_obs = torch.as_tensor(next_obs, device=ptu.device)
         done = torch.as_tensor(done, dtype=torch.float32, device=ptu.device)
         rew = torch.as_tensor(rew, dtype=torch.float32, device=ptu.device)
+
         info = self._update_nets(obs, act, next_obs, rew, done)
         if update_target:
             self.update_target()
@@ -110,7 +121,7 @@ class AtariDQN(Agent, nn.Module):
             return torch.argmax(q_values, dim=-1).cpu().numpy()
 
 
-class Runner(rl_infra.runner.PytorchAtariRunner):
+class Runner(rl_infra.runner.PytorchOffPolicyRunner):
     @classmethod
     def main(cls,
              env_name,
@@ -123,7 +134,6 @@ class Runner(rl_infra.runner.PytorchAtariRunner):
              update_every=1,
              update_per_step=1,
              policy_delay=1,
-             batch_size=32,
              num_parallel_env=1,
              num_test_episodes=10,
              seed=1,
@@ -151,10 +161,9 @@ class Runner(rl_infra.runner.PytorchAtariRunner):
                                 update_every=update_every,
                                 update_per_step=update_per_step,
                                 policy_delay=1,
-                                batch_size=batch_size,
                                 num_parallel_env=1,
                                 num_test_episodes=num_test_episodes,
-                                agent_cls=AtariDQN,
+                                agent_cls=DQN,
                                 agent_kwargs=agent_kwargs,
                                 seed=seed,
                                 logger_path=logger_path

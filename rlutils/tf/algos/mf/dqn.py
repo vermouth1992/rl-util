@@ -6,6 +6,8 @@ import rlutils.tf as rlu
 import tensorflow as tf
 from rlutils.infra.runner import TFOffPolicyRunner, run_func_as_main
 
+from rlutils.interface.agent import Agent
+
 
 def gather_q_values(q_values, actions):
     batch_size = tf.shape(actions)[0]
@@ -14,7 +16,7 @@ def gather_q_values(q_values, actions):
     return q_values
 
 
-class DQN(tf.keras.Model):
+class DQN(Agent, tf.keras.Model):
     def __init__(self,
                  obs_spec,
                  act_spec,
