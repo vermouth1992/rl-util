@@ -54,5 +54,5 @@ class AtariDuelQModule(nn.Module):
         adv = adv - torch.mean(adv, dim=-1, keepdim=True)
         out = value + adv
         if action is not None:
-            out = out.gather(1, action.unsqueeze(1)).squeeze()
+            out = out.gather(-1, action.unsqueeze(-1)).squeeze(-1)
         return out

@@ -1,12 +1,13 @@
 from rlutils.pytorch.algos.mf import sac as sac_pytorch
 from rlutils.pytorch.algos.mf import td3 as td3_pytorch
+from rlutils.pytorch.algos.mf.atari import dqn as atari_dqn_pytorch
 from rlutils.tf.algos.mf import td3, ppo, trpo, sac, ddpg, dqn
 from rlutils.tf.algos.mb import pets
 from rlutils.tf.algos.offline import cql, plas
 from rlutils.infra.runner import get_argparser_from_func
 
 __all__ = ['ppo', 'td3', 'trpo', 'sac', 'ddpg', 'cql', 'plas', 'dqn', 'pets',
-           'sac_pytorch', 'td3_pytorch']
+           'sac_pytorch', 'td3_pytorch', 'atari_dqn_pytorch']
 
 
 def main():
