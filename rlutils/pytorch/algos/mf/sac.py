@@ -8,10 +8,11 @@ import rlutils.pytorch as rlu
 import rlutils.pytorch.utils as ptu
 import torch
 from rlutils.infra.runner import PytorchOffPolicyRunner, run_func_as_main
+from rlutils.interface.agent import Agent
 from torch import nn
 
 
-class SACAgent(nn.Module):
+class SACAgent(Agent, nn.Module):
     def __init__(self,
                  obs_spec,
                  act_spec,
@@ -50,9 +51,6 @@ class SACAgent(nn.Module):
         self.gamma = gamma
 
         self.to(ptu.device)
-
-    def set_logger(self, logger):
-        self.logger = logger
 
     def log_tabular(self):
         self.logger.log_tabular('Q1Vals', with_min_and_max=True)
