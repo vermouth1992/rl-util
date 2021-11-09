@@ -139,8 +139,8 @@ class SACAgent(Agent, nn.Module):
         return self.act_batch_torch(obs, deterministic=False).cpu().numpy()
 
     def act_batch_test(self, obs):
-        obs = torch.as_tensor(obs)
-        return self.act_batch_torch(obs, deterministic=True).numpy()
+        obs = torch.as_tensor(obs, device=ptu.device)
+        return self.act_batch_torch(obs, deterministic=True).cpu().numpy()
 
 
 class Runner(PytorchOffPolicyRunner):
