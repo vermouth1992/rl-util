@@ -4,12 +4,13 @@ Implement soft actor critic agent here
 
 import copy
 
+import torch
+from torch import nn
+
 import rlutils.pytorch as rlu
 import rlutils.pytorch.utils as ptu
-import torch
 from rlutils.infra.runner import PytorchOffPolicyRunner, run_func_as_main
 from rlutils.interface.agent import Agent
-from torch import nn
 
 
 class SACAgent(Agent, nn.Module):
@@ -124,8 +125,6 @@ class SACAgent(Agent, nn.Module):
         update_target = data.pop('update_target')
         data = {key: torch.as_tensor(value, device=ptu.device) for key, value in data.items()}
         info = self._update_nets(**data)
-        for key, item in info.items():
-            info[key] = item.detach().cpu().numpy()
         self.logger.store(**info)
         if update_target:
             self.update_target()
@@ -135,13 +134,13 @@ class SACAgent(Agent, nn.Module):
             pi_final = self.policy_net.select_action((obs, deterministic))
             return pi_final
 
-    def act_batch_explore(self, obs):
+    def act_batch_explore(self, obs, global_steps):
         obs = torch.as_tensor(obs, device=ptu.device)
         return self.act_batch_torch(obs, deterministic=False).cpu().numpy()
 
     def act_batch_test(self, obs):
-        obs = torch.as_tensor(obs, device=ptu.device)
-        return self.act_batch_torch(obs, deterministic=True).cpu().numpy()
+        obs = torch.as_tensor(obs)
+        return self.act_batch_torch(obs, deterministic=True).numpy()
 
 
 class Runner(PytorchOffPolicyRunner):

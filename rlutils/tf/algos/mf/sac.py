@@ -5,12 +5,14 @@ Implement soft actor critic agent. To make fair comparison with td3, we
 3. Use the same hyper-parameter as TD3
 """
 
-import rlutils.tf as rlu
 import tensorflow as tf
+
+import rlutils.tf as rlu
 from rlutils.infra.runner import TFOffPolicyRunner, run_func_as_main
+from rlutils.interface.agent import Agent
 
 
-class SACAgent(tf.keras.Model):
+class SACAgent(Agent, tf.keras.Model):
     def __init__(self,
                  obs_spec,
                  act_spec,
@@ -62,9 +64,6 @@ class SACAgent(tf.keras.Model):
 
         self.tau = tau
         self.gamma = gamma
-
-    def set_logger(self, logger):
-        self.logger = logger
 
     def log_tabular(self):
         for i in range(self.q_network.num_ensembles):
