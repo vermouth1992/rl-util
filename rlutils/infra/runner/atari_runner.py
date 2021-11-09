@@ -3,7 +3,7 @@ from gym.wrappers import AtariPreprocessing
 
 import rlutils.infra as rl_infra
 from rlutils.replay_buffers import PyMemoryEfficientReplayBuffer
-from .base import OffPolicyRunner
+from .off_policy import OffPolicyRunner
 
 
 class AtariRunner(OffPolicyRunner):

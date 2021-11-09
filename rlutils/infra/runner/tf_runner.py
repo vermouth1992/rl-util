@@ -2,7 +2,9 @@ import os
 
 import tensorflow as tf
 
-from .base import BaseRunner, OffPolicyRunner, OnPolicyRunner
+from .base import BaseRunner
+from .off_policy import OffPolicyRunner
+from .on_policy import OnPolicyRunner
 
 
 class TFRunner(BaseRunner):

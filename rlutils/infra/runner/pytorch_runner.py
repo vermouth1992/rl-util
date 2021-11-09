@@ -1,7 +1,9 @@
 import rlutils.pytorch.utils as ptu
 import torch
 
-from .base import BaseRunner, OffPolicyRunner, OnPolicyRunner
+from .base import BaseRunner
+from .off_policy import OffPolicyRunner
+from .on_policy import OnPolicyRunner
 from .atari_runner import AtariRunner
 
 
