@@ -204,7 +204,7 @@ class SACAgent(Agent, tf.keras.Model):
     def act_batch_test(self, obs):
         return self.act_batch_test_tf(tf.convert_to_tensor(obs)).numpy()
 
-    def act_batch_explore(self, obs):
+    def act_batch_explore(self, obs, global_steps):
         return self.act_batch_explore_tf(tf.convert_to_tensor(obs)).numpy()
 
 
