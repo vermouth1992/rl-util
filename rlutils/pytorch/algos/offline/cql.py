@@ -8,6 +8,8 @@ import rlutils.pytorch.utils as ptu
 import copy
 import pprint
 
+from typing import Callable, Dict
+
 
 class CQLAgent(Agent, nn.Module):
     def __init__(self,
@@ -225,8 +227,8 @@ class Runner(rl_infra.runner.OfflineRunner):
     @classmethod
     def main(cls,
              env_name,
-             env_fn=None,
-             exp_name=None,
+             env_fn: Callable = None,
+             exp_name: str = None,
              steps_per_epoch=5000,
              epochs=200,
              behavior_cloning_epochs=5,
@@ -247,8 +249,8 @@ class Runner(rl_infra.runner.OfflineRunner):
              gamma=0.99,
              cql_threshold=1.,
              # replay
-             dataset=None,
-             logger_path=None,
+             dataset: Dict = None,
+             logger_path: str = None,
              **kwargs
              ):
         agent_kwargs = dict(
