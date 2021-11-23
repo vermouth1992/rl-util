@@ -5,10 +5,11 @@ from rlutils.pytorch.algos.mf import dqn as dqn_pytorch
 from rlutils.tf.algos.mf import td3, ppo, trpo, sac, ddpg, dqn
 from rlutils.tf.algos.mb import pets
 from rlutils.tf.algos.offline import cql, plas
+from rlutils.pytorch.algos.offline import cql as cql_pytorch
 from rlutils.infra.runner import get_argparser_from_func
 
 __all__ = ['ppo', 'td3', 'trpo', 'sac', 'ddpg', 'cql', 'plas', 'dqn', 'pets',
-           'sac_pytorch', 'td3_pytorch', 'atari_dqn_pytorch', 'dqn_pytorch']
+           'sac_pytorch', 'td3_pytorch', 'atari_dqn_pytorch', 'dqn_pytorch', 'cql_pytorch']
 
 
 def main():

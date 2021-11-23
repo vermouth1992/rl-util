@@ -86,16 +86,21 @@ class BaseRunner(ABC):
         if env_fn is None:
             env_fn = lambda: gym.make(env_name)
         self.env_fn = env_fn
-        self.env = rlutils.gym.utils.create_vector_env(env_fn=env_fn,
-                                                       normalize_action_space=True,
-                                                       num_parallel_env=num_parallel_env,
-                                                       asynchronous=asynchronous)
-        env_seed = self.seeder.generate_seed()
-        env_action_space_seed = self.seeder.generate_seed()
-        self.env.seed(env_seed)
-        self.env.action_space.seed(env_action_space_seed)
-        self.seeds_info['env'] = env_seed
-        self.seeds_info['env_action_space'] = env_action_space_seed
+
+        if num_parallel_env > 0:
+            self.env = rlutils.gym.utils.create_vector_env(env_fn=env_fn,
+                                                           normalize_action_space=True,
+                                                           num_parallel_env=num_parallel_env,
+                                                           asynchronous=asynchronous)
+            env_seed = self.seeder.generate_seed()
+            env_action_space_seed = self.seeder.generate_seed()
+            self.env.seed(env_seed)
+            self.env.action_space.seed(env_action_space_seed)
+            self.seeds_info['env'] = env_seed
+            self.seeds_info['env_action_space'] = env_action_space_seed
+        else:
+            # no training environment is used. Used in Offline RL
+            self.env = None
 
         self.num_test_episodes = num_test_episodes
         self.asynchronous = asynchronous

@@ -25,6 +25,26 @@ class SquashedGaussianMLPActor(nn.Module):
         pi_action_final = torch.tanh(pi_action)
         return pi_action_final
 
+    def compute_pi_distribution(self, inputs):
+        return self.pi_dist_layer(self.net(inputs))
+
+    def transform_raw_actions(self, raw_actions):
+        return torch.tanh(raw_actions)
+
+    def compute_raw_actions(self, actions):
+        EPS = 1e-6
+        actions = torch.clip(actions, min=-1. + EPS, max=1. - EPS)
+        return torch.atanh(actions)
+
+    def compute_log_prob(self, inputs):
+        obs, act = inputs
+        params = self.net(inputs)
+        pi_distribution = self.pi_dist_layer(params)
+        pi_action = self.compute_raw_actions(act)
+        logp_pi = pi_distribution.log_prob(pi_action)
+        logp_pi = apply_squash_log_prob(logp_pi, pi_action)
+        return logp_pi
+
     def forward(self, inputs):
         inputs, deterministic = inputs
         params = self.net(inputs)
