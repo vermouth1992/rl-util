@@ -60,6 +60,8 @@ class CQLAgent(Agent, nn.Module):
 
         self.max_backup = True
 
+        self.to(ptu.device)
+
     def log_tabular(self):
         self.logger.log_tabular('Q1Vals', with_min_and_max=True)
         self.logger.log_tabular('Q2Vals', with_min_and_max=True)
@@ -92,16 +94,10 @@ class CQLAgent(Agent, nn.Module):
 
     def _update_nets_behavior_cloning(self, obs, act, next_obs, rew, done):
         self.policy_optimizer.zero_grad()
-        log_prob = self.policy_net.compute_log_prob((obs, act))
-        loss = -torch.mean(log_prob, dim=0)
-        loss.backward()
-        self.policy_optimizer.step()
-        info = dict(
-            LossPi=loss
-        )
+        
         return info
 
-    def _update_nets_cql(self, obs, act, next_obs, rew, done):
+    def _update_nets_cql(self, obs, act, next_obs, rew, done, behavior_cloning):
         # update
         with torch.no_grad():
             alpha = self.log_alpha()
@@ -124,7 +120,8 @@ class CQLAgent(Agent, nn.Module):
 
         cql_q_values = self.q_network((obs_tile, actions), training=False)  # (num_samples * None)
         cql_q_values = torch.reshape(cql_q_values, shape=(self.num_samples, batch_size))
-        cql_q_values = torch.max(cql_q_values, dim=0)[0]  # (None,)
+        # cql_q_values = torch.max(cql_q_values, dim=0)[0]  # (None,)
+        cql_q_values = torch.logsumexp(cql_q_values, dim=0)
         cql_threshold = torch.mean(cql_q_values - torch.min(q_values, dim=0)[0].detach(), dim=0)
 
         q_loss = mse_q_values_loss + alpha_cql * cql_threshold
@@ -135,15 +132,20 @@ class CQLAgent(Agent, nn.Module):
         self.cql_alpha_optimizer.zero_grad()
         alpha_cql = self.log_cql()
         delta_cql = cql_threshold - self.cql_threshold
-        alpha_cql_loss = -alpha_cql * delta_cql
+        alpha_cql_loss = -alpha_cql * delta_cql.detach()
         alpha_cql_loss.backward()
         self.cql_alpha_optimizer.step()
 
         # update policy
-        action, log_prob, _, _ = self.policy_net((obs, False))
-        q_values_pi_min = self.q_network((obs, action), training=False)
-        policy_loss = torch.mean(log_prob * alpha - q_values_pi_min)
         self.policy_optimizer.zero_grad()
+        if behavior_cloning:
+            log_prob_data, log_prob = self.policy_net.compute_log_prob((obs, act))
+            policy_loss = torch.mean(log_prob * alpha - log_prob_data, dim=0)
+        else:
+            action, log_prob, _, _ = self.policy_net((obs, False))
+            q_values_pi_min = self.q_network((obs, action), training=False)
+            policy_loss = torch.mean(log_prob * alpha - q_values_pi_min, dim=0)
+            
         policy_loss.backward()
         self.policy_optimizer.step()
 
@@ -163,7 +165,7 @@ class CQLAgent(Agent, nn.Module):
             LossPi=policy_loss,
             AlphaCQL=alpha_cql,
             AlphaCQLLoss=alpha_cql_loss,
-            DeltaCQL=delta_cql,
+            DeltaCQL=cql_threshold,
         )
         return info
 
@@ -171,15 +173,19 @@ class CQLAgent(Agent, nn.Module):
         update_target = data.pop('update_target')
         behavior_cloning = data.pop('behavior_cloning')
         data = {key: torch.as_tensor(value, device=ptu.device) for key, value in data.items()}
-        if behavior_cloning:
-            info = self._update_nets_behavior_cloning(**data)
-        else:
-            info = self._update_nets(**data)
-        self.logger.store(**info)
+        info = self._update_nets_cql(**data, behavior_cloning=behavior_cloning)
         if update_target:
             self.update_target()
+        self.logger.store(**info)
+
+    def act_batch_explore(self, obs, global_steps):
+        raise NotImplementedError
 
     def act_batch_test(self, obs):
+        obs = torch.as_tensor(obs).to(ptu.device)
+        return self.act_batch_test_pytorch(obs).cpu().numpy()
+
+    def act_batch_test_pytorch(self, obs):
         with torch.no_grad():
             batch_size = obs.shape[0]
             obs_tile = torch.tile(obs, (self.num_samples, 1))
@@ -187,6 +193,7 @@ class CQLAgent(Agent, nn.Module):
             q_values = self.q_network((obs_tile, actions), training=False)  # (num_samples * None)
             q_values = torch.reshape(q_values, shape=(self.num_samples, batch_size))
             max_idx = torch.max(q_values, dim=0)[1]  # (None)
+            max_idx = torch.tile(max_idx, (self.act_dim,))  # (None * act_dim,)
             actions = torch.reshape(actions, shape=(
                 self.num_samples, batch_size * self.act_dim))  # (num_samples, None * act_dim)
             actions = actions.gather(0, max_idx.unsqueeze(0)).squeeze(0)  # (None * act_dim)
@@ -215,7 +222,28 @@ class CQLUpdater(rl_infra.updater.OffPolicyUpdater):
                 self.policy_updates += 1
 
 
+class Tester(rl_infra.Tester):
+    def __init__(self, env_fn, num_parallel_env, asynchronous=False, seed=None):
+        super().__init__(env_fn, num_parallel_env, asynchronous=asynchronous, seed=seed)
+        self.dummy_env = env_fn()
+
+    def test_agent(self, get_action, name, num_test_episodes):
+        ep_ret, ep_len = super().test_agent(get_action, name, num_test_episodes)
+        normalized_ep_ret = self.dummy_env.get_normalized_score(ep_ret) * 100
+        self.logger.store(NormalizedTestEpRet=normalized_ep_ret)
+
+    def log_tabular(self):
+        self.logger.log_tabular('NormalizedTestEpRet', with_min_and_max=True)
+        super().log_tabular()
+
 class Runner(rl_infra.runner.OfflineRunner):
+    def setup_tester(self, num_test_episodes):
+        test_env_seed = self.seeder.generate_seed()
+        self.seeds_info['test_env'] = test_env_seed
+        self.num_test_episodes = num_test_episodes
+        self.tester = Tester(env_fn=self.env_fn, num_parallel_env=num_test_episodes,
+                             asynchronous=self.asynchronous, seed=test_env_seed)
+    
     def setup_updater(self, update_after, policy_delay, update_per_step, update_every, behavior_cloning_steps):
         self.updater = CQLUpdater(agent=self.agent,
                                   replay_buffer=self.replay_buffer,
@@ -231,7 +259,7 @@ class Runner(rl_infra.runner.OfflineRunner):
              exp_name: str = None,
              steps_per_epoch=5000,
              epochs=200,
-             behavior_cloning_epochs=5,
+             behavior_cloning_epochs=2,
              update_every=1,
              update_per_step=1,
              policy_delay=1,
@@ -247,12 +275,14 @@ class Runner(rl_infra.runner.OfflineRunner):
              alpha=0.2,
              tau=5e-3,
              gamma=0.99,
-             cql_threshold=1.,
+             cql_threshold=2.5,
              # replay
              dataset: Dict = None,
              logger_path: str = None,
              **kwargs
              ):
+        ptu.set_device('cuda')
+
         agent_kwargs = dict(
             policy_mlp_hidden=policy_mlp_hidden,
             policy_lr=policy_lr,
@@ -265,14 +295,14 @@ class Runner(rl_infra.runner.OfflineRunner):
             tau=tau,
             gamma=gamma,
             target_entropy=None,
-            cql_threshold=1.
+            cql_threshold=cql_threshold
         )
 
         config = locals()
 
         runner = cls(seed=seed, steps_per_epoch=steps_per_epoch, epochs=epochs,
                      exp_name=exp_name, logger_path=logger_path)
-        runner.setup_env(env_name=env_name, env_fn=env_fn, num_parallel_env=-1,
+        runner.setup_env(env_name=env_name, env_fn=env_fn, num_parallel_env=1,
                          asynchronous=False, num_test_episodes=num_test_episodes)
         runner.setup_agent(agent_cls=CQLAgent, **agent_kwargs)
         runner.setup_replay_buffer(dataset=dataset,

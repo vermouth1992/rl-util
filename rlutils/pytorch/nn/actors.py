@@ -38,12 +38,17 @@ class SquashedGaussianMLPActor(nn.Module):
 
     def compute_log_prob(self, inputs):
         obs, act = inputs
-        params = self.net(inputs)
+        params = self.net(obs)
         pi_distribution = self.pi_dist_layer(params)
-        pi_action = self.compute_raw_actions(act)
-        logp_pi = pi_distribution.log_prob(pi_action)
-        logp_pi = apply_squash_log_prob(logp_pi, pi_action)
-        return logp_pi
+        # compute actions
+        pi_action = pi_distribution.rsample()
+        raw_act = self.compute_raw_actions(act)
+        # compute log probability
+        log_prob = pi_distribution.log_prob(raw_act)
+        log_prob = apply_squash_log_prob(log_prob, raw_act)
+        log_prob_pi = pi_distribution.log_prob(pi_action)
+        log_prob_pi = apply_squash_log_prob(log_prob_pi, pi_action)
+        return log_prob, log_prob_pi
 
     def forward(self, inputs):
         inputs, deterministic = inputs

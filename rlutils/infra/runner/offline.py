@@ -44,6 +44,7 @@ class OfflineRunner(OffPolicyRunner):
             dummy_env = self.env_fn()
             dataset = create_d4rl_dataset(dummy_env)
             del dummy_env
+            
 
         if reward_scale:
             EpochLogger.log('Using reward scale', color='red')

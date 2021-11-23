@@ -364,7 +364,12 @@ class EpochLogger(Logger):
         if val is not None:
             super().log_tabular(key, val)
         else:
-            v = self.epoch_dict.get(key, [np.array([0])])
+            default_val = np.array([0])
+            # if the key doesn't exist now
+            v = self.epoch_dict.get(key, [default_val])
+            # if the list is empty
+            if len(v) == 0:
+                v.append(default_val)
             if isinstance(v[0], np.ndarray):
                 val = np.concatenate(v, axis=0)
             elif isinstance(v[0], torch.Tensor):
