@@ -49,7 +49,7 @@ class CQLAgent(Agent, nn.Module):
         self.q_optimizer = torch.optim.Adam(params=self.q_network.parameters(), lr=q_lr)
 
         self.log_alpha = rlu.nn.LagrangeLayer(initial_value=alpha)
-        self.log_cql = rlu.nn.LagrangeLayer(initial_value=alpha_cql, max_value=10.)
+        self.log_cql = rlu.nn.LagrangeLayer(initial_value=alpha_cql)
         self.alpha_optimizer = torch.optim.Adam(params=self.log_alpha.parameters(), lr=alpha_lr)
         self.cql_alpha_optimizer = torch.optim.Adam(params=self.log_cql.parameters(), lr=alpha_cql_lr)
 
