@@ -49,7 +49,7 @@ class CQLAgent(Agent, nn.Module):
         self.q_optimizer = torch.optim.Adam(params=self.q_network.parameters(), lr=q_lr)
 
         self.log_alpha = rlu.nn.LagrangeLayer(initial_value=alpha)
-        self.log_cql = rlu.nn.LagrangeLayer(initial_value=alpha_cql)
+        self.log_cql = rlu.nn.LagrangeLayer(initial_value=alpha_cql, max_value=10.)
         self.alpha_optimizer = torch.optim.Adam(params=self.log_alpha.parameters(), lr=alpha_lr)
         self.cql_alpha_optimizer = torch.optim.Adam(params=self.log_cql.parameters(), lr=alpha_cql_lr)
 
@@ -116,7 +116,8 @@ class CQLAgent(Agent, nn.Module):
         cql_q_values_pi = self.q_network((obs_tile, actions), training=False) - log_prob  # (num_samples * None)
         cql_q_values_pi = torch.reshape(cql_q_values_pi, shape=(self.num_samples, batch_size))
 
-        pi_random_actions = torch.rand(size=(self.num_samples * batch_size, self.act_dim), device=ptu.device) * 2. - 1.  # [-1., 1]
+        pi_random_actions = torch.rand(size=(self.num_samples * batch_size, self.act_dim),
+                                       device=ptu.device) * 2. - 1.  # [-1., 1]
         log_prob_random = -np.log(2.)  # uniform distribution from [-1, 1], prob=0.5
         cql_q_values_random = self.q_network((obs_tile, pi_random_actions), training=False) - log_prob_random
         cql_q_values_random = torch.reshape(cql_q_values_random, shape=(self.num_samples, batch_size))

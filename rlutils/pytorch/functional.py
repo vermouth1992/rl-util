@@ -20,6 +20,11 @@ def compute_target_value(reward, gamma, done, next_q):
     return q_target
 
 
+def clip_by_value_preserve_gradient(t, clip_value_min=None, clip_value_max=None):
+    clip_t = torch.clip(t, min=clip_value_min, max=clip_value_max)
+    return t + (clip_t - t).detach()
+
+
 def to_numpy_or_python_type(tensors):
     """Converts a structure of `Tensor`s to `NumPy` arrays or Python scalar types.
 

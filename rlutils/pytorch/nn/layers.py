@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from rlutils.np.functional import inverse_softplus
+from rlutils.pytorch.functional import clip_by_value_preserve_gradient
 
 
 class EnsembleDense(nn.Module):
@@ -56,12 +57,15 @@ class SqueezeLayer(nn.Module):
 
 
 class LagrangeLayer(nn.Module):
-    def __init__(self, initial_value=0.):
+    def __init__(self, initial_value=0., min_value=None, max_value=10000.):
         super(LagrangeLayer, self).__init__()
         self.log_alpha = nn.Parameter(data=torch.as_tensor(inverse_softplus(initial_value), dtype=torch.float32))
+        self.min_value = min_value
+        self.max_value = max_value
 
     def forward(self):
-        return F.softplus(self.log_alpha)
+        alpha = F.softplus(self.log_alpha)
+        return clip_by_value_preserve_gradient(alpha, clip_value_min=self.min_value, clip_value_max=self.max_value)
 
 
 class LambdaLayer(nn.Module):
