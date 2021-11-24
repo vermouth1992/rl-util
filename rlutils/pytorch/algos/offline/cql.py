@@ -116,7 +116,7 @@ class CQLAgent(Agent, nn.Module):
         cql_q_values_pi = self.q_network((obs_tile, actions), training=False) - log_prob  # (num_samples * None)
         cql_q_values_pi = torch.reshape(cql_q_values_pi, shape=(self.num_samples, batch_size))
 
-        pi_random_actions = torch.rand(size=(self.num_samples * batch_size, self.act_dim)) * 2. - 1.  # [-1., 1]
+        pi_random_actions = torch.rand(size=(self.num_samples * batch_size, self.act_dim), device=ptu.device) * 2. - 1.  # [-1., 1]
         log_prob_random = -np.log(2.)  # uniform distribution from [-1, 1], prob=0.5
         cql_q_values_random = self.q_network((obs_tile, pi_random_actions), training=False) - log_prob_random
         cql_q_values_random = torch.reshape(cql_q_values_random, shape=(self.num_samples, batch_size))
@@ -278,7 +278,7 @@ class Runner(rl_infra.runner.OfflineRunner):
              alpha=0.2,
              tau=5e-3,
              gamma=0.99,
-             cql_threshold=5.,
+             cql_threshold=-5.,
              # replay
              dataset: Dict = None,
              logger_path: str = None,
