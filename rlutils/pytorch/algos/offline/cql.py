@@ -9,6 +9,7 @@ import copy
 import pprint
 
 from typing import Callable, Dict
+import numpy as np
 
 
 class CQLAgent(Agent, nn.Module):
@@ -92,11 +93,6 @@ class CQLAgent(Agent, nn.Module):
                 q_values = torch.mean(q_values, dim=0)
             return q_values
 
-    def _update_nets_behavior_cloning(self, obs, act, next_obs, rew, done):
-        self.policy_optimizer.zero_grad()
-        
-        return info
-
     def _update_nets_cql(self, obs, act, next_obs, rew, done, behavior_cloning):
         # update
         with torch.no_grad():
@@ -116,12 +112,18 @@ class CQLAgent(Agent, nn.Module):
         # max_a Q(s,a)
         with torch.no_grad():
             obs_tile = torch.tile(obs, (self.num_samples, 1))
-            actions = self.policy_net.select_action((obs_tile, False))  # (num_samples * None, act_dim)
+            actions, log_prob, _, _ = self.policy_net((obs_tile, False))  # (num_samples * None, act_dim)
+        cql_q_values_pi = self.q_network((obs_tile, actions), training=False) - log_prob  # (num_samples * None)
+        cql_q_values_pi = torch.reshape(cql_q_values_pi, shape=(self.num_samples, batch_size))
 
-        cql_q_values = self.q_network((obs_tile, actions), training=False)  # (num_samples * None)
-        cql_q_values = torch.reshape(cql_q_values, shape=(self.num_samples, batch_size))
-        # cql_q_values = torch.max(cql_q_values, dim=0)[0]  # (None,)
-        cql_q_values = torch.logsumexp(cql_q_values, dim=0)
+        pi_random_actions = torch.rand(size=(self.num_samples * batch_size, self.act_dim)) * 2. - 1.  # [-1., 1]
+        log_prob_random = -np.log(2.)  # uniform distribution from [-1, 1], prob=0.5
+        cql_q_values_random = self.q_network((obs_tile, pi_random_actions), training=False) - log_prob_random
+        cql_q_values_random = torch.reshape(cql_q_values_random, shape=(self.num_samples, batch_size))
+
+        cql_q_values = torch.cat((cql_q_values_pi, cql_q_values_random), dim=0)  # (2 * num_samples, None)
+        cql_q_values = torch.logsumexp(cql_q_values, dim=0) - np.log(2 * self.num_samples)
+
         cql_threshold = torch.mean(cql_q_values - torch.min(q_values, dim=0)[0].detach(), dim=0)
 
         q_loss = mse_q_values_loss + alpha_cql * cql_threshold
@@ -145,7 +147,7 @@ class CQLAgent(Agent, nn.Module):
             action, log_prob, _, _ = self.policy_net((obs, False))
             q_values_pi_min = self.q_network((obs, action), training=False)
             policy_loss = torch.mean(log_prob * alpha - q_values_pi_min, dim=0)
-            
+
         policy_loss.backward()
         self.policy_optimizer.step()
 
@@ -236,6 +238,7 @@ class Tester(rl_infra.Tester):
         self.logger.log_tabular('NormalizedTestEpRet', with_min_and_max=True)
         super().log_tabular()
 
+
 class Runner(rl_infra.runner.OfflineRunner):
     def setup_tester(self, num_test_episodes):
         test_env_seed = self.seeder.generate_seed()
@@ -243,7 +246,7 @@ class Runner(rl_infra.runner.OfflineRunner):
         self.num_test_episodes = num_test_episodes
         self.tester = Tester(env_fn=self.env_fn, num_parallel_env=num_test_episodes,
                              asynchronous=self.asynchronous, seed=test_env_seed)
-    
+
     def setup_updater(self, update_after, policy_delay, update_per_step, update_every, behavior_cloning_steps):
         self.updater = CQLUpdater(agent=self.agent,
                                   replay_buffer=self.replay_buffer,
@@ -257,25 +260,25 @@ class Runner(rl_infra.runner.OfflineRunner):
              env_name,
              env_fn: Callable = None,
              exp_name: str = None,
-             steps_per_epoch=5000,
-             epochs=200,
+             steps_per_epoch=4000,
+             epochs=250,
              behavior_cloning_epochs=2,
              update_every=1,
              update_per_step=1,
              policy_delay=1,
              batch_size=256,
-             num_test_episodes=30,
+             num_test_episodes=20,
              seed=1,
              # agent args
              # sac args
              policy_mlp_hidden=256,
-             policy_lr=3e-4,
+             policy_lr=3e-5,
              q_mlp_hidden=256,
              q_lr=3e-4,
              alpha=0.2,
              tau=5e-3,
              gamma=0.99,
-             cql_threshold=2.5,
+             cql_threshold=5.,
              # replay
              dataset: Dict = None,
              logger_path: str = None,
