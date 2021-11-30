@@ -14,7 +14,7 @@ class OffPolicyRunner(BaseRunner):
         self.tester.set_logger(self.logger)
         self.updater.set_logger(self.logger)
 
-    def setup_tester(self, num_test_episodes):
+    def setup_tester(self, num_test_episodes, **kwargs):
         test_env_seed = self.seeder.generate_seed()
         self.seeds_info['test_env'] = test_env_seed
         self.num_test_episodes = num_test_episodes
@@ -23,17 +23,18 @@ class OffPolicyRunner(BaseRunner):
 
     def setup_replay_buffer(self,
                             replay_size,
-                            batch_size):
+                            batch_size,
+                            **kwargs):
         self.seeds_info['replay_buffer'] = self.seeder.generate_seed()
         self.replay_buffer = ReplayBuffer.from_vec_env(self.env, capacity=replay_size,
                                                        batch_size=batch_size,
                                                        seed=self.seeds_info['replay_buffer'])
 
-    def setup_sampler(self, start_steps):
+    def setup_sampler(self, start_steps, **kwargs):
         self.start_steps = start_steps
         self.sampler = rl_infra.samplers.BatchSampler(env=self.env)
 
-    def setup_updater(self, update_after, policy_delay, update_per_step, update_every):
+    def setup_updater(self, update_after, policy_delay, update_per_step, update_every, **kwargs):
         self.update_after = update_after
         self.updater = rl_infra.OffPolicyUpdater(agent=self.agent,
                                                  replay_buffer=self.replay_buffer,
@@ -41,7 +42,7 @@ class OffPolicyRunner(BaseRunner):
                                                  update_per_step=update_per_step,
                                                  update_every=update_every)
 
-    def run_one_step(self, t):
+    def run_one_step(self, t, **kwargs):
         if self.sampler.total_env_steps < self.start_steps:
             self.sampler.sample(num_steps=1,
                                 collect_fn=lambda o: np.asarray(self.env.action_space.sample()),
@@ -54,7 +55,7 @@ class OffPolicyRunner(BaseRunner):
         if self.sampler.total_env_steps >= self.update_after:
             self.updater.update(self.global_step)
 
-    def on_epoch_end(self, epoch):
+    def on_epoch_end(self, epoch, **kwargs):
         self.tester.test_agent(get_action=lambda obs: self.agent.act_batch_test(obs),
                                name=self.agent.__class__.__name__,
                                num_test_episodes=self.num_test_episodes)
@@ -62,7 +63,7 @@ class OffPolicyRunner(BaseRunner):
         self.logger.log_tabular('Epoch', epoch)
         self.logger.dump_tabular()
 
-    def on_train_begin(self):
+    def on_train_begin(self, **kwargs):
         self.sampler.reset()
         self.updater.reset()
         self.timer.start()

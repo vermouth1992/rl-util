@@ -241,14 +241,14 @@ class Tester(rl_infra.Tester):
 
 
 class Runner(rl_infra.runner.OfflineRunner):
-    def setup_tester(self, num_test_episodes):
+    def setup_tester(self, num_test_episodes, **kwargs):
         test_env_seed = self.seeder.generate_seed()
         self.seeds_info['test_env'] = test_env_seed
         self.num_test_episodes = num_test_episodes
         self.tester = Tester(env_fn=self.env_fn, num_parallel_env=num_test_episodes,
                              asynchronous=self.asynchronous, seed=test_env_seed)
 
-    def setup_updater(self, update_after, policy_delay, update_per_step, update_every, behavior_cloning_steps):
+    def setup_updater(self, update_after, policy_delay, update_per_step, update_every, behavior_cloning_steps=5000):
         self.updater = CQLUpdater(agent=self.agent,
                                   replay_buffer=self.replay_buffer,
                                   policy_delay=policy_delay,

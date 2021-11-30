@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from rlutils.pytorch.nn.functional import build_mlp, conv2d_bn_activation_block
+import rlutils.pytorch as rlu
 
 
 class EnsembleMinQNet(nn.Module):
@@ -11,12 +11,12 @@ class EnsembleMinQNet(nn.Module):
         self.ac_dim = ac_dim
         self.mlp_hidden = mlp_hidden
         self.num_ensembles = num_ensembles
-        self.q_net = build_mlp(input_dim=self.ob_dim + self.ac_dim,
-                               output_dim=1,
-                               mlp_hidden=self.mlp_hidden,
-                               num_ensembles=self.num_ensembles,
-                               num_layers=num_layers,
-                               squeeze=True)
+        self.q_net = rlu.nn.build_mlp(input_dim=self.ob_dim + self.ac_dim,
+                                      output_dim=1,
+                                      mlp_hidden=self.mlp_hidden,
+                                      num_ensembles=self.num_ensembles,
+                                      num_layers=num_layers,
+                                      squeeze=True)
 
     def forward(self, inputs, training=None):
         assert training is not None
@@ -35,9 +35,10 @@ class AtariDuelQModule(nn.Module):
     def __init__(self, frame_stack, action_dim):
         super(AtariDuelQModule, self).__init__()
         self.model = nn.Sequential(
-            *conv2d_bn_activation_block(frame_stack, 32, kernel_size=8, stride=4, padding=4, normalize=False),
-            *conv2d_bn_activation_block(32, 64, kernel_size=4, stride=2, padding=2, normalize=False),
-            *conv2d_bn_activation_block(64, 64, kernel_size=3, stride=1, padding=1, normalize=False),
+            *rlu.nn.functional.conv2d_bn_activation_block(frame_stack, 32, kernel_size=8, stride=4, padding=4,
+                                                          normalize=False),
+            *rlu.nn.functional.conv2d_bn_activation_block(32, 64, kernel_size=4, stride=2, padding=2, normalize=False),
+            *rlu.nn.functional.conv2d_bn_activation_block(64, 64, kernel_size=3, stride=1, padding=1, normalize=False),
             nn.Flatten(),
             nn.Linear(12 * 12 * 64, 512),
             nn.ReLU()
@@ -46,6 +47,7 @@ class AtariDuelQModule(nn.Module):
         self.value_fc = nn.Linear(512, 1)
 
     def forward(self, state: torch.Tensor, action=None):
+        batch_size = state.shape[0]
         state = state.to(torch.float32)
         state = (state - 127.5) / 127.5
         state = self.model.forward(state)
@@ -54,5 +56,31 @@ class AtariDuelQModule(nn.Module):
         adv = adv - torch.mean(adv, dim=-1, keepdim=True)
         out = value + adv
         if action is not None:
-            out = out.gather(-1, action.unsqueeze(-1)).squeeze(-1)
+            out = out[torch.arange(batch_size), action]
         return out
+
+
+class CategoricalAtariQModule(nn.Module):
+    def __init__(self, frame_stack, action_dim, num_atoms):
+        super(CategoricalAtariQModule, self).__init__()
+        self.model = nn.Sequential(
+            *rlu.nn.functional.conv2d_bn_activation_block(frame_stack, 32, kernel_size=8, stride=4, padding=4,
+                                                          normalize=False),
+            *rlu.nn.functional.conv2d_bn_activation_block(32, 64, kernel_size=4, stride=2, padding=2, normalize=False),
+            *rlu.nn.functional.conv2d_bn_activation_block(64, 64, kernel_size=3, stride=1, padding=1, normalize=False),
+            nn.Flatten(),
+            nn.Linear(12 * 12 * 64, 512),
+            nn.ReLU(),
+            nn.Linear(512, action_dim * num_atoms),
+            rlu.nn.LambdaLayer(function=lambda x: torch.reshape(x, (-1, action_dim, num_atoms))),
+            nn.Softmax(dim=-1)
+        )
+
+    def forward(self, state: torch.Tensor, action=None):
+        batch_size = state.shape[0]
+        state = state.to(torch.float32)
+        state = (state - 127.5) / 127.5
+        q_value = self.model.forward(state)
+        if action is not None:
+            q_value = q_value[torch.arange(batch_size), action]
+        return q_value

@@ -9,13 +9,14 @@ from .off_policy import OffPolicyRunner
 class AtariRunner(OffPolicyRunner):
     def setup_replay_buffer(self,
                             replay_size,
-                            batch_size):
+                            batch_size,
+                            **kwargs):
         self.seeds_info['replay_buffer'] = self.seeder.generate_seed()
         self.replay_buffer = PyMemoryEfficientReplayBuffer.from_vec_env(self.env, capacity=replay_size,
                                                                         batch_size=batch_size,
                                                                         seed=self.seeds_info['replay_buffer'])
 
-    def setup_tester(self, num_test_episodes):
+    def setup_tester(self, num_test_episodes, **kwargs):
         env_fn = self.env_fn
         self.env_fn = lambda: gym.wrappers.FrameStack(env_fn(), num_stack=4)
         super(AtariRunner, self).setup_tester(num_test_episodes)
@@ -34,6 +35,6 @@ class AtariRunner(OffPolicyRunner):
                                            asynchronous=asynchronous,
                                            num_test_episodes=num_test_episodes)
 
-    def setup_sampler(self, start_steps):
+    def setup_sampler(self, start_steps, **kwargs):
         self.start_steps = start_steps
         self.sampler = rl_infra.samplers.BatchFrameStackSampler(env=self.env)
