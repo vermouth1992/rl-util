@@ -24,11 +24,11 @@ class DQN(Agent, nn.Module):
                  act_spec,
                  mlp_hidden=128,
                  double_q=True,
-                 epsilon=0.1,
                  q_lr=1e-3,
                  gamma=0.99,
                  tau=5e-3,
-                 huber_delta=None
+                 huber_delta=None,
+                 epsilon_greedy_steps=1000,
                  ):
         super(DQN, self).__init__()
         self.tau = tau
@@ -36,20 +36,27 @@ class DQN(Agent, nn.Module):
         self.double_q = double_q
         self.obs_spec = obs_spec
         self.act_dim = act_spec.n
-        if len(self.obs_spec.shape) == 1:  # 1D observation
-            self.q_network = rlu.nn.build_mlp(input_dim=self.obs_spec.shape[0], output_dim=self.act_dim,
-                                              mlp_hidden=mlp_hidden, num_layers=3).to(ptu.device)
-            self.target_q_network = copy.deepcopy(self.q_network).to(ptu.device)
-
-        else:
-            raise NotImplementedError
+        self.mlp_hidden = mlp_hidden
+        self.epsilon_greedy_steps = epsilon_greedy_steps
+        self.q_network = self._create_q_network()
+        self.target_q_network = copy.deepcopy(self.q_network).to(ptu.device)
         self.q_optimizer = torch.optim.Adam(self.q_network.parameters(), lr=q_lr)
         # define loss function
         self.loss_fn = torch.nn.MSELoss() if huber_delta is None else torch.nn.HuberLoss(delta=huber_delta)
+        self.epsilon_greedy_scheduler = self._create_epsilon_greedy_scheduler()
 
-        self.epsilon_greedy_scheduler = rln.schedulers.LinearSchedule(schedule_timesteps=1000,
-                                                                      final_p=0.1,
-                                                                      initial_p=0.1)
+    def _create_q_network(self):
+        if len(self.obs_spec.shape) == 1:  # 1D observation
+            q_network = rlu.nn.build_mlp(input_dim=self.obs_spec.shape[0], output_dim=self.act_dim,
+                                         mlp_hidden=self.mlp_hidden, num_layers=3).to(ptu.device)
+        else:
+            raise NotImplementedError
+        return q_network
+
+    def _create_epsilon_greedy_scheduler(self):
+        return rln.schedulers.LinearSchedule(schedule_timesteps=self.epsilon_greedy_steps,
+                                             final_p=0.1,
+                                             initial_p=0.1)
 
     def log_tabular(self):
         self.logger.log_tabular('QVals', with_min_and_max=True)
