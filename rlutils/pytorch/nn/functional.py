@@ -1,6 +1,6 @@
 import torch.nn as nn
 
-from .layers import EnsembleDense, SqueezeLayer
+from .layers import EnsembleDense, SqueezeLayer, LambdaLayer
 
 str_to_activation = {
     'relu': nn.ReLU,
@@ -15,7 +15,7 @@ def decode_activation(activation):
     if isinstance(activation, str):
         act_fn = str_to_activation.get(activation)
     elif callable(activation):
-        act_fn = activation
+        act_fn = lambda: LambdaLayer(activation)
     elif activation is None:
         act_fn = nn.Identity
     else:
