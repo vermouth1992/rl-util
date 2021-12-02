@@ -19,7 +19,7 @@ class AtariDQN(DQN):
                  epsilon_greedy_steps=1000000,
                  huber_delta=None
                  ):
-        assert self.obs_spec.shape == (84, 84), 'The environment must be Atari Games with 84x84 input'
+        assert obs_spec.shape == (84, 84), 'The environment must be Atari Games with 84x84 input'
         self.frame_stack = frame_stack
         super(AtariDQN, self).__init__(obs_spec=obs_spec, act_spec=act_spec, double_q=double_q,
                                        q_lr=q_lr, gamma=gamma, tau=tau, huber_delta=huber_delta,
