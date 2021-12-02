@@ -1,20 +1,12 @@
-import copy
-
-import torch.nn as nn
-import torch.optim
-
-import rlutils.pytorch as rlu
-import rlutils.infra as rl_infra
-import rlutils.np as rln
-import rlutils.pytorch.utils as ptu
-from rlutils.interface.agent import Agent
-
-import numpy as np
-
 from typing import Callable
 
+import rlutils.infra as rl_infra
+import rlutils.pytorch as rlu
+import rlutils.pytorch.utils as ptu
+from rlutils.pytorch.algos.mf.categorical_dqn import CategoricalDQN
 
-class CategoricalAtariDQN(Agent, nn.Module):
+
+class CategoricalAtariDQN(CategoricalDQN):
     def __init__(self,
                  obs_spec,
                  act_spec,
@@ -28,104 +20,24 @@ class CategoricalAtariDQN(Agent, nn.Module):
                  v_max=10.,
                  epsilon_greedy_steps=1000000,
                  ):
-        assert self.num_atoms > 1, 'The number of atoms must be greater than 1'
-        super(CategoricalAtariDQN, self).__init__()
-        self.tau = tau
-        self.gamma = gamma
-        self.double_q = double_q
-        self.obs_spec = obs_spec
-        self.num_atoms = num_atoms
-        self.v_min = v_min
-        self.v_max = v_max
-        assert self.obs_spec.shape == (84, 84), 'The environment must be Atari Games with 84x84 input'
-        self.act_dim = act_spec.n
-        self.q_network = rlu.nn.values.CategoricalAtariQModule(frame_stack=frame_stack,
-                                                               action_dim=self.act_dim).to(ptu.device)
-        self.target_q_network = copy.deepcopy(self.q_network).to(ptu.device)
-        self.q_optimizer = torch.optim.Adam(self.q_network.parameters(), lr=q_lr)
-        self.epsilon_greedy_scheduler = rln.schedulers.LinearSchedule(schedule_timesteps=epsilon_greedy_steps,
-                                                                      final_p=0.1,
-                                                                      initial_p=1.0)
-        self.support = nn.Parameter(torch.linspace(self.v_min, self.v_max, self.num_atoms), requires_grad=False)
-        self.delta_z = (self.v_max - self.v_min) / (self.num_atoms - 1)
+        assert obs_spec.shape == (84, 84), 'The environment must be Atari Games with 84x84 input'
+        self.frame_stack = frame_stack
+        super(CategoricalAtariDQN, self).__init__(obs_spec=obs_spec,
+                                                  act_spec=act_spec,
+                                                  mlp_hidden=None,
+                                                  double_q=double_q,
+                                                  q_lr=q_lr,
+                                                  gamma=gamma,
+                                                  tau=tau,
+                                                  num_atoms=num_atoms,
+                                                  v_min=v_min,
+                                                  v_max=v_max,
+                                                  epsilon_greedy_steps=epsilon_greedy_steps)
 
-    def log_tabular(self):
-        self.logger.log_tabular('QVals', with_min_and_max=True)
-        self.logger.log_tabular('LossQ', average_only=True)
-
-    def update_target(self):
-        rlu.functional.soft_update(self.target_q_network, self.q_network, self.tau)
-
-    def compute_target_values(self, next_obs, rew, done):
-        with torch.no_grad():
-            batch_size = next_obs.shape[0]
-            target_action_compute_q = self.q_network if self.double_q else self.target_q_network
-            target_logits_action = target_action_compute_q(next_obs)  # (None, act_dim, num_atoms)
-            target_q_values = torch.sum(target_logits_action * self.support[None, None, :], dim=-1)  # (None, act_dim)
-            target_actions = torch.argmax(target_q_values, dim=-1)  # (None,)
-            if self.double_q:
-                target_logits = self.target_q_network(next_obs)
-            else:
-                target_logits = target_logits_action
-            target_logits = target_logits[np.arange(batch_size), target_actions]  # (None, num_atoms)
-            # atom values
-            target_q_atoms = rew[:, None] + self.gamma * (1. - done[:, None]) * self.support[None, :]
-            target_q_atoms = torch.clamp(target_q_atoms, min=self.v_min, max=self.v_max)  # (None, num_atoms)
-            atom_distribution = 1. - torch.abs(target_q_atoms[:, :, None] - self.support[None, None, :]) / self.delta_z
-            atom_distribution = torch.clamp(atom_distribution, min=0., max=1.)  # (None, j, i)
-            probability = torch.sum(atom_distribution * target_logits[:, :, None], dim=1)  # (None, num_atoms)
-            return probability
-
-    def _update_nets(self, obs, act, next_obs, rew, done):
-        target_q_values = self.compute_target_values(next_obs, rew, done)  # (None, num_atoms)
-        self.q_optimizer.zero_grad()
-        q_values = self.q_network(obs, act)  # (None, num_atoms)
-        cross_entropy = -torch.sum(target_q_values * torch.log(q_values), dim=-1)
-        loss = torch.mean(cross_entropy, dim=0)
-        loss.backward()
-        self.q_optimizer.step()
-        info = dict(
-            QVals=q_values,
-            LossQ=loss
-        )
-        return info
-
-    def train_on_batch(self, data, **kwargs):
-        obs = data['obs']
-        act = data['act']
-        next_obs = data['next_obs']
-        done = data['done']
-        rew = data['rew']
-        update_target = data['update_target']
-        obs = torch.as_tensor(obs).pin_memory().to(ptu.device, non_blocking=True)
-        act = torch.as_tensor(act).pin_memory().to(ptu.device, non_blocking=True)
-        next_obs = torch.as_tensor(next_obs).pin_memory().to(ptu.device, non_blocking=True)
-        done = torch.as_tensor(done).pin_memory().to(ptu.device, non_blocking=True)
-        rew = torch.as_tensor(rew).pin_memory().to(ptu.device, non_blocking=True)
-        info = self._update_nets(obs, act, next_obs, rew, done)
-        if update_target:
-            self.update_target()
-
-        self.logger.store(**info)
-
-    def act_batch_explore(self, obs, global_steps):
-        num_envs = obs.shape[0]
-        actions = np.zeros(shape=(num_envs,), dtype=np.int64)
-        epsilon = self.epsilon_greedy_scheduler.value(global_steps)
-        for i in range(num_envs):
-            if np.random.rand() < epsilon:
-                actions[i] = np.random.randint(low=0, high=self.act_dim)
-            else:
-                actions[i:i + 1] = self.act_batch_test(obs[i:i + 1])
-        return actions
-
-    def act_batch_test(self, obs):
-        obs = torch.as_tensor(obs, device=ptu.device)
-        with torch.no_grad():
-            target_logits_action = self.q_network(obs)  # (None, act_dim, num_atoms)
-            target_q_values = torch.sum(target_logits_action * self.support[None, None, :], dim=-1)  # (None, act_dim)
-            target_actions = torch.argmax(target_q_values, dim=-1)  # (None,)
-            return target_actions.cpu().numpy()
+    def _create_q_network(self):
+        return rlu.nn.values.CategoricalAtariQModule(frame_stack=self.frame_stack,
+                                                     action_dim=self.act_dim,
+                                                     num_atoms=self.num_atoms)
 
 
 class Runner(rl_infra.runner.PytorchAtariRunner):
@@ -135,7 +47,7 @@ class Runner(rl_infra.runner.PytorchAtariRunner):
              env_fn: Callable = None,
              exp_name: str = None,
              steps_per_epoch=10000,
-             epochs=100,
+             epochs=150,
              start_steps=10000,
              update_after=5000,
              update_every=4,

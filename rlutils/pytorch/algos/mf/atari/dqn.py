@@ -41,7 +41,7 @@ class Runner(rl_infra.runner.PytorchAtariRunner):
              env_fn: Callable = None,
              exp_name: str = None,
              steps_per_epoch=10000,
-             epochs=100,
+             epochs=150,
              start_steps=10000,
              update_after=5000,
              update_every=4,

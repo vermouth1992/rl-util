@@ -50,7 +50,7 @@ class AtariDuelQModule(nn.Module):
         batch_size = state.shape[0]
         state = state.to(torch.float32)
         state = (state - 127.5) / 127.5
-        state = self.model.forward(state)
+        state = self.model(state)
         value = self.value_fc(state)
         adv = self.adv_fc(state)
         adv = adv - torch.mean(adv, dim=-1, keepdim=True)
@@ -60,10 +60,25 @@ class AtariDuelQModule(nn.Module):
         return out
 
 
-class CategoricalAtariQModule(nn.Module):
+class CategoricalQModule(nn.Module):
+    def __init__(self, model):
+        super(CategoricalQModule, self).__init__()
+        self.model = model
+
+    def forward(self, state: torch.Tensor, action=None, log_prob=False):
+        batch_size = state.shape[0]
+        q_value = self.model(state)
+        if action is not None:
+            q_value = q_value[torch.arange(batch_size), action]
+        if log_prob:
+            return torch.log_softmax(q_value, dim=-1)
+        else:
+            return torch.softmax(q_value, dim=-1)
+
+
+class CategoricalAtariQModule(CategoricalQModule):
     def __init__(self, frame_stack, action_dim, num_atoms):
-        super(CategoricalAtariQModule, self).__init__()
-        self.model = nn.Sequential(
+        model = nn.Sequential(
             *rlu.nn.functional.conv2d_bn_activation_block(frame_stack, 32, kernel_size=8, stride=4, padding=4,
                                                           normalize=False),
             *rlu.nn.functional.conv2d_bn_activation_block(32, 64, kernel_size=4, stride=2, padding=2, normalize=False),
@@ -73,14 +88,10 @@ class CategoricalAtariQModule(nn.Module):
             nn.ReLU(),
             nn.Linear(512, action_dim * num_atoms),
             rlu.nn.LambdaLayer(function=lambda x: torch.reshape(x, (-1, action_dim, num_atoms))),
-            nn.Softmax(dim=-1)
         )
+        super(CategoricalAtariQModule, self).__init__(model=model)
 
-    def forward(self, state: torch.Tensor, action=None):
-        batch_size = state.shape[0]
+    def forward(self, state: torch.Tensor, action=None, log_prob=False):
         state = state.to(torch.float32)
         state = (state - 127.5) / 127.5
-        q_value = self.model.forward(state)
-        if action is not None:
-            q_value = q_value[torch.arange(batch_size), action]
-        return q_value
+        return super(CategoricalAtariQModule, self).forward(state=state, action=action, log_prob=log_prob)

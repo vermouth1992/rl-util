@@ -28,7 +28,11 @@ class AtariRunner(OffPolicyRunner):
                   asynchronous=False,
                   num_test_episodes=None):
         assert env_fn is None
-        env_fn = lambda: AtariPreprocessing(gym.make(env_name))
+        if 'NoFrameskip' not in env_name:
+            frame_skip = 0
+        else:
+            frame_skip = 4
+        env_fn = lambda: AtariPreprocessing(gym.make(env_name), frame_skip=frame_skip)
         # we handle frame stack in the sampler
         super(AtariRunner, self).setup_env(env_name=env_name, env_fn=env_fn,
                                            num_parallel_env=num_parallel_env,
