@@ -1,5 +1,6 @@
 from rlutils.infra.runner import get_argparser_from_func
-from rlutils.pytorch.algos.mf import dqn as dqn_pytorch, sac as sac_pytorch, td3 as td3_pytorch, categorical_dqn as c51
+from rlutils.pytorch.algos.mf import dqn as dqn_pytorch, sac as sac_pytorch, td3 as td3_pytorch, \
+    categorical_dqn as c51_pytorch, qr_dqn as qr_dqn_pytorch
 from rlutils.pytorch.algos.mf.atari import categorical_dqn as c51_pytorch, dqn as atari_dqn_pytorch
 from rlutils.pytorch.algos.offline import cql as cql_pytorch
 from rlutils.tf.algos.mb import pets
@@ -7,7 +8,9 @@ from rlutils.tf.algos.mf import td3, ppo, trpo, sac, ddpg, dqn
 from rlutils.tf.algos.offline import cql, plas
 
 __all__ = ['ppo', 'td3', 'trpo', 'sac', 'ddpg', 'cql', 'plas', 'dqn', 'pets',
-           'sac_pytorch', 'td3_pytorch', 'atari_dqn_pytorch', 'dqn_pytorch', 'cql_pytorch', 'c51_pytorch', 'c51']
+           'sac_pytorch', 'td3_pytorch', 'atari_dqn_pytorch', 'dqn_pytorch', 'cql_pytorch', 'c51_pytorch',
+           'c51_pytorch',
+           'qr_dqn_pytorch']
 
 
 def main():
