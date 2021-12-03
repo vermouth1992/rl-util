@@ -17,7 +17,7 @@ class CategoricalDQN(Agent, nn.Module):
                  obs_spec,
                  act_spec,
                  mlp_hidden=128,
-                 double_q=True,
+                 double_q=False,
                  q_lr=1e-4,
                  gamma=0.99,
                  tau=5e-3,
@@ -64,6 +64,7 @@ class CategoricalDQN(Agent, nn.Module):
         rlu.functional.soft_update(self.target_q_network, self.q_network, self.tau)
 
     def compute_target_values(self, next_obs, rew, done):
+        # double q doesn't perform very well.
         with torch.no_grad():
             batch_size = next_obs.shape[0]
             target_action_compute_q = self.q_network if self.double_q else self.target_q_network

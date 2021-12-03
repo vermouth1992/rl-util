@@ -11,7 +11,7 @@ class CategoricalAtariDQN(CategoricalDQN):
                  obs_spec,
                  act_spec,
                  frame_stack=4,
-                 double_q=True,
+                 double_q=False,
                  q_lr=1e-4,
                  gamma=0.99,
                  tau=5e-3,
