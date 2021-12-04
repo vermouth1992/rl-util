@@ -34,11 +34,6 @@ class AtariQRDQN(QRDQN):
                                             output_fn=output_fn)
         return model
 
-    def _create_epsilon_greedy_scheduler(self):
-        return rln.schedulers.LinearSchedule(schedule_timesteps=self.epsilon_greedy_steps,
-                                             final_p=0.1,
-                                             initial_p=1.0)
-
 
 class Runner(rl_infra.runner.PytorchAtariRunner):
     @classmethod
