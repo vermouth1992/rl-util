@@ -31,6 +31,22 @@ class EnsembleMinQNet(nn.Module):
             return torch.min(q, dim=0)[0]
 
 
+def build_atari_q(frame_stack, action_dim, output_fn=None):
+    conv2d_bn_block = rlu.nn.functional.conv2d_bn_activation_block
+    layers = []
+    layers.append(rlu.nn.LambdaLayer(function=lambda state: (state.to(torch.float32) - 127.5) / 127.5))
+    layers.extend(conv2d_bn_block(frame_stack, 32, kernel_size=8, stride=4, padding=4, normalize=False))
+    layers.extend(conv2d_bn_block(32, 64, kernel_size=4, stride=2, padding=2, normalize=False))
+    layers.extend(conv2d_bn_block(64, 64, kernel_size=3, stride=1, padding=1, normalize=False))
+    layers.append(nn.Flatten())
+    layers.append(nn.Linear(12 * 12 * 64, 512))
+    layers.append(nn.ReLU())
+    layers.append(nn.Linear(512, action_dim))
+    if output_fn is not None:
+        layers.append(rlu.nn.LambdaLayer(function=output_fn))
+    return nn.Sequential(*layers)
+
+
 class AtariDuelQModule(nn.Module):
     def __init__(self, frame_stack, action_dim):
         super(AtariDuelQModule, self).__init__()
@@ -78,20 +94,6 @@ class CategoricalQModule(nn.Module):
 
 class CategoricalAtariQModule(CategoricalQModule):
     def __init__(self, frame_stack, action_dim, num_atoms):
-        model = nn.Sequential(
-            *rlu.nn.functional.conv2d_bn_activation_block(frame_stack, 32, kernel_size=8, stride=4, padding=4,
-                                                          normalize=False),
-            *rlu.nn.functional.conv2d_bn_activation_block(32, 64, kernel_size=4, stride=2, padding=2, normalize=False),
-            *rlu.nn.functional.conv2d_bn_activation_block(64, 64, kernel_size=3, stride=1, padding=1, normalize=False),
-            nn.Flatten(),
-            nn.Linear(12 * 12 * 64, 512),
-            nn.ReLU(),
-            nn.Linear(512, action_dim * num_atoms),
-            rlu.nn.LambdaLayer(function=lambda x: torch.reshape(x, (-1, action_dim, num_atoms))),
-        )
+        model = build_atari_q(frame_stack=frame_stack, action_dim=action_dim * num_atoms,
+                              output_fn=lambda x: torch.reshape(x, (-1, action_dim, num_atoms)))
         super(CategoricalAtariQModule, self).__init__(model=model)
-
-    def forward(self, state: torch.Tensor, action=None, log_prob=False):
-        state = state.to(torch.float32)
-        state = (state - 127.5) / 127.5
-        return super(CategoricalAtariQModule, self).forward(state=state, action=action, log_prob=log_prob)
