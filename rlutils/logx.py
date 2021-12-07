@@ -11,14 +11,13 @@ import os
 import os.path as osp
 import shutil
 import time
+from typing import Callable
 
 import numpy as np
 import torch
-
-from rlutils.utils.serialization_utils import convert_json
 from tensorboardX import SummaryWriter
 
-from typing import Callable
+from rlutils.utils.serialization_utils import convert_json
 
 DEFAULT_DATA_DIR = 'data'
 FORCE_DATESTAMP = False
@@ -339,8 +338,8 @@ class EpochLogger(Logger):
                 pass
             else:
                 raise ValueError(f'Unknown dtype {type(v)}')
-            #assert isinstance(v, np.ndarray), "The data must be a numpy array or raw data type. Got {}".format(type(v))
-            self.epoch_dict[k].append(v.flatten())
+            # assert isinstance(v, np.ndarray), "The data must be a numpy array or raw data type. Got {}".format(type(v))
+            self.epoch_dict[k].append(v)
 
     def log_tabular(self, key, val=None, with_min_and_max=False, average_only=False):
         """

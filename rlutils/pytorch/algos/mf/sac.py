@@ -123,7 +123,7 @@ class SACAgent(Agent, nn.Module):
 
     def train_on_batch(self, data, **kwargs):
         update_target = data.pop('update_target')
-        data = {key: torch.as_tensor(value, device=ptu.device) for key, value in data.items()}
+        data = {key: torch.as_tensor(value).to(ptu.device, non_blocking=True) for key, value in data.items()}
         info = self._update_nets(**data)
         self.logger.store(**info)
         if update_target:
