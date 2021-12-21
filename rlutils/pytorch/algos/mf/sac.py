@@ -10,10 +10,10 @@ from torch import nn
 import rlutils.pytorch as rlu
 import rlutils.pytorch.utils as ptu
 from rlutils.infra.runner import PytorchOffPolicyRunner, run_func_as_main
-from rlutils.interface.agent import Agent
+from rlutils.interface.agent import OffPolicyAgent
 
 
-class SACAgent(Agent, nn.Module):
+class SACAgent(OffPolicyAgent, nn.Module):
     def __init__(self,
                  obs_spec,
                  act_spec,
@@ -65,6 +65,9 @@ class SACAgent(Agent, nn.Module):
 
     def update_target(self):
         rlu.functional.soft_update(self.target_q_network, self.q_network, self.tau)
+
+    def sync_target(self):
+        rlu.functional.hard_update(self.target_q_network, self.q_network)
 
     def _update_nets(self, obs, act, next_obs, done, rew):
         """ Sample a mini-batch from replay buffer and update the network
