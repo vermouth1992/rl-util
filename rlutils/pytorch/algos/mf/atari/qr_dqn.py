@@ -3,7 +3,6 @@ from typing import Callable
 import torch
 
 import rlutils.infra as rl_infra
-import rlutils.np as rln
 import rlutils.pytorch as rlu
 import rlutils.pytorch.utils as ptu
 from rlutils.pytorch.algos.mf.qr_dqn import QRDQN

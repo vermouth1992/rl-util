@@ -1,24 +1,22 @@
 import copy
+from typing import Callable
 
+import numpy as np
 import torch.nn as nn
 import torch.optim
 
-import rlutils.pytorch as rlu
 import rlutils.infra as rl_infra
 import rlutils.np as rln
+import rlutils.pytorch as rlu
 import rlutils.pytorch.utils as ptu
-from rlutils.interface.agent import Agent
-
-import numpy as np
-
-from typing import Callable
+from rlutils.interface.agent import OffPolicyAgent
 
 
 def gather_q_values(q_values, action):
     return q_values.gather(1, action.unsqueeze(1)).squeeze(1)
 
 
-class DQN(Agent, nn.Module):
+class DQN(OffPolicyAgent, nn.Module):
     def __init__(self,
                  obs_spec,
                  act_spec,
@@ -40,6 +38,7 @@ class DQN(Agent, nn.Module):
         self.epsilon_greedy_steps = epsilon_greedy_steps
         self.q_network = self._create_q_network()
         self.target_q_network = copy.deepcopy(self.q_network).to(ptu.device)
+        rlu.nn.functional.freeze(self.target_q_network)
         self.q_optimizer = torch.optim.Adam(self.q_network.parameters(), lr=q_lr)
         # define loss function
         self.loss_fn = torch.nn.MSELoss() if huber_delta is None else torch.nn.HuberLoss(delta=huber_delta)
@@ -64,6 +63,9 @@ class DQN(Agent, nn.Module):
 
     def update_target(self):
         rlu.functional.soft_update(self.target_q_network, self.q_network, self.tau)
+
+    def sync_target(self):
+        rlu.functional.hard_update(self.target_q_network, self.q_network)
 
     def compute_target_values(self, next_obs, rew, done):
         with torch.no_grad():
@@ -98,17 +100,18 @@ class DQN(Agent, nn.Module):
         done = data['done']
         rew = data['rew']
         update_target = data['update_target']
-        obs = torch.as_tensor(obs, device=ptu.device)
-        act = torch.as_tensor(act, device=ptu.device)
-        next_obs = torch.as_tensor(next_obs, device=ptu.device)
-        done = torch.as_tensor(done, dtype=torch.float32, device=ptu.device)
-        rew = torch.as_tensor(rew, dtype=torch.float32, device=ptu.device)
+
+        obs = torch.as_tensor(obs).pin_memory().to(ptu.device, non_blocking=True)
+        act = torch.as_tensor(act).pin_memory().to(ptu.device, non_blocking=True)
+        next_obs = torch.as_tensor(next_obs).pin_memory().to(ptu.device, non_blocking=True)
+        done = torch.as_tensor(done).pin_memory().to(ptu.device, non_blocking=True)
+        rew = torch.as_tensor(rew).pin_memory().to(ptu.device, non_blocking=True)
 
         info = self._update_nets(obs, act, next_obs, rew, done)
         if update_target:
             self.update_target()
 
-        self.logger.store(**rlu.functional.to_numpy_or_python_type(info))
+        self.logger.store(**info)
 
     def act_batch_explore(self, obs, global_steps):
         num_envs = obs.shape[0]

@@ -1,4 +1,3 @@
-import copy
 from typing import Callable
 
 import numpy as np
@@ -6,45 +5,24 @@ import torch.nn as nn
 import torch.optim
 
 import rlutils.infra as rl_infra
-import rlutils.np as rln
 import rlutils.pytorch as rlu
 import rlutils.pytorch.utils as ptu
-from rlutils.interface.agent import Agent
+from rlutils.pytorch.algos.mf.dqn import DQN
 
 
-class CategoricalDQN(Agent, nn.Module):
-    def __init__(self,
-                 obs_spec,
-                 act_spec,
-                 mlp_hidden=128,
-                 double_q=False,
-                 q_lr=1e-4,
-                 gamma=0.99,
-                 tau=5e-3,
-                 num_atoms=51,
-                 v_min=0.,
-                 v_max=100.,
-                 epsilon_greedy_steps=1000,
-                 ):
+class CategoricalDQN(DQN):
+    def __init__(self, num_atoms=51, v_min=0., v_max=100., **kwargs):
         assert num_atoms > 1, 'The number of atoms must be greater than 1'
-        super(CategoricalDQN, self).__init__()
-        self.mlp_hidden = mlp_hidden
-        self.tau = tau
-        self.gamma = gamma
-        self.double_q = double_q
-        self.obs_spec = obs_spec
+        super(CategoricalDQN, self).__init__(**kwargs)
         self.num_atoms = num_atoms
         self.v_min = v_min
         self.v_max = v_max
-        self.act_dim = act_spec.n
-        self.q_network = self._create_q_network()
-        self.target_q_network = copy.deepcopy(self.q_network)
-        self.q_optimizer = torch.optim.Adam(self.q_network.parameters(), lr=q_lr)
-        self.epsilon_greedy_scheduler = rln.schedulers.LinearSchedule(schedule_timesteps=epsilon_greedy_steps,
-                                                                      final_p=0.1,
-                                                                      initial_p=1.0)
         self.support = nn.Parameter(torch.linspace(self.v_min, self.v_max, self.num_atoms), requires_grad=False)
         self.delta_z = (self.v_max - self.v_min) / (self.num_atoms - 1)
+
+        if self.double_q:
+            self.double_q = False
+            print('Double q is set to False in CategoricalDQN')
 
         self.to(ptu.device)
 
@@ -55,13 +33,6 @@ class CategoricalDQN(Agent, nn.Module):
                                             mlp_hidden=self.mlp_hidden,
                                             out_activation=out_activation)
         return rlu.nn.values.CategoricalQModule(model=model)
-
-    def log_tabular(self):
-        self.logger.log_tabular('QVals', with_min_and_max=True)
-        self.logger.log_tabular('LossQ', average_only=True)
-
-    def update_target(self):
-        rlu.functional.soft_update(self.target_q_network, self.q_network, self.tau)
 
     def compute_target_values(self, next_obs, rew, done):
         # double q doesn't perform very well.
@@ -99,35 +70,6 @@ class CategoricalDQN(Agent, nn.Module):
             LossQ=loss
         )
         return info
-
-    def train_on_batch(self, data, **kwargs):
-        obs = data['obs']
-        act = data['act']
-        next_obs = data['next_obs']
-        done = data['done']
-        rew = data['rew']
-        update_target = data['update_target']
-        obs = torch.as_tensor(obs).pin_memory().to(ptu.device, non_blocking=True)
-        act = torch.as_tensor(act).pin_memory().to(ptu.device, non_blocking=True)
-        next_obs = torch.as_tensor(next_obs).pin_memory().to(ptu.device, non_blocking=True)
-        done = torch.as_tensor(done).pin_memory().to(ptu.device, non_blocking=True)
-        rew = torch.as_tensor(rew).pin_memory().to(ptu.device, non_blocking=True)
-        info = self._update_nets(obs, act, next_obs, rew, done)
-        if update_target:
-            self.update_target()
-
-        self.logger.store(**info)
-
-    def act_batch_explore(self, obs, global_steps):
-        num_envs = obs.shape[0]
-        actions = np.zeros(shape=(num_envs,), dtype=np.int64)
-        epsilon = self.epsilon_greedy_scheduler.value(global_steps)
-        for i in range(num_envs):
-            if np.random.rand() < epsilon:
-                actions[i] = np.random.randint(low=0, high=self.act_dim)
-            else:
-                actions[i:i + 1] = self.act_batch_test(obs[i:i + 1])
-        return actions
 
     def act_batch_test(self, obs):
         obs = torch.as_tensor(obs, device=ptu.device)

@@ -94,3 +94,18 @@ def conv2d_bn_activation_block(in_channels, out_channels, kernel_size, stride, p
     if activation is not None:
         layers.append(activation(inplace=True))
     return layers
+
+
+def get_trainable_params(module: nn.Module):
+    trainable_params = filter(lambda p: p.requires_grad, module.parameters())
+    return trainable_params
+
+
+def freeze(module: nn.Module):
+    for param in module.parameters():
+        param.requires_grad = False
+
+
+def unfreeze(module: nn.Module):
+    for param in module.parameters():
+        param.requires_grad = True

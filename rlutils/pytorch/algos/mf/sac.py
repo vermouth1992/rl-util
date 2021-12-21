@@ -38,6 +38,7 @@ class SACAgent(Agent, nn.Module):
             self.q_network = rlu.nn.EnsembleMinQNet(self.obs_dim, self.act_dim, q_mlp_hidden,
                                                     num_ensembles=num_ensembles)
             self.target_q_network = copy.deepcopy(self.q_network)
+            rlu.nn.functional.freeze(self.target_q_network)
         else:
             raise NotImplementedError
 

@@ -1,4 +1,3 @@
-import numpy as np
 import torch
 import torch.nn as nn
 
@@ -24,31 +23,30 @@ def clip_by_value_preserve_gradient(t, clip_value_min=None, clip_value_max=None)
     clip_t = torch.clip(t, min=clip_value_min, max=clip_value_max)
     return t + (clip_t - t).detach()
 
-
-def to_numpy_or_python_type(tensors):
-    """Converts a structure of `Tensor`s to `NumPy` arrays or Python scalar types.
-
-    For each tensor, it calls `tensor.numpy()`. If the result is a scalar value,
-    it converts it to a Python type, such as a float or int, by calling
-    `result.item()`.
-
-    Numpy scalars are converted, as Python types are often more convenient to deal
-    with. This is especially useful for bfloat16 Numpy scalars, which don't
-    support as many operations as other Numpy values.
-
-    Args:
-      tensors: A structure of tensors.
-
-    Returns:
-      `tensors`, but scalar tensors are converted to Python types and non-scalar
-      tensors are converted to Numpy arrays.
-    """
-
-    def _to_single_numpy_or_python_type(t):
-        if isinstance(t, torch.Tensor):
-            x = t.detach().cpu().numpy()
-            return x.item() if np.ndim(x) == 0 else x
-        return t  # Don't turn ragged or sparse tensors to NumPy.
-
-    import tensorflow as tf
-    return tf.nest.map_structure(_to_single_numpy_or_python_type, tensors)
+# def to_numpy_or_python_type(tensors):
+#     """Converts a structure of `Tensor`s to `NumPy` arrays or Python scalar types.
+#
+#     For each tensor, it calls `tensor.numpy()`. If the result is a scalar value,
+#     it converts it to a Python type, such as a float or int, by calling
+#     `result.item()`.
+#
+#     Numpy scalars are converted, as Python types are often more convenient to deal
+#     with. This is especially useful for bfloat16 Numpy scalars, which don't
+#     support as many operations as other Numpy values.
+#
+#     Args:
+#       tensors: A structure of tensors.
+#
+#     Returns:
+#       `tensors`, but scalar tensors are converted to Python types and non-scalar
+#       tensors are converted to Numpy arrays.
+#     """
+#
+#     def _to_single_numpy_or_python_type(t):
+#         if isinstance(t, torch.Tensor):
+#             x = t.detach().cpu().numpy()
+#             return x.item() if np.ndim(x) == 0 else x
+#         return t  # Don't turn ragged or sparse tensors to NumPy.
+#
+#     import tensorflow as tf
+#     return tf.nest.map_structure(_to_single_numpy_or_python_type, tensors)

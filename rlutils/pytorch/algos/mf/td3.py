@@ -11,13 +11,13 @@ import torch.nn as nn
 import rlutils.pytorch.utils as ptu
 from rlutils.gym.utils import verify_continuous_action_space
 from rlutils.infra.runner import run_func_as_main, PytorchOffPolicyRunner
-from rlutils.interface.agent import Agent
+from rlutils.interface.agent import OffPolicyAgent
 from rlutils.pytorch.functional import soft_update, hard_update, compute_target_value, to_numpy_or_python_type
 from rlutils.pytorch.nn import EnsembleMinQNet
-from rlutils.pytorch.nn.functional import build_mlp
+from rlutils.pytorch.nn.functional import build_mlp, freeze
 
 
-class TD3Agent(nn.Module, Agent):
+class TD3Agent(nn.Module, OffPolicyAgent):
     def __init__(self,
                  obs_spec,
                  act_spec,
@@ -58,6 +58,9 @@ class TD3Agent(nn.Module, Agent):
             self.q_network = EnsembleMinQNet(self.obs_dim, self.act_dim, q_mlp_hidden,
                                              num_ensembles=num_q_ensembles).to(ptu.device)
             self.target_q_network = copy.deepcopy(self.q_network).to(ptu.device)
+
+            freeze(self.target_policy_net)
+            freeze(self.target_q_network)
         else:
             raise NotImplementedError
 
@@ -73,6 +76,10 @@ class TD3Agent(nn.Module, Agent):
     def update_target(self):
         soft_update(self.target_q_network, self.q_network, self.tau)
         soft_update(self.target_policy_net, self.policy_net, self.tau)
+
+    def sync_target(self):
+        hard_update(self.target_q_network, self.q_network)
+        hard_update(self.target_policy_net, self.policy_net)
 
     def _compute_next_obs_q(self, next_obs):
         next_action = self.target_policy_net(next_obs)
