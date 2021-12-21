@@ -32,6 +32,7 @@ class DQN(OffPolicyAgent, nn.Module):
         self.tau = tau
         self.gamma = gamma
         self.double_q = double_q
+        self.q_lr = q_lr
         self.obs_spec = obs_spec
         self.act_dim = act_spec.n
         self.mlp_hidden = mlp_hidden
@@ -39,10 +40,13 @@ class DQN(OffPolicyAgent, nn.Module):
         self.q_network = self._create_q_network()
         self.target_q_network = copy.deepcopy(self.q_network).to(ptu.device)
         rlu.nn.functional.freeze(self.target_q_network)
-        self.q_optimizer = torch.optim.Adam(self.q_network.parameters(), lr=q_lr)
+        self.reset_optimizer()
         # define loss function
         self.loss_fn = torch.nn.MSELoss() if huber_delta is None else torch.nn.HuberLoss(delta=huber_delta)
         self.epsilon_greedy_scheduler = self._create_epsilon_greedy_scheduler()
+
+    def reset_optimizer(self):
+        self.q_optimizer = torch.optim.Adam(self.q_network.parameters(), lr=self.q_lr)
 
     def _create_q_network(self):
         if len(self.obs_spec.shape) == 1:  # 1D observation

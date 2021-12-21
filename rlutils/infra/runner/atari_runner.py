@@ -29,7 +29,7 @@ class AtariRunner(OffPolicyRunner):
                   num_test_episodes=None):
         assert env_fn is None
         if 'NoFrameskip' not in env_name:
-            frame_skip = 0
+            frame_skip = 1
         else:
             frame_skip = 4
         env_fn = lambda: AtariPreprocessing(gym.make(env_name), frame_skip=frame_skip)

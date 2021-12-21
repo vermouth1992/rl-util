@@ -12,7 +12,7 @@ import rlutils.pytorch.utils as ptu
 from rlutils.gym.utils import verify_continuous_action_space
 from rlutils.infra.runner import run_func_as_main, PytorchOffPolicyRunner
 from rlutils.interface.agent import OffPolicyAgent
-from rlutils.pytorch.functional import soft_update, hard_update, compute_target_value, to_numpy_or_python_type
+from rlutils.pytorch.functional import soft_update, hard_update, compute_target_value
 from rlutils.pytorch.nn import EnsembleMinQNet
 from rlutils.pytorch.nn.functional import build_mlp, freeze
 
@@ -43,6 +43,8 @@ class TD3Agent(nn.Module, OffPolicyAgent):
         self.noise_clip = noise_clip
         self.tau = tau
         self.gamma = gamma
+        self.policy_lr = policy_lr
+        self.q_lr = q_lr
         if len(self.obs_spec.shape) == 1:  # 1D observation
             self.obs_dim = self.obs_spec.shape[0]
             self.policy_net = build_mlp(self.obs_dim, self.act_dim, mlp_hidden=policy_mlp_hidden, num_layers=3,
@@ -64,8 +66,9 @@ class TD3Agent(nn.Module, OffPolicyAgent):
         else:
             raise NotImplementedError
 
-        self.policy_optimizer = torch.optim.Adam(params=self.policy_net.parameters(), lr=policy_lr)
-        self.q_optimizer = torch.optim.Adam(params=self.q_network.parameters(), lr=q_lr)
+    def reset_optimizer(self):
+        self.policy_optimizer = torch.optim.Adam(params=self.policy_net.parameters(), lr=self.policy_lr)
+        self.q_optimizer = torch.optim.Adam(params=self.q_network.parameters(), lr=self.q_lr)
 
     def log_tabular(self):
         self.logger.log_tabular('Q1Vals', with_min_and_max=True)
@@ -152,7 +155,7 @@ class TD3Agent(nn.Module, OffPolicyAgent):
             if ptu.device == "cuda":
                 hard_update(self.inference_net, self.policy_net)
 
-        self.logger.store(**to_numpy_or_python_type(info))
+        self.logger.store(**info)
 
     def act_batch_test(self, obs):
         obs = torch.as_tensor(obs, dtype=torch.float32)

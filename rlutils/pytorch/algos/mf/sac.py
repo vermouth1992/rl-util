@@ -31,6 +31,9 @@ class SACAgent(OffPolicyAgent, nn.Module):
         super(SACAgent, self).__init__()
         self.obs_spec = obs_spec
         self.act_spec = act_spec
+        self.policy_lr = policy_lr
+        self.q_lr = q_lr
+        self.alpha_lr = alpha_lr
         self.act_dim = self.act_spec.shape[0]
         if len(self.obs_spec.shape) == 1:  # 1D observation
             self.obs_dim = self.obs_spec.shape[0]
@@ -44,15 +47,17 @@ class SACAgent(OffPolicyAgent, nn.Module):
 
         self.alpha_net = rlu.nn.LagrangeLayer(initial_value=alpha)
 
-        self.policy_optimizer = torch.optim.Adam(params=self.policy_net.parameters(), lr=policy_lr)
-        self.q_optimizer = torch.optim.Adam(params=self.q_network.parameters(), lr=q_lr)
-        self.alpha_optimizer = torch.optim.Adam(params=self.alpha_net.parameters(), lr=alpha_lr)
         self.target_entropy = -self.act_dim if target_entropy is None else target_entropy
 
         self.tau = tau
         self.gamma = gamma
 
         self.to(ptu.device)
+
+    def reset_optimizer(self):
+        self.policy_optimizer = torch.optim.Adam(params=self.policy_net.parameters(), lr=self.policy_lr)
+        self.q_optimizer = torch.optim.Adam(params=self.q_network.parameters(), lr=self.q_lr)
+        self.alpha_optimizer = torch.optim.Adam(params=self.alpha_net.parameters(), lr=self.alpha_lr)
 
     def log_tabular(self):
         self.logger.log_tabular('Q1Vals', with_min_and_max=True)

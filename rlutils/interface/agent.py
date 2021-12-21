@@ -23,3 +23,7 @@ class OffPolicyAgent(Agent):
     @abstractmethod
     def train_on_batch(self, data, **kwargs):
         pass
+
+    @abstractmethod
+    def reset_optimizer(self):
+        pass
