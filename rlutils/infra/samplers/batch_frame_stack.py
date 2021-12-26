@@ -1,8 +1,10 @@
-from gym.wrappers import LazyFrames
 from collections import deque
-from .batch import BatchSampler
+
 import numpy as np
+from gym.wrappers import LazyFrames
+
 import rlutils.np as rln
+from .batch import BatchSampler
 
 
 class BatchFrameStackSampler(BatchSampler):

@@ -66,7 +66,7 @@ class DQN(OffPolicyAgent, nn.Module):
         self.logger.log_tabular('LossQ', average_only=True)
 
     def update_target(self):
-        rlu.functional.soft_update(self.target_q_network, self.q_network, self.tau)
+        rlu.functional.hard_update(self.target_q_network, self.q_network)
 
     def sync_target(self):
         rlu.functional.hard_update(self.target_q_network, self.q_network)
@@ -91,11 +91,13 @@ class DQN(OffPolicyAgent, nn.Module):
         loss = self.loss_fn(q_values, target_q_values)
         loss.backward()
         self.q_optimizer.step()
+        with torch.no_grad():
+            abs_delta_q = torch.abs(q_values - target_q_values).detach()
         info = dict(
             QVals=q_values,
             LossQ=loss
         )
-        return info
+        return info, abs_delta_q
 
     def train_on_batch(self, data, **kwargs):
         obs = data['obs']
@@ -111,11 +113,13 @@ class DQN(OffPolicyAgent, nn.Module):
         done = torch.as_tensor(done).pin_memory().to(ptu.device, non_blocking=True)
         rew = torch.as_tensor(rew).pin_memory().to(ptu.device, non_blocking=True)
 
-        info = self._update_nets(obs, act, next_obs, rew, done)
+        info, abs_delta_q = self._update_nets(obs, act, next_obs, rew, done)
         if update_target:
             self.update_target()
 
         self.logger.store(**info)
+
+        return abs_delta_q
 
     def act_batch_explore(self, obs, global_steps):
         num_envs = obs.shape[0]
@@ -147,7 +151,7 @@ class Runner(rl_infra.runner.PytorchOffPolicyRunner):
              update_after=5000,
              update_every=1,
              update_per_step=1,
-             policy_delay=1,
+             policy_delay=500,
              num_parallel_env=1,
              num_test_episodes=10,
              seed=1,
@@ -174,7 +178,7 @@ class Runner(rl_infra.runner.PytorchOffPolicyRunner):
                                 update_after=update_after,
                                 update_every=update_every,
                                 update_per_step=update_per_step,
-                                policy_delay=1,
+                                policy_delay=policy_delay,
                                 num_parallel_env=1,
                                 num_test_episodes=num_test_episodes,
                                 agent_cls=DQN,

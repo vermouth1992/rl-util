@@ -8,7 +8,7 @@ import gym.spaces
 import numpy as np
 
 from .base import DictReplayBuffer
-from .utils import segtree
+from .utils import segtree, combined_shape
 
 EPS = np.finfo(np.float32).eps.item()
 
@@ -27,6 +27,14 @@ class DictPrioritizedReplayBuffer(DictReplayBuffer):
         self.max_priority = 1.0
         self.min_priority = 1.0
         self.segtree = segtree.SegmentTree(size=capacity)
+
+    def get(self):
+        idxs = np.arange(self.size)
+        return self.__getitem__(idxs)
+
+    def _create_storage(self):
+        return {key: np.zeros(combined_shape(self.capacity, item.shape), dtype=item.dtype)
+                for key, item in self.data_spec.items()}
 
     def add(self, data: Dict[str, np.ndarray], priority=None):
         batch_size = list(data.values())[0].shape[0]

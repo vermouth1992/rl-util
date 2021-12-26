@@ -1,6 +1,8 @@
 import gym
 import numpy as np
+
 import rlutils.gym
+import rlutils.np as rln
 
 
 def verify_continuous_action_space(act_spec: gym.spaces.Box):
@@ -10,6 +12,15 @@ def verify_continuous_action_space(act_spec: gym.spaces.Box):
         f'Not all the values in low are the same. Got {act_spec.low}'
     assert act_spec.high[0] + act_spec.low[0] == 0., f'High is not equal to low'
     assert act_spec.high[0] == 1.0
+
+
+def get_true_done_from_infos(done, infos):
+    timeouts = rln.gather_dict_key(infos=infos, key='TimeLimit.truncated', default=False, dtype=np.bool)
+    # Ignore the "done" signal if it comes from hitting the time
+    # horizon (that is, when it's an artificial terminal signal
+    # that isn't based on the agent's state)
+    true_d = np.logical_and(done, np.logical_not(timeouts))
+    return true_d
 
 
 def create_vector_env(env_fn=None,
