@@ -1,10 +1,10 @@
-from .base import BaseRunner
+import pprint
+
+import numpy as np
 
 import rlutils.infra as rl_infra
 from rlutils.replay_buffers import PyUniformReplayBuffer as ReplayBuffer
-
-import numpy as np
-import pprint
+from .base import BaseRunner
 
 
 class OffPolicyRunner(BaseRunner):
@@ -12,7 +12,6 @@ class OffPolicyRunner(BaseRunner):
         super(OffPolicyRunner, self).setup_logger(config=config, tensorboard=tensorboard)
         self.sampler.set_logger(self.logger)
         self.tester.set_logger(self.logger)
-        self.updater.set_logger(self.logger)
 
     def setup_tester(self, num_test_episodes, **kwargs):
         test_env_seed = self.seeder.generate_seed()
@@ -34,11 +33,10 @@ class OffPolicyRunner(BaseRunner):
         self.start_steps = start_steps
         self.sampler = rl_infra.samplers.BatchSampler(env=self.env)
 
-    def setup_updater(self, update_after, policy_delay, update_per_step, update_every, **kwargs):
+    def setup_updater(self, update_after, update_per_step, update_every, **kwargs):
         self.update_after = update_after
         self.updater = rl_infra.OffPolicyUpdater(agent=self.agent,
                                                  replay_buffer=self.replay_buffer,
-                                                 policy_delay=policy_delay,
                                                  update_per_step=update_per_step,
                                                  update_every=update_every)
 
@@ -65,7 +63,6 @@ class OffPolicyRunner(BaseRunner):
 
     def on_train_begin(self, **kwargs):
         self.sampler.reset()
-        self.updater.reset()
         self.timer.start()
 
     @classmethod
@@ -79,7 +76,6 @@ class OffPolicyRunner(BaseRunner):
              update_after=5000,
              update_every=1,
              update_per_step=1,
-             policy_delay=1,
              batch_size=256,
              num_parallel_env=1,
              num_test_episodes=30,
@@ -103,7 +99,6 @@ class OffPolicyRunner(BaseRunner):
         runner.setup_sampler(start_steps=start_steps)
         runner.setup_tester(num_test_episodes=num_test_episodes)
         runner.setup_updater(update_after=update_after,
-                             policy_delay=policy_delay,
                              update_per_step=update_per_step,
                              update_every=update_every)
         runner.setup_logger(config=config, tensorboard=False)

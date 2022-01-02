@@ -86,6 +86,7 @@ class BaseRunner(ABC):
         if env_fn is None:
             env_fn = lambda: gym.make(env_name)
         self.env_fn = env_fn
+        self.dummy_env = self.env_fn()
 
         if num_parallel_env > 0:
             self.env = rlutils.gym.utils.create_vector_env(env_fn=env_fn,
@@ -106,9 +107,7 @@ class BaseRunner(ABC):
         self.asynchronous = asynchronous
 
     def setup_agent(self, agent_cls, **kwargs):
-        self.agent = agent_cls(obs_spec=self.env.single_observation_space,
-                               act_spec=self.env.single_action_space,
-                               **kwargs)
+        self.agent = agent_cls(env=self.dummy_env, **kwargs)
         assert isinstance(self.agent, Agent), f'agent must be an Agent class. Got {type(self.agent)}'
 
     def run(self):
