@@ -3,7 +3,7 @@ import pprint
 import numpy as np
 
 import rlutils.infra as rl_infra
-from rlutils.replay_buffers import PyUniformReplayBuffer as ReplayBuffer
+from rlutils.replay_buffers import UniformPyDictReplayBuffer as ReplayBuffer
 from .base import BaseRunner
 
 
@@ -22,23 +22,22 @@ class OffPolicyRunner(BaseRunner):
 
     def setup_replay_buffer(self,
                             replay_size,
-                            batch_size,
                             **kwargs):
         self.seeds_info['replay_buffer'] = self.seeder.generate_seed()
-        self.replay_buffer = ReplayBuffer.from_vec_env(self.env, capacity=replay_size,
-                                                       batch_size=batch_size,
+        self.replay_buffer = ReplayBuffer.from_vec_env(vec_env=self.env, capacity=replay_size,
                                                        seed=self.seeds_info['replay_buffer'])
 
     def setup_sampler(self, start_steps, **kwargs):
         self.start_steps = start_steps
         self.sampler = rl_infra.samplers.BatchSampler(env=self.env)
 
-    def setup_updater(self, update_after, update_per_step, update_every, **kwargs):
+    def setup_updater(self, update_after, update_per_step, update_every, batch_size, **kwargs):
         self.update_after = update_after
         self.updater = rl_infra.OffPolicyUpdater(agent=self.agent,
                                                  replay_buffer=self.replay_buffer,
                                                  update_per_step=update_per_step,
-                                                 update_every=update_every)
+                                                 update_every=update_every,
+                                                 batch_size=batch_size)
 
     def run_one_step(self, t, **kwargs):
         if self.sampler.total_env_steps < self.start_steps:
@@ -94,13 +93,13 @@ class OffPolicyRunner(BaseRunner):
         runner.setup_env(env_name=env_name, env_fn=env_fn, num_parallel_env=num_parallel_env,
                          asynchronous=False, num_test_episodes=num_test_episodes)
         runner.setup_agent(agent_cls=agent_cls, **agent_kwargs)
-        runner.setup_replay_buffer(replay_size=replay_size,
-                                   batch_size=batch_size)
+        runner.setup_replay_buffer(replay_size=replay_size)
         runner.setup_sampler(start_steps=start_steps)
         runner.setup_tester(num_test_episodes=num_test_episodes)
         runner.setup_updater(update_after=update_after,
                              update_per_step=update_per_step,
-                             update_every=update_every)
+                             update_every=update_every,
+                             batch_size=batch_size)
         runner.setup_logger(config=config, tensorboard=False)
 
         pprint.pprint(runner.seeds_info)

@@ -4,10 +4,8 @@ Code copied from https://github.com/thu-ml/tianshou/blob/master/tianshou/data/ut
 
 from typing import Union, Optional
 
-import numpy as np
 import torch
 import torch.nn as nn
-from numba import njit
 
 
 class SegmentTree(nn.Module):
@@ -21,40 +19,30 @@ class SegmentTree(nn.Module):
     :param int size: the size of segment tree.
     """
 
-    def __init__(self, size: int) -> None:
+    def __init__(self, size: int, device) -> None:
         super(SegmentTree, self).__init__()
         bound = 1
         while bound < size:
             bound *= 2
         self._size = size
         self._bound = bound
-        self._value = torch.zeros(size=[bound * 2])
-        self._compile()
+        self._device = device
+        self._value = torch.zeros(size=[bound * 2], device=self._device)
 
     def __len__(self) -> int:
         return self._size
 
     def __getitem__(
-            self, index: Union[int, np.ndarray]
-    ) -> Union[float, np.ndarray]:
+            self, index: Union[int, torch.Tensor]
+    ) -> Union[float, torch.Tensor]:
         """Return self[index]."""
         return self._value[index + self._bound]
 
     def __setitem__(
-            self, index: Union[int, np.ndarray], value: Union[float, np.ndarray]
+            self, index: Union[int, torch.Tensor], value: Union[float, torch.Tensor]
     ) -> None:
-        """Update values in segment tree.
-        Duplicate values in ``index`` are handled by numpy: later index
-        overwrites previous ones.
-        ::
-            >>> a = np.array([1, 2, 3, 4])
-            >>> a[[0, 1, 0, 1]] = [4, 5, 6, 7]
-            >>> print(a)
-            [6 7 3 4]
-        """
         if isinstance(index, int):
-            index, value = np.array([index]), np.array([value])
-        assert np.all(0 <= index) and np.all(index < self._size)
+            index, value = torch.tensor([index], device=self._device), torch.tensor([value], device=self._device)
         _setitem(self._value, index + self._bound, value)
 
     def reduce(self, start: int = 0, end: Optional[int] = None) -> float:
@@ -68,8 +56,8 @@ class SegmentTree(nn.Module):
         return _reduce(self._value, start + self._bound - 1, end + self._bound)
 
     def get_prefix_sum_idx(
-            self, value: Union[float, np.ndarray]
-    ) -> Union[int, np.ndarray]:
+            self, value: Union[float, torch.Tensor]
+    ) -> Union[int, torch.Tensor]:
         r"""Find the index with given value.
         Return the minimum index for each ``v`` in ``value`` so that
         :math:`v \le \mathrm{sums}_i`, where
@@ -78,36 +66,23 @@ class SegmentTree(nn.Module):
             Please make sure all of the values inside the segment tree are
             non-negative when using this function.
         """
-        assert np.all(value >= 0.0) and np.all(value < self._value[1])
         single = False
-        if not isinstance(value, np.ndarray):
-            value = np.array([value])
+        if not isinstance(value, torch.Tensor):
+            value = torch.tensor([value], device=self._device)
             single = True
         index = _get_prefix_sum_idx(value, self._bound, self._value)
         return index.item() if single else index
 
-    def _compile(self) -> None:
-        f64 = np.array([0, 1], dtype=np.float64)
-        f32 = np.array([0, 1], dtype=np.float32)
-        i64 = np.array([0, 1], dtype=np.int64)
-        _setitem(f64, i64, f64)
-        _setitem(f64, i64, f32)
-        _reduce(f64, 0, 1)
-        _get_prefix_sum_idx(f64, 1, f64)
-        _get_prefix_sum_idx(f32, 1, f64)
 
-
-@njit
-def _setitem(tree: np.ndarray, index: np.ndarray, value: np.ndarray) -> None:
+def _setitem(tree: torch.Tensor, index: torch.Tensor, value: torch.Tensor) -> None:
     """Numba version, 4x faster: 0.1 -> 0.024."""
     tree[index] = value
     while index[0] > 1:
-        index //= 2
+        index = torch.div(index, 2, rounding_mode='floor')
         tree[index] = tree[index * 2] + tree[index * 2 + 1]
 
 
-@njit
-def _reduce(tree: np.ndarray, start: int, end: int) -> float:
+def _reduce(tree: torch.Tensor, start: int, end: int) -> float:
     """Numba version, 2x faster: 0.009 -> 0.005."""
     # nodes in (start, end) should be aggregated
     result = 0.0
@@ -121,15 +96,12 @@ def _reduce(tree: np.ndarray, start: int, end: int) -> float:
     return result
 
 
-@njit
-def _get_prefix_sum_idx(
-        value: np.ndarray, bound: int, sums: np.ndarray
-) -> np.ndarray:
+def _get_prefix_sum_idx(value: torch.Tensor, bound: int, sums: torch.Tensor) -> torch.Tensor:
     """Numba version (v0.51), 5x speed up with size=100000 and bsz=64.
     vectorized np: 0.0923 (numpy best) -> 0.024 (now)
     for-loop: 0.2914 -> 0.019 (but not so stable)
     """
-    index = np.ones(value.shape, dtype=np.int64)
+    index = torch.ones_like(value, dtype=torch.int64)
     while index[0] < bound:
         index *= 2
         lsons = sums[index]

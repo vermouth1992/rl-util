@@ -38,7 +38,11 @@ class DQN(OffPolicyAgent, nn.Module):
         rlu.nn.functional.freeze(self.target_q_network)
         self.reset_optimizer()
         # define loss function
-        self.loss_fn = torch.nn.MSELoss() if huber_delta is None else torch.nn.HuberLoss(delta=huber_delta)
+        reduction = 'none'
+        if huber_delta is None:
+            self.loss_fn = torch.nn.MSELoss(reduction=reduction)
+        else:
+            self.loss_fn = torch.nn.HuberLoss(delta=huber_delta, reduction=reduction)
         self.epsilon_greedy_scheduler = self._create_epsilon_greedy_scheduler()
         self.device = device
 
@@ -64,6 +68,7 @@ class DQN(OffPolicyAgent, nn.Module):
         super(DQN, self).log_tabular()
         self.logger.log_tabular('QVals', with_min_and_max=True)
         self.logger.log_tabular('LossQ', average_only=True)
+        self.logger.log_tabular('TDError', average_only=True)
 
     def update_target(self):
         rlu.functional.hard_update(self.target_q_network, self.q_network)
@@ -94,32 +99,32 @@ class DQN(OffPolicyAgent, nn.Module):
             target_q_values = rew + self.gamma * (1. - done) * target_q_values
             return target_q_values
 
-    def _update_nets(self, obs, act, next_obs, rew, done, td_error=False):
+    def _update_nets(self, obs, act, next_obs, rew, done, weights=None):
         batch_size = next_obs.shape[0]
         target_q_values = self.compute_target_values(next_obs, rew, done)
         self.q_optimizer.zero_grad()
         q_values = self.q_network(obs)
         q_values = q_values[torch.arange(batch_size, device=self.device), act]
         loss = self.loss_fn(q_values, target_q_values)
+        if weights is not None:
+            loss = loss * weights
+        loss = torch.mean(loss, dim=0)
         loss.backward()
         self.q_optimizer.step()
         info = dict(
             QVals=q_values,
             LossQ=loss
         )
-        if td_error:
-            with torch.no_grad():
-                abs_td_error = torch.abs(q_values - target_q_values).detach()
-            info['td_error'] = abs_td_error
+        with torch.no_grad():
+            abs_td_error = torch.abs(q_values - target_q_values).detach()
+        info['TDError'] = abs_td_error
         return info
 
     def train_on_batch(self, data, **kwargs):
-        td_error = kwargs.pop('td_error', False)
-
         for key, d in data.items():
             data[key] = torch.as_tensor(d).to(self.device, non_blocking=True)
 
-        info = self._update_nets(**data, td_error=td_error)
+        info = self._update_nets(**data)
 
         self.policy_updates += 1
         if self.policy_updates % self.target_update_freq == 0:

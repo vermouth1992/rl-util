@@ -46,7 +46,7 @@ class CategoricalDQN(DQN):
                 target_logits = self.target_q_network(next_obs)
             else:
                 target_logits = target_logits_action
-            target_logits = target_logits[np.arange(batch_size), target_actions]  # (None, num_atoms)
+            target_logits = target_logits[torch.arange(batch_size, device=ptu.device), target_actions]  # (None, num_atoms)
             # atom values
             target_q_atoms = rew[:, None] + self.gamma * (1. - done[:, None]) * self.support[None, :]
             target_q_atoms = torch.clamp(target_q_atoms, min=self.v_min, max=self.v_max)  # (None, num_atoms)

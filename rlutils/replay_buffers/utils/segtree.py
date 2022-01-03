@@ -28,6 +28,12 @@ class SegmentTree:
         self._value = np.zeros([bound * 2])
         self._compile()
 
+    def _setitem(self, tree: np.ndarray, index: np.ndarray, value: np.ndarray):
+        raise NotImplementedError
+
+    def _reduce(self, tree: np.ndarray, start: int, end: int):
+        raise NotImplementedError
+
     def __len__(self) -> int:
         return self._size
 
@@ -52,7 +58,7 @@ class SegmentTree:
         if isinstance(index, int):
             index, value = np.array([index]), np.array([value])
         assert np.all(0 <= index) and np.all(index < self._size)
-        _setitem(self._value, index + self._bound, value)
+        self._setitem(self._value, index + self._bound, value)
 
     def reduce(self, start: int = 0, end: Optional[int] = None) -> float:
         """Return operation(value[start:end])."""
@@ -62,7 +68,23 @@ class SegmentTree:
             end = self._size
         if end < 0:
             end += self._size
-        return _reduce(self._value, start + self._bound - 1, end + self._bound)
+        return self._reduce(self._value, start + self._bound - 1, end + self._bound)
+
+    def _compile(self) -> None:
+        f64 = np.array([0, 1], dtype=np.float64)
+        f32 = np.array([0, 1], dtype=np.float32)
+        i64 = np.array([0, 1], dtype=np.int64)
+        self._setitem(f64, i64, f64)
+        self._setitem(f64, i64, f32)
+        self._reduce(f64, 0, 1)
+
+
+class SumTree(SegmentTree):
+    def _setitem(self, tree: np.ndarray, index: np.ndarray, value: np.ndarray):
+        _setitem_add(tree, index, value)
+
+    def _reduce(self, tree: np.ndarray, start: int, end: int):
+        return _reduce_add(tree, start, end)
 
     def get_prefix_sum_idx(
             self, value: Union[float, np.ndarray]
@@ -84,36 +106,67 @@ class SegmentTree:
         return index.item() if single else index
 
     def _compile(self) -> None:
+        super(SumTree, self)._compile()
         f64 = np.array([0, 1], dtype=np.float64)
         f32 = np.array([0, 1], dtype=np.float32)
-        i64 = np.array([0, 1], dtype=np.int64)
-        _setitem(f64, i64, f64)
-        _setitem(f64, i64, f32)
-        _reduce(f64, 0, 1)
         _get_prefix_sum_idx(f64, 1, f64)
         _get_prefix_sum_idx(f32, 1, f64)
 
 
+class MaxTree(SegmentTree):
+    def _setitem(self, tree: np.ndarray, index: np.ndarray, value: np.ndarray):
+        _setitem_max(tree, index, value)
+
+    def _reduce(self, tree: np.ndarray, start: int, end: int):
+        return _reduce_max(tree, start, end)
+
+
 @njit
-def _setitem(tree: np.ndarray, index: np.ndarray, value: np.ndarray) -> None:
+def _setitem_add(tree: np.ndarray, index: np.ndarray, value: np.ndarray) -> None:
     """Numba version, 4x faster: 0.1 -> 0.024."""
     tree[index] = value
     while index[0] > 1:
         index //= 2
-        tree[index] = tree[index * 2] + tree[index * 2 + 1]
+        tree[index] = np.add(tree[index * 2], tree[index * 2 + 1])
 
 
 @njit
-def _reduce(tree: np.ndarray, start: int, end: int) -> float:
+def _setitem_max(tree: np.ndarray, index: np.ndarray, value: np.ndarray) -> None:
+    """Numba version, 4x faster: 0.1 -> 0.024."""
+    tree[index] = value
+    while index[0] > 1:
+        index //= 2
+        tree[index] = np.maximum(tree[index * 2], tree[index * 2 + 1])
+
+
+@njit
+def _reduce_add(tree: np.ndarray, start: int, end: int) -> float:
     """Numba version, 2x faster: 0.009 -> 0.005."""
+
     # nodes in (start, end) should be aggregated
     result = 0.0
     while end - start > 1:  # (start, end) interval is not empty
         if start % 2 == 0:
-            result += tree[start + 1]
+            result = np.add(result, tree[start + 1])
         start //= 2
         if end % 2 == 1:
-            result += tree[end - 1]
+            result = np.add(result, tree[end - 1])
+        end //= 2
+    return result
+
+
+@njit
+def _reduce_max(tree: np.ndarray, start: int, end: int) -> float:
+    """Numba version, 2x faster: 0.009 -> 0.005."""
+
+    # nodes in (start, end) should be aggregated
+    result = 0.0
+    while end - start > 1:  # (start, end) interval is not empty
+        if start % 2 == 0:
+            result = np.maximum(result, tree[start + 1])
+        start //= 2
+        if end % 2 == 1:
+            result = np.maximum(result, tree[end - 1])
         end //= 2
     return result
 

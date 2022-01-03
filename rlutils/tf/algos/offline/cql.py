@@ -7,12 +7,13 @@ import time
 import gym
 import numpy as np
 import tensorflow as tf
-from rlutils.replay_buffers import PyUniformReplayBuffer
+from tqdm.auto import tqdm
+
 from rlutils.infra.runner import TFRunner, run_func_as_main
+from rlutils.replay_buffers import UniformPyDictReplayBuffer
 from rlutils.tf.distributions import apply_squash_log_prob
 from rlutils.tf.functional import soft_update, hard_update, compute_target_value, to_numpy_or_python_type
 from rlutils.tf.nn import LagrangeLayer, SquashedGaussianMLPActor, EnsembleMinQNet
-from tqdm.auto import tqdm
 
 EPS = 1e-6
 
@@ -273,7 +274,7 @@ class Runner(TFRunner):
         dataset['done'] = dataset.pop('terminals')
         replay_size = dataset['obs'].shape[0]
         print(f'Dataset size: {replay_size}')
-        self.replay_buffer = PyUniformReplayBuffer.from_data_dict(
+        self.replay_buffer = UniformPyDictReplayBuffer.from_data_dict(
             data=dataset,
             batch_size=batch_size
         )

@@ -1,8 +1,10 @@
-from rlutils.replay_buffers import PyUniformReplayBuffer as ReplayBuffer
-from .off_policy import OffPolicyRunner
-import numpy as np
-from rlutils.logx import EpochLogger
 import pprint
+
+import numpy as np
+
+from rlutils.logx import EpochLogger
+from rlutils.replay_buffers import UniformPyDictReplayBuffer as ReplayBuffer
+from .off_policy import OffPolicyRunner
 
 
 def create_d4rl_dataset(env):
@@ -44,7 +46,6 @@ class OfflineRunner(OffPolicyRunner):
             dummy_env = self.env_fn()
             dataset = create_d4rl_dataset(dummy_env)
             del dummy_env
-            
 
         if reward_scale:
             EpochLogger.log('Using reward scale', color='red')

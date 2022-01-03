@@ -6,7 +6,7 @@ if __name__ == '__main__':
     from gym.wrappers import AtariPreprocessing, LazyFrames
     from collections import deque
 
-    from rlutils.replay_buffers.memory_efficient_py import PyMemoryEfficientReplayBuffer
+    from rlutils.replay_buffers.memory_efficient import PyMemoryEfficientReplayBuffer
 
 
     def make_env(env_name, **kwargs):

@@ -9,14 +9,15 @@ import gym
 import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
-from rlutils.tf.future import get_adam_optimizer, minimize
-from rlutils.logx import EpochLogger
-from rlutils.replay_buffers import PyUniformReplayBuffer
+from tqdm.auto import tqdm, trange
+
 from rlutils.infra.runner import TFRunner
+from rlutils.logx import EpochLogger
+from rlutils.replay_buffers import UniformPyDictReplayBuffer
 from rlutils.tf.functional import soft_update, hard_update, to_numpy_or_python_type
+from rlutils.tf.future import get_adam_optimizer, minimize
 from rlutils.tf.nn import EnsembleMinQNet, BehaviorPolicy
 from rlutils.tf.nn.functional import build_mlp
-from tqdm.auto import tqdm, trange
 
 tfd = tfp.distributions
 tfl = tfp.layers
@@ -249,7 +250,7 @@ class Runner(TFRunner):
         dataset['done'] = dataset.pop('terminals').astype(np.float32)
         replay_size = dataset['obs'].shape[0]
         self.logger.log(f'Dataset size: {replay_size}')
-        self.replay_buffer = PyUniformReplayBuffer.from_data_dict(
+        self.replay_buffer = UniformPyDictReplayBuffer.from_data_dict(
             data=dataset,
             batch_size=batch_size
         )
