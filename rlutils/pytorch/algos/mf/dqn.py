@@ -11,6 +11,10 @@ import rlutils.pytorch.utils as ptu
 from rlutils.interface.agent import OffPolicyAgent
 
 
+def gather_q_values(q_values, action):
+    return q_values.gather(1, action.unsqueeze(1)).squeeze(1)
+
+
 class DQN(OffPolicyAgent, nn.Module):
     def __init__(self,
                  env,
@@ -83,28 +87,26 @@ class DQN(OffPolicyAgent, nn.Module):
             batch_size = next_obs.shape[0]
             target_q_values = self.compute_target_values(next_obs, rew, done)
             q_values = self.q_network(obs)
-            q_values = q_values[torch.arange(batch_size, device=self.device), act]
+            q_values = gather_q_values(q_values, act)
             abs_td_error = torch.abs(q_values - target_q_values)
             return abs_td_error
 
     def compute_target_values(self, next_obs, rew, done):
         with torch.no_grad():
-            batch_size = next_obs.shape[0]
             target_q_values = self.target_q_network(next_obs)  # (None, act_dim)
             if self.double_q:
                 target_actions = torch.argmax(self.q_network(next_obs), dim=-1)  # (None,)
-                target_q_values = target_q_values[torch.arange(batch_size, device=self.device), target_actions]
+                target_q_values = gather_q_values(target_q_values, target_actions)
             else:
                 target_q_values = torch.max(target_q_values, dim=-1)[0]
             target_q_values = rew + self.gamma * (1. - done) * target_q_values
             return target_q_values
 
     def _update_nets(self, obs, act, next_obs, rew, done, weights=None):
-        batch_size = next_obs.shape[0]
         target_q_values = self.compute_target_values(next_obs, rew, done)
         self.q_optimizer.zero_grad()
         q_values = self.q_network(obs)
-        q_values = q_values[torch.arange(batch_size, device=self.device), act]
+        q_values = gather_q_values(q_values, act)
         loss = self.loss_fn(q_values, target_q_values)
         if weights is not None:
             loss = loss * weights

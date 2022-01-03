@@ -36,7 +36,8 @@ class Runner(rl_infra.runner.PytorchAtariRunner):
         agent_kwargs = dict(
             q_lr=q_lr,
             gamma=gamma,
-            target_update_freq=target_update_freq
+            target_update_freq=target_update_freq,
+            epsilon_greedy_steps=1000000,
         )
 
         super(Runner, cls).main(env_name=env_name,
