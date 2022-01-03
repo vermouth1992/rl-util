@@ -160,7 +160,7 @@ class Runner(rl_infra.runner.PytorchOffPolicyRunner):
              # agent args
              q_lr=1e-4,
              gamma=0.99,
-             target_update_freq=500,
+             target_update_freq=2500,
              **kwargs
              ):
         agent_kwargs = dict(

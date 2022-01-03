@@ -2,7 +2,7 @@ import gym
 from gym.wrappers import AtariPreprocessing
 
 import rlutils.infra as rl_infra
-from rlutils.replay_buffers import UniformMemoryEfficientPyDictReplayBuffer
+from rlutils.replay_buffers import UniformMemoryEfficientPyDictReplayBuffer as ReplayBuffer
 from .off_policy import OffPolicyRunner
 
 
@@ -11,9 +11,9 @@ class AtariRunner(OffPolicyRunner):
                             replay_size,
                             **kwargs):
         self.seeds_info['replay_buffer'] = self.seeder.generate_seed()
-        self.replay_buffer = UniformMemoryEfficientPyDictReplayBuffer.from_vec_env(self.env, capacity=replay_size,
-                                                                                   seed=self.seeds_info[
-                                                                                       'replay_buffer'])
+        self.replay_buffer = ReplayBuffer.from_vec_env(vec_env=self.env, capacity=replay_size,
+                                                       seed=self.seeds_info['replay_buffer'],
+                                                       )
 
     def setup_tester(self, num_test_episodes, **kwargs):
         env_fn = self.env_fn

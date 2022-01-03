@@ -58,6 +58,7 @@ class SegmentTree:
         if isinstance(index, int):
             index, value = np.array([index]), np.array([value])
         assert np.all(0 <= index) and np.all(index < self._size)
+        assert np.all(np.isfinite(value)), f"value={value}"
         self._setitem(self._value, index + self._bound, value)
 
     def reduce(self, start: int = 0, end: Optional[int] = None) -> float:
@@ -97,7 +98,7 @@ class SumTree(SegmentTree):
             Please make sure all of the values inside the segment tree are
             non-negative when using this function.
         """
-        assert np.all(value >= 0.0) and np.all(value < self._value[1])
+        assert np.all(value >= 0.0) and np.all(value < self._value[1]), f"value={value}, sum_value={self._value[1]}"
         single = False
         if not isinstance(value, np.ndarray):
             value = np.array([value])

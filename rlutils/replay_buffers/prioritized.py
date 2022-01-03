@@ -14,15 +14,16 @@ EPS = np.finfo(np.float32).eps.item()
 
 
 class PrioritizedReplayBuffer(BaseReplayBuffer):
-    def __init__(self, capacity, seed=None, alpha=0.6):
+    def __init__(self, capacity, alpha=0.6, seed=None, **kwargs):
+        assert alpha < 1.0, f"alpha={alpha}"
         self.alpha = alpha
         self.max_tree = segtree.MaxTree(size=capacity)
         self.sum_tree = segtree.SumTree(size=capacity)
         self.idx = None
-        super(PrioritizedReplayBuffer, self).__init__(capacity, seed)
+        super(PrioritizedReplayBuffer, self).__init__(capacity=capacity, seed=seed)
 
     def add(self, data: Dict[str, np.ndarray], priority=None):
-        batch_size = list(data.values())[0].shape[0]
+        batch_size = len(list(data.values())[0])
         if priority is None:
             if len(self) == 0:
                 priority = np.ones(shape=(batch_size,), dtype=np.float32)
@@ -38,9 +39,6 @@ class PrioritizedReplayBuffer(BaseReplayBuffer):
         scalar = self.np_random.rand(batch_size) * self.sum_tree.reduce()
         idx = self.sum_tree.get_prefix_sum_idx(scalar)
         data = self.storage[idx]
-        # important sampling weight calculation
-        # original formula: ((p_j/p_sum*N)**(-beta))/((p_min/p_sum*N)**(-beta))
-        # simplified formula: (p_j/p_min)**(-beta)
         total = np.array([len(self)], dtype=np.float32)
         weights = (total * self.sum_tree[idx] / self.sum_tree.reduce()) ** (-beta)
         weights = weights / np.max(weights)
@@ -69,8 +67,8 @@ class PrioritizedPyDictReplayBuffer(PyDictReplayBuffer, PrioritizedReplayBuffer)
     """
 
     def __init__(self, data_spec: Dict[str, gym.spaces.Space], capacity, alpha=0.6, seed=None):
-        PyDictReplayBuffer.__init__(self, data_spec, capacity, seed)
-        PrioritizedReplayBuffer.__init__(self, capacity, seed, alpha=alpha)
+        PyDictReplayBuffer.__init__(self, data_spec=data_spec, capacity=capacity, seed=seed)
+        PrioritizedReplayBuffer.__init__(self, capacity=capacity, seed=seed, alpha=alpha)
 
     @classmethod
     def from_env(cls, env, capacity, seed=None, alpha=0.6):
@@ -85,8 +83,9 @@ class PrioritizedPyDictReplayBuffer(PyDictReplayBuffer, PrioritizedReplayBuffer)
 
 class PrioritizedMemoryEfficientPyDictReplayBuffer(MemoryEfficientDictReplayBuffer, PrioritizedReplayBuffer):
     def __init__(self, data_spec: Dict[str, gym.spaces.Space], capacity, alpha=0.6, seed=None):
-        MemoryEfficientDictReplayBuffer.__init__(self, data_spec, capacity, seed)
-        PrioritizedReplayBuffer.__init__(self, capacity, seed, alpha=alpha)
+        print(alpha)
+        MemoryEfficientDictReplayBuffer.__init__(self, data_spec=data_spec, capacity=capacity, seed=seed)
+        PrioritizedReplayBuffer.__init__(self, capacity=capacity, seed=seed, alpha=alpha)
 
     @classmethod
     def from_vec_env(cls, vec_env, capacity, seed=None, alpha=0.6):

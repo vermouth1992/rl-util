@@ -7,7 +7,7 @@ Abstract class for replay buffers
 5. Trajectory-based replay buffer for on-policy methods
 """
 
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import Dict
 
 import gym
@@ -15,12 +15,12 @@ import numpy as np
 from gym.utils import seeding
 
 from rlutils.np.functional import shuffle_dict_data
-from .storage import PyDictStorage, Storage
+from .storage import PyDictStorage, Storage, MemoryEfficientPyDictStorage
 from .utils import get_data_spec_from_env, get_data_spec_from_vec_env
 
 
 class BaseReplayBuffer(ABC):
-    def __init__(self, capacity, seed=None):
+    def __init__(self, capacity, seed=None, **kwargs):
         self.set_seed(seed)
         self.storage = self._create_storage(capacity)
         self.reset()
@@ -44,7 +44,6 @@ class BaseReplayBuffer(ABC):
     def capacity(self):
         return self.storage.capacity
 
-    @abstractmethod
     def sample(self, batch_size):
         raise NotImplementedError
 
@@ -59,9 +58,9 @@ class BaseReplayBuffer(ABC):
 
 
 class PyDictReplayBuffer(BaseReplayBuffer):
-    def __init__(self, data_spec, capacity, seed=None):
+    def __init__(self, data_spec, capacity, seed=None, **kwargs):
         self.data_spec = data_spec
-        super(PyDictReplayBuffer, self).__init__(capacity, seed)
+        super(PyDictReplayBuffer, self).__init__(capacity=capacity, seed=seed)
 
     def _create_storage(self, capacity):
         return PyDictStorage(self.data_spec, capacity)
@@ -90,7 +89,7 @@ class PyDictReplayBuffer(BaseReplayBuffer):
 
 class MemoryEfficientDictReplayBuffer(PyDictReplayBuffer):
     def _create_storage(self, capacity):
-        return MemoryEfficientDictReplayBuffer(self.data_spec, capacity)
+        return MemoryEfficientPyDictStorage(self.data_spec, capacity)
 
     @classmethod
     def from_vec_env(cls, vec_env, capacity, seed=None):

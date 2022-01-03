@@ -1,7 +1,6 @@
 import rlutils.infra as rl_infra
 import rlutils.np as rln
 import rlutils.pytorch as rlu
-import rlutils.pytorch.utils as ptu
 from rlutils.pytorch.algos.mf.dqn import DQN
 
 
@@ -16,7 +15,7 @@ class AtariDQN(DQN):
         super(AtariDQN, self).__init__(env=env, **kwargs)
 
     def _create_q_network(self):
-        return rlu.nn.values.AtariDuelQModule(frame_stack=self.frame_stack, action_dim=self.act_dim).to(ptu.device)
+        return rlu.nn.values.AtariDuelQModule(frame_stack=self.frame_stack, action_dim=self.act_dim)
 
     def _create_epsilon_greedy_scheduler(self):
         return rln.schedulers.LinearSchedule(schedule_timesteps=self.epsilon_greedy_steps,
@@ -43,5 +42,9 @@ class Runner(rl_infra.runner.PytorchAtariRunner):
         super(Runner, cls).main(env_name=env_name,
                                 agent_cls=AtariDQN,
                                 agent_kwargs=agent_kwargs,
+                                batch_size=32,
+                                update_every=4,
+                                update_per_step=0.25,
+                                num_test_episodes=10,
                                 **kwargs
                                 )
