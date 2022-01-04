@@ -19,8 +19,7 @@ from rlutils.pytorch.nn.functional import build_mlp, freeze
 
 class TD3Agent(nn.Module, OffPolicyAgent):
     def __init__(self,
-                 obs_spec,
-                 act_spec,
+                 env,
                  num_q_ensembles=2,
                  policy_mlp_hidden=128,
                  policy_lr=3e-4,
@@ -30,14 +29,16 @@ class TD3Agent(nn.Module, OffPolicyAgent):
                  gamma=0.99,
                  actor_noise=0.1,
                  target_noise=0.2,
-                 noise_clip=0.5
+                 noise_clip=0.5,
+                 device=ptu.device
                  ):
-        super(TD3Agent, self).__init__()
-        self.obs_spec = obs_spec
-        self.act_spec = act_spec
+        nn.Module.__init__(self)
+        OffPolicyAgent.__init__(self, env=env)
+        self.obs_spec = env.observation_space
+        self.act_spec = env.action_space
         self.act_dim = self.act_spec.shape[0]
-        verify_continuous_action_space(act_spec)
-        self.act_lim = act_spec.high[0]
+        verify_continuous_action_space(self.act_spec)
+        self.act_lim = self.act_spec.high[0]
         self.actor_noise = actor_noise
         self.target_noise = target_noise
         self.noise_clip = noise_clip
@@ -45,44 +46,59 @@ class TD3Agent(nn.Module, OffPolicyAgent):
         self.gamma = gamma
         self.policy_lr = policy_lr
         self.q_lr = q_lr
+        self.num_q_ensembles = num_q_ensembles
+        self.device = device
         if len(self.obs_spec.shape) == 1:  # 1D observation
             self.obs_dim = self.obs_spec.shape[0]
             self.policy_net = build_mlp(self.obs_dim, self.act_dim, mlp_hidden=policy_mlp_hidden, num_layers=3,
-                                        out_activation='tanh').to(ptu.device)
+                                        out_activation='tanh').to(self.device)
             # optimization for GPU-based implement. We create a separate inference network on CPU instead of sending
             # small observation to GPU, which is bounded by PCIe.
-            if ptu.device == "cuda":
+            if self.device == "cuda":
                 self.inference_net = copy.deepcopy(self.policy_net).cpu()
             else:
                 self.inference_net = self.policy_net
 
-            self.target_policy_net = copy.deepcopy(self.policy_net).to(ptu.device)
+            self.target_policy_net = copy.deepcopy(self.policy_net).to(self.device)
             self.q_network = EnsembleMinQNet(self.obs_dim, self.act_dim, q_mlp_hidden,
-                                             num_ensembles=num_q_ensembles).to(ptu.device)
-            self.target_q_network = copy.deepcopy(self.q_network).to(ptu.device)
+                                             num_ensembles=num_q_ensembles).to(self.device)
+            self.target_q_network = copy.deepcopy(self.q_network).to(self.device)
 
             freeze(self.target_policy_net)
             freeze(self.target_q_network)
         else:
             raise NotImplementedError
 
+        self.reset_optimizer()
+
     def reset_optimizer(self):
         self.policy_optimizer = torch.optim.Adam(params=self.policy_net.parameters(), lr=self.policy_lr)
         self.q_optimizer = torch.optim.Adam(params=self.q_network.parameters(), lr=self.q_lr)
 
     def log_tabular(self):
-        self.logger.log_tabular('Q1Vals', with_min_and_max=True)
-        self.logger.log_tabular('Q2Vals', with_min_and_max=True)
+        super(TD3Agent, self).log_tabular()
+        for i in range(self.num_q_ensembles):
+            self.logger.log_tabular(f'Q{i + 1}Vals', with_min_and_max=True)
         self.logger.log_tabular('LossPi', average_only=True)
         self.logger.log_tabular('LossQ', average_only=True)
+        self.logger.log_tabular('TDError', average_only=True)
 
     def update_target(self):
         soft_update(self.target_q_network, self.q_network, self.tau)
         soft_update(self.target_policy_net, self.policy_net, self.tau)
 
-    def sync_target(self):
-        hard_update(self.target_q_network, self.q_network)
-        hard_update(self.target_policy_net, self.policy_net)
+    def compute_priority(self, data):
+        for key, d in data.items():
+            data[key] = torch.as_tensor(d).to(self.device, non_blocking=True)
+        return self.compute_priority_torch(**data).cpu().numpy()
+
+    def compute_priority_torch(self, obs, act, next_obs, done, rew):
+        with torch.no_grad():
+            next_q_value = self._compute_next_obs_q(next_obs)
+            q_target = compute_target_value(rew, self.gamma, done, next_q_value)
+            q_values = self.q_network((obs, act), training=False)  # (None,)
+            abs_td_error = torch.abs(q_values - q_target)
+            return abs_td_error
 
     def _compute_next_obs_q(self, next_obs):
         next_action = self.target_policy_net(next_obs)
@@ -94,35 +110,43 @@ class TD3Agent(nn.Module, OffPolicyAgent):
         next_q_value = self.target_q_network((next_obs, next_action), training=False)
         return next_q_value
 
-    def _update_nets(self, obs, actions, next_obs, done, reward):
+    def _update_nets(self, obs, act, next_obs, done, rew, weights=None):
         # compute target q
         with torch.no_grad():
             next_q_value = self._compute_next_obs_q(next_obs)
-            q_target = compute_target_value(reward, self.gamma, done, next_q_value)
+            q_target = compute_target_value(rew, self.gamma, done, next_q_value)
         # q loss
         self.q_optimizer.zero_grad()
-        q_values = self.q_network((obs, actions), training=True)  # (num_ensembles, None)
+        q_values = self.q_network((obs, act), training=True)  # (num_ensembles, None)
         q_values_loss = 0.5 * torch.square(torch.unsqueeze(q_target, dim=0) - q_values)
         # (num_ensembles, None)
         q_values_loss = torch.sum(q_values_loss, dim=0)  # (None,)
         # apply importance weights
+        if weights is not None:
+            q_values_loss = q_values_loss * weights
         q_values_loss = torch.mean(q_values_loss)
         q_values_loss.backward()
         self.q_optimizer.step()
 
+        with torch.no_grad():
+            abs_td_error = torch.abs(torch.min(q_values, dim=0)[0] - q_target)
+
         info = dict(
-            Q1Vals=q_values[0],
-            Q2Vals=q_values[1],
             LossQ=q_values_loss,
+            TDError=abs_td_error
         )
+        for i in range(self.num_q_ensembles):
+            info[f'Q{i + 1}Vals'] = q_values[i]
         return info
 
-    def _update_actor(self, obs):
+    def _update_actor(self, obs, weights=None):
         # policy loss
         self.q_network.eval()
         self.policy_optimizer.zero_grad()
         a = self.policy_net(obs)
         q = self.q_network((obs, a), training=False)
+        if weights is not None:
+            q = q * weights
         policy_loss = -torch.mean(q, dim=0)
         policy_loss.backward()
         self.policy_optimizer.step()
@@ -133,29 +157,27 @@ class TD3Agent(nn.Module, OffPolicyAgent):
         return info
 
     def train_on_batch(self, data, **kwargs):
-        obs = data['obs']
-        act = data['act']
-        next_obs = data['next_obs']
-        done = data['done']
-        rew = data['rew']
-        update_target = data['update_target']
-        obs = torch.as_tensor(obs, dtype=torch.float32, device=ptu.device)
-        act = torch.as_tensor(act, dtype=torch.float32, device=ptu.device)
-        next_obs = torch.as_tensor(next_obs, dtype=torch.float32, device=ptu.device)
-        done = torch.as_tensor(done, dtype=torch.float32, device=ptu.device)
-        rew = torch.as_tensor(rew, dtype=torch.float32, device=ptu.device)
+        for key, d in data.items():
+            data[key] = torch.as_tensor(d).to(self.device, non_blocking=True)
 
-        info = self._update_nets(obs, act, next_obs, done, rew)
+        info = self._update_nets(**data)
 
-        if update_target:
+        self.policy_updates += 1
+
+        if self.policy_updates % 2 == 0:
+            obs = data['obs']
             actor_info = self._update_actor(obs)
             info.update(actor_info)
-            self.update_target()
-
-            if ptu.device == "cuda":
+            if self.device == "cuda":
                 hard_update(self.inference_net, self.policy_net)
 
-        self.logger.store(**info)
+        if self.policy_updates % 2 == 0:
+            self.update_target()
+
+        if self.logger is not None:
+            self.logger.store(**info)
+
+        return info
 
     def act_batch_test(self, obs):
         obs = torch.as_tensor(obs, dtype=torch.float32)
@@ -204,7 +226,6 @@ class Runner(PytorchOffPolicyRunner):
 
         super(Runner, cls).main(env_name=env_name,
                                 epochs=epochs,
-                                policy_delay=2,
                                 agent_cls=TD3Agent,
                                 agent_kwargs=agent_kwargs,
                                 seed=seed,
