@@ -2,10 +2,10 @@ from typing import Dict
 
 import gym
 import numpy as np
-import torch
-
 import rlutils.pytorch.utils as ptu
+import torch
 from rlutils.replay_buffers.utils import combined_shape
+
 from .base import Storage
 
 
@@ -53,7 +53,7 @@ class PyDictStorage(Storage):
         return index
 
     def get(self):
-        return self.storage
+        return self[np.arange(len(self))]
 
 
 class MemoryEfficientPyDictStorage(PyDictStorage):
