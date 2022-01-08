@@ -147,7 +147,7 @@ class Logger:
     state of a training run, and the trained model.
     """
 
-    def __init__(self, output_dir=None, output_fname='progress.txt', exp_name=None, tensorboard=False):
+    def __init__(self, output_dir=None, output_fname='progress.csv', exp_name=None, tensorboard=False):
         """
         Initialize a Logger.
 
@@ -166,6 +166,7 @@ class Logger:
                 hyperparameter configuration with multiple random seeds, you
                 should give them all the same ``exp_name``.)
         """
+        self.delimiter = ','
         self.output_dir = output_dir
 
         if self.output_dir is not None:
@@ -261,8 +262,8 @@ class Logger:
         print("-" * n_slashes, flush=True)
         if self.output_file is not None:
             if self.first_row:
-                self.output_file.write("\t".join(self.log_headers) + "\n")
-            self.output_file.write("\t".join(map(str, vals)) + "\n")
+                self.output_file.write(self.delimiter.join(self.log_headers) + "\n")
+            self.output_file.write(self.delimiter.join(map(str, vals)) + "\n")
             self.output_file.flush()
         if self.tensorboard_file is not None:
             self.num_epoch += 1

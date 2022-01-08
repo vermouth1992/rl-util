@@ -43,7 +43,7 @@ class Tester(LogUser):
                 time.sleep(0.01)
             print(f'Episode: {i}. Total Reward: {total_reward:.2f}. Episode Length: {ep_len}')
 
-    def test_agent(self, get_action, name, num_test_episodes):
+    def test_agent(self, get_action, name, num_test_episodes, max_episode_length=None):
         if self.seed is not None:
             self.test_env.seed(self.seed)  # keep evaluating the same random obs
 
@@ -59,6 +59,7 @@ class Tester(LogUser):
             d = np.zeros(shape=self.test_env.num_envs, dtype=np.bool_)
             ep_ret = np.zeros(shape=self.test_env.num_envs, dtype=np.float64)
             ep_len = np.zeros(shape=self.test_env.num_envs, dtype=np.int64)
+            steps = 0
             while not np.all(d):
                 a = get_action(o)
                 assert isinstance(a, np.ndarray), f'Action a must be np.ndarray. Got {type(a)}'
@@ -70,10 +71,14 @@ class Tester(LogUser):
                 newly_finished = np.sum(d) - np.sum(prev_d)
                 if newly_finished > 0:
                     t.update(newly_finished)
-            if self.logger is not None:
-                self.logger.store(TestEpRet=ep_ret, TestEpLen=ep_len)
-            all_ep_ret.append(ep_ret)
-            all_ep_len.append(ep_len)
+                steps += 1
+                if max_episode_length is not None and steps >= max_episode_length:
+                    break
+            if np.any(d):
+                if self.logger is not None:
+                    self.logger.store(TestEpRet=ep_ret[d], TestEpLen=ep_len[d])
+                all_ep_ret.append(ep_ret[d])
+                all_ep_len.append(ep_len[d])
         t.close()
 
         return np.concatenate(all_ep_ret, axis=0), np.concatenate(all_ep_len, axis=0)

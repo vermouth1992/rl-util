@@ -86,8 +86,11 @@ def get_datasets(logdir, condition=None):
     global exp_idx
     global units
     datasets = []
+    filename = 'progress.csv'
+    compatible_filename = 'progress.txt'
     for root, _, files in os.walk(logdir):
-        if 'progress.txt' in files:
+        # for compatibility
+        if compatible_filename in files:
             exp_name = None
             try:
                 config_path = open(os.path.join(root, 'config.json'))
@@ -105,9 +108,47 @@ def get_datasets(logdir, condition=None):
             units[condition1] += 1
 
             try:
-                exp_data = pd.read_csv(os.path.join(root, 'progress.txt'), sep='\t')
+                exp_data = pd.read_csv(os.path.join(root, compatible_filename), sep='\t')
             except:
-                print('Could not read from %s' % os.path.join(root, 'progress.txt'))
+                print('Could not read from %s' % os.path.join(root, compatible_filename))
+                continue
+            if 'NormalizedTestEpRet' in exp_data:
+                performance = 'NormalizedTestEpRet'
+            elif 'AverageTestEpRet' in exp_data:
+                performance = 'AverageTestEpRet'
+            elif 'AverageEpRet' in exp_data:
+                performance = 'AverageEpRet'
+            else:
+                performance = None
+
+            if performance is not None:
+                exp_data.insert(len(exp_data.columns), 'Performance', exp_data[performance])
+            exp_data.insert(len(exp_data.columns), 'Unit', unit)
+            exp_data.insert(len(exp_data.columns), 'Condition1', condition1)
+            exp_data.insert(len(exp_data.columns), 'Condition2', condition2)
+            datasets.append(exp_data)
+
+        elif filename in files:
+            exp_name = None
+            try:
+                config_path = open(os.path.join(root, 'config.json'))
+                config = json.load(config_path)
+                if 'exp_name' in config:
+                    exp_name = config['exp_name']
+            except:
+                print('No file named config.json')
+            condition1 = condition or exp_name or 'exp'
+            condition2 = condition1 + '-' + str(exp_idx)
+            exp_idx += 1
+            if condition1 not in units:
+                units[condition1] = 0
+            unit = units[condition1]
+            units[condition1] += 1
+
+            try:
+                exp_data = pd.read_csv(os.path.join(root, filename), sep=',')
+            except:
+                print('Could not read from %s' % os.path.join(root, filename))
                 continue
             if 'NormalizedTestEpRet' in exp_data:
                 performance = 'NormalizedTestEpRet'
