@@ -1,9 +1,9 @@
 import pprint
 
 import numpy as np
-
 import rlutils.infra as rl_infra
 from rlutils.replay_buffers import UniformPyDictReplayBuffer as ReplayBuffer
+
 from .base import BaseRunner
 
 
@@ -32,11 +32,11 @@ class OffPolicyRunner(BaseRunner):
         self.sampler = rl_infra.samplers.BatchSampler(env=self.env)
 
     def setup_updater(self, update_after, update_per_step, update_every, batch_size, **kwargs):
-        self.update_after = update_after
         self.updater = rl_infra.OffPolicyUpdater(agent=self.agent,
                                                  replay_buffer=self.replay_buffer,
                                                  update_per_step=update_per_step,
                                                  update_every=update_every,
+                                                 update_after=update_after,
                                                  batch_size=batch_size)
 
     def run_one_step(self, t, **kwargs):
@@ -49,8 +49,7 @@ class OffPolicyRunner(BaseRunner):
                                 collect_fn=lambda obs: self.agent.act_batch_explore(obs, self.global_step),
                                 replay_buffer=self.replay_buffer)
         # Update handling
-        if self.sampler.total_env_steps >= self.update_after:
-            self.updater.update(self.global_step)
+        self.updater.update(self.global_step)
 
     def on_epoch_end(self, epoch, **kwargs):
         self.tester.test_agent(get_action=lambda obs: self.agent.act_batch_test(obs),

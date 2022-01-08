@@ -26,7 +26,9 @@ def get_true_done_from_infos(done, infos):
 def create_vector_env(env_fn=None,
                       normalize_action_space=True,
                       num_parallel_env=1,
-                      asynchronous=False
+                      asynchronous=False,
+                      seed=None,
+                      action_space_seed=None
                       ):
     """
     Environment is either created by env_name or env_fn. In addition, we apply Rescale action wrappers to
@@ -66,5 +68,27 @@ def create_vector_env(env_fn=None,
     VecEnv = rlutils.gym.vector.AsyncVectorEnv if asynchronous else rlutils.gym.vector.SyncVectorEnv
 
     env = VecEnv([_make_env for _ in range(num_parallel_env)])
+    env.seed(seed)
+    env.action_space.seed(action_space_seed)
 
+    return env
+
+
+def create_atari_env_fn(env_name):
+    if 'NoFrameskip' not in env_name:
+        frame_skip = 1
+    else:
+        frame_skip = 4
+    env_fn = lambda: gym.wrappers.AtariPreprocessing(gym.make(env_name), frame_skip=frame_skip)
+    return env_fn
+
+
+def create_atari_vector_env(env_name, num_parallel_env=1, asynchronous=False, seed=None, action_space_seed=None):
+    env_fn = create_atari_env_fn(env_name=env_name)
+    env = rlutils.gym.utils.create_vector_env(env_fn=env_fn,
+                                              normalize_action_space=True,
+                                              num_parallel_env=num_parallel_env,
+                                              asynchronous=asynchronous,
+                                              seed=seed,
+                                              action_space_seed=action_space_seed)
     return env

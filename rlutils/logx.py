@@ -103,7 +103,7 @@ def setup_logger_kwargs(exp_name, seed=None, data_dir=None, datestamp=False):
 
         seed (int): Seed for random number generators used by experiment.
 
-        data_dir (string): Path to folder where results should be saved.
+        data_dir (string | None): Path to folder where results should be saved.
             Default is the ``DEFAULT_DATA_DIR`` in ``spinup/user_config.py``.
 
         datestamp (bool): Whether to include a date and timestamp in the

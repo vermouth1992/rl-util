@@ -81,7 +81,7 @@ class MemoryEfficientPyDictStorage(PyDictStorage):
         return data
 
     def add(self, data: Dict[str, np.ndarray]):
-        batch_size = data[self.np_key[0]].shape[0]
+        batch_size = len(data[self.np_key[0]])
         index = self.get_available_indexes(batch_size)
         for key, item in data.items():
             if isinstance(item, np.ndarray):
