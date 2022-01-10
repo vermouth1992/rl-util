@@ -30,7 +30,9 @@ class PrioritizedReplayBuffer(BaseReplayBuffer):
                 priority = np.ones(shape=(batch_size,), dtype=np.float32)
             else:
                 priority = np.ones(shape=(batch_size,), dtype=np.float32) * self.max_tree.reduce()
-        assert np.all(priority > 0.), f'Priority must be all greater than zero. Got {priority}'
+        else:
+            priority = np.abs(priority) + EPS
+        # assert np.all(priority > 0.), f'Priority must be all greater than zero. Got {priority}'
         idx = self.storage.add(data)
         self.sum_tree[idx] = priority ** self.alpha
         self.max_tree[idx] = priority ** self.alpha
