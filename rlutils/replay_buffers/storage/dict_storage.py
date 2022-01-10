@@ -77,16 +77,16 @@ class MemoryEfficientPyDictStorage(PyDictStorage):
             output = []
             for idx in item:
                 output.append(self.storage[key][idx])
-            data[key] = np.array(output)
+            data[key] = output
         return data
 
     def add(self, data: Dict[str, np.ndarray]):
         batch_size = len(data[self.np_key[0]])
         index = self.get_available_indexes(batch_size)
         for key, item in data.items():
-            if isinstance(item, np.ndarray):
+            if key in self.np_key:
                 self.storage[key][index] = item
-            elif isinstance(item, list):
+            elif key in self.obj_key:
                 for i in range(batch_size):
                     self.storage[key][(self.ptr + i) % self.max_size] = item[i]
             else:
