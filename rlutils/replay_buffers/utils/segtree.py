@@ -122,6 +122,14 @@ class MaxTree(SegmentTree):
         return _reduce_max(tree, start, end)
 
 
+class MinTree(SegmentTree):
+    def _setitem(self, tree: np.ndarray, index: np.ndarray, value: np.ndarray):
+        _setitem_min(tree, index, value)
+
+    def _reduce(self, tree: np.ndarray, start: int, end: int):
+        return _reduce_min(tree, start, end)
+
+
 @njit
 def _setitem_add(tree: np.ndarray, index: np.ndarray, value: np.ndarray) -> None:
     """Numba version, 4x faster: 0.1 -> 0.024."""
@@ -138,6 +146,15 @@ def _setitem_max(tree: np.ndarray, index: np.ndarray, value: np.ndarray) -> None
     while index[0] > 1:
         index //= 2
         tree[index] = np.maximum(tree[index * 2], tree[index * 2 + 1])
+
+
+@njit
+def _setitem_min(tree: np.ndarray, index: np.ndarray, value: np.ndarray) -> None:
+    """Numba version, 4x faster: 0.1 -> 0.024."""
+    tree[index] = value
+    while index[0] > 1:
+        index //= 2
+        tree[index] = np.minimum(tree[index * 2], tree[index * 2 + 1])
 
 
 @njit
@@ -161,13 +178,29 @@ def _reduce_max(tree: np.ndarray, start: int, end: int) -> float:
     """Numba version, 2x faster: 0.009 -> 0.005."""
 
     # nodes in (start, end) should be aggregated
-    result = 0.0
+    result = -np.inf
     while end - start > 1:  # (start, end) interval is not empty
         if start % 2 == 0:
             result = np.maximum(result, tree[start + 1])
         start //= 2
         if end % 2 == 1:
             result = np.maximum(result, tree[end - 1])
+        end //= 2
+    return result
+
+
+@njit
+def _reduce_min(tree: np.ndarray, start: int, end: int) -> float:
+    """Numba version, 2x faster: 0.009 -> 0.005."""
+
+    # nodes in (start, end) should be aggregated
+    result = np.inf
+    while end - start > 1:  # (start, end) interval is not empty
+        if start % 2 == 0:
+            result = np.minimum(result, tree[start + 1])
+        start //= 2
+        if end % 2 == 1:
+            result = np.minimum(result, tree[end - 1])
         end //= 2
     return result
 

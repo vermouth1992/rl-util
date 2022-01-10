@@ -18,6 +18,7 @@ class PrioritizedReplayBuffer(BaseReplayBuffer):
         assert alpha < 1.0, f"alpha={alpha}"
         self.alpha = alpha
         self.max_tree = segtree.MaxTree(size=capacity)
+        self.min_tree = segtree.MinTree(size=capacity)
         self.sum_tree = segtree.SumTree(size=capacity)
         self.idx = None
         super(PrioritizedReplayBuffer, self).__init__(capacity=capacity, seed=seed)
@@ -33,15 +34,16 @@ class PrioritizedReplayBuffer(BaseReplayBuffer):
         idx = self.storage.add(data)
         self.sum_tree[idx] = priority ** self.alpha
         self.max_tree[idx] = priority ** self.alpha
+        self.min_tree[idx] = priority ** self.alpha
 
     def sample(self, batch_size, beta=0.4):
         assert self.idx is None
         scalar = self.np_random.rand(batch_size) * self.sum_tree.reduce()
         idx = self.sum_tree.get_prefix_sum_idx(scalar)
+        # get data
         data = self.storage[idx]
-        total = np.array([len(self)], dtype=np.float32)
-        weights = (total * self.sum_tree[idx] / self.sum_tree.reduce()) ** (-beta)
-        weights = weights / np.max(weights)
+        # get weights
+        weights = (self.sum_tree[idx] / self.min_tree.reduce()) ** (-beta)
         data['weights'] = weights
         self.idx = idx
         return data
@@ -54,6 +56,7 @@ class PrioritizedReplayBuffer(BaseReplayBuffer):
             priorities = np.clip(priorities, a_min=min_priority, a_max=max_priority)
         self.sum_tree[self.idx] = priorities ** self.alpha
         self.max_tree[self.idx] = priorities ** self.alpha
+        self.min_tree[self.idx] = priorities ** self.alpha
         self.idx = None
 
     def post_process(self, info):
