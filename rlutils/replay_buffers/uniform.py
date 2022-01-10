@@ -1,7 +1,6 @@
 import numpy as np
 
-from .base import BaseReplayBuffer, PyDictReplayBuffer, MemoryEfficientDictReplayBuffer, Storage
-from .storage import PyDictStorage, MemoryEfficientPyDictStorage
+from .base import BaseReplayBuffer, PyDictReplayBuffer, MemoryEfficientDictReplayBuffer
 
 
 class UniformReplayBuffer(BaseReplayBuffer):
@@ -15,15 +14,10 @@ class UniformPyDictReplayBuffer(PyDictReplayBuffer, UniformReplayBuffer):
     """
     A simple FIFO experience replay buffer for SAC agents.
     """
-
-    def _create_storage(self, capacity) -> Storage:
-        return PyDictStorage(data_spec=self.data_spec, capacity=capacity)
+    pass
 
 
 class UniformMemoryEfficientPyDictReplayBuffer(MemoryEfficientDictReplayBuffer, UniformReplayBuffer):
-    def _create_storage(self, capacity) -> Storage:
-        return MemoryEfficientPyDictStorage(data_spec=self.data_spec, capacity=capacity)
-
     def sample(self, batch_size):
         data = super(UniformMemoryEfficientPyDictReplayBuffer, self).sample(batch_size)
         for key in self.storage.obj_key:

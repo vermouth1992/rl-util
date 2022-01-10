@@ -25,8 +25,12 @@ class SegmentTree:
             bound *= 2
         self._size = size
         self._bound = bound
-        self._value = np.zeros([bound * 2])
+        self._value = np.full(shape=[bound * 2], fill_value=self._init_value)
         self._compile()
+
+    @property
+    def _init_value(self):
+        raise NotImplementedError
 
     def _setitem(self, tree: np.ndarray, index: np.ndarray, value: np.ndarray):
         raise NotImplementedError
@@ -81,6 +85,10 @@ class SegmentTree:
 
 
 class SumTree(SegmentTree):
+    @property
+    def _init_value(self):
+        return 0
+
     def _setitem(self, tree: np.ndarray, index: np.ndarray, value: np.ndarray):
         _setitem_add(tree, index, value)
 
@@ -115,6 +123,10 @@ class SumTree(SegmentTree):
 
 
 class MaxTree(SegmentTree):
+    @property
+    def _init_value(self):
+        return -np.inf
+
     def _setitem(self, tree: np.ndarray, index: np.ndarray, value: np.ndarray):
         _setitem_max(tree, index, value)
 
@@ -123,6 +135,10 @@ class MaxTree(SegmentTree):
 
 
 class MinTree(SegmentTree):
+    @property
+    def _init_value(self):
+        return np.inf
+
     def _setitem(self, tree: np.ndarray, index: np.ndarray, value: np.ndarray):
         _setitem_min(tree, index, value)
 

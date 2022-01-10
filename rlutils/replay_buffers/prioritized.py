@@ -15,7 +15,7 @@ EPS = np.finfo(np.float32).eps.item()
 
 class PrioritizedReplayBuffer(BaseReplayBuffer):
     def __init__(self, capacity, alpha=0.6, seed=None, **kwargs):
-        assert alpha < 1.0, f"alpha={alpha}"
+        assert alpha <= 1.0 and alpha > 0., f"alpha={alpha}"
         self.alpha = alpha
         self.max_tree = segtree.MaxTree(size=capacity)
         self.min_tree = segtree.MinTree(size=capacity)
@@ -86,7 +86,6 @@ class PrioritizedPyDictReplayBuffer(PyDictReplayBuffer, PrioritizedReplayBuffer)
 
 class PrioritizedMemoryEfficientPyDictReplayBuffer(MemoryEfficientDictReplayBuffer, PrioritizedReplayBuffer):
     def __init__(self, data_spec: Dict[str, gym.spaces.Space], capacity, alpha=0.6, seed=None):
-        print(alpha)
         MemoryEfficientDictReplayBuffer.__init__(self, data_spec=data_spec, capacity=capacity, seed=seed)
         PrioritizedReplayBuffer.__init__(self, capacity=capacity, seed=seed, alpha=alpha)
 
@@ -99,3 +98,9 @@ class PrioritizedMemoryEfficientPyDictReplayBuffer(MemoryEfficientDictReplayBuff
     def from_env(cls, env, capacity, seed=None, alpha=0.6):
         data_spec = get_data_spec_from_env(env, memory_efficient=True)
         return cls(data_spec=data_spec, capacity=capacity, seed=seed, alpha=alpha)
+
+    def sample(self, batch_size, beta=0.4):
+        data = super(PrioritizedMemoryEfficientPyDictReplayBuffer, self).sample(batch_size, beta=beta)
+        for key in self.storage.obj_key:
+            data[key] = np.array(data[key])
+        return data
