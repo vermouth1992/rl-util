@@ -25,7 +25,7 @@ class SegmentTree:
             bound *= 2
         self._size = size
         self._bound = bound
-        self._value = np.full(shape=[bound * 2], fill_value=self._init_value)
+        self._value = np.full(shape=[bound * 2], fill_value=self._init_value, dtype=np.float64)
         self._compile()
 
     @property
@@ -87,7 +87,7 @@ class SegmentTree:
 class SumTree(SegmentTree):
     @property
     def _init_value(self):
-        return 0
+        return 0.
 
     def _setitem(self, tree: np.ndarray, index: np.ndarray, value: np.ndarray):
         _setitem_add(tree, index, value)
