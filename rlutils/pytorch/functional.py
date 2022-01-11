@@ -4,6 +4,12 @@ import torch
 import torch.nn as nn
 
 
+def gather_q_values(q_values, action):
+    assert q_values.shape[0] == action.shape[0]
+    assert len(q_values.shape) == 2 and len(action.shape) == 1
+    return q_values.gather(1, action.unsqueeze(1)).squeeze(1)
+
+
 def model_averaging(global_model: nn.Module, local_models: Iterable[nn.Module]):
     global_weights = list(global_model.parameters())
     trainable_weights = [[] for _ in range(len(global_weights))]
