@@ -1,5 +1,22 @@
+from typing import Iterable
+
 import torch
 import torch.nn as nn
+
+
+def model_averaging(global_model: nn.Module, local_models: Iterable[nn.Module]):
+    global_weights = list(global_model.parameters())
+    trainable_weights = [[] for _ in range(len(global_weights))]
+    for model in local_models:
+        for i, param in enumerate(model.parameters()):
+            trainable_weights[i].append(param.data)
+
+    for target_param, param in zip(global_model.parameters(), trainable_weights):
+        param = torch.mean(torch.stack(param, dim=0), dim=0)
+        target_param.data.copy_(param.to(target_param.data.device))
+
+    for local_q_network in local_models:
+        hard_update(local_q_network, global_model)
 
 
 def soft_update(target: nn.Module, source: nn.Module, tau):
