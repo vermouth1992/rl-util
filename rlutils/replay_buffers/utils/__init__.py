@@ -1,6 +1,8 @@
 import gym
 import numpy as np
 
+from . import segtree
+
 
 def combined_shape(length, shape=None):
     if shape is None:

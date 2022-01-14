@@ -109,3 +109,10 @@ def freeze(module: nn.Module):
 def unfreeze(module: nn.Module):
     for param in module.parameters():
         param.requires_grad = True
+
+
+def get_state_dict(module: nn.Module):
+    state_dict = module.state_dict()
+    for k, v in state_dict.items():
+        state_dict[k] = v.cpu()
+    return state_dict

@@ -2,6 +2,7 @@ import base64
 import json
 import os
 import os.path as osp
+import pickle
 import string
 import subprocess
 import sys
@@ -22,6 +23,16 @@ from rlutils.logx import colorize
 from rlutils.utils.serialization_utils import convert_json
 
 DIV_LINE_WIDTH = 80
+
+
+def pickle_thunk(thunk_plus):
+    pickled_thunk = cloudpickle.dumps(thunk_plus)
+    encoded_thunk = base64.b64encode(zlib.compress(pickled_thunk)).decode('utf-8')
+    return encoded_thunk
+
+
+def unpickle_thunk(encoded_thunk):
+    return pickle.loads(zlib.decompress(base64.b64decode(encoded_thunk)))
 
 
 def call_experiment(exp_name, thunk, seed=0, num_cpu=1, data_dir=None,

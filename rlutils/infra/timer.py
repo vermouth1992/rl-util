@@ -1,9 +1,11 @@
 import time
+
 from rlutils.interface.logging import LogUser
 
 
 class StopWatch(LogUser):
     def __init__(self):
+        super(StopWatch, self).__init__()
         self.start_time = None
 
     def start(self):

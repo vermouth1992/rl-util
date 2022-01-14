@@ -1,6 +1,7 @@
-from .base import Sampler
 import numpy as np
+
 import rlutils.np as rln
+from .base import Sampler
 
 
 class BatchSampler(Sampler):
@@ -49,7 +50,8 @@ class BatchSampler(Sampler):
 
             # End of trajectory handling
             if np.any(d):
-                self.logger.store(EpRet=self.ep_ret[d], EpLen=self.ep_len[d])
+                if self.logger is not None:
+                    self.logger.store(EpRet=self.ep_ret[d], EpLen=self.ep_len[d])
                 self.ep_ret[d] = 0
                 self.ep_len[d] = 0
                 self.o = self.env.reset_done()

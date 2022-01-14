@@ -5,10 +5,9 @@ To obtain DDPG, set target smooth to zero and Q network ensembles to 1.
 
 import copy
 
+import rlutils.pytorch.utils as ptu
 import torch
 import torch.nn as nn
-
-import rlutils.pytorch.utils as ptu
 from rlutils.gym.utils import verify_continuous_action_space
 from rlutils.infra.runner import run_func_as_main, PytorchOffPolicyRunner
 from rlutils.interface.agent import OffPolicyAgent
@@ -88,9 +87,10 @@ class TD3Agent(nn.Module, OffPolicyAgent):
         soft_update(self.target_policy_net, self.policy_net, self.tau)
 
     def compute_priority(self, data):
+        data_tensor = {}
         for key, d in data.items():
-            data[key] = torch.as_tensor(d).to(self.device, non_blocking=True)
-        return self.compute_priority_torch(**data).cpu().numpy()
+            data_tensor[key] = torch.as_tensor(d).to(self.device, non_blocking=True)
+        return self.compute_priority_torch(**data_tensor).cpu().numpy()
 
     def compute_priority_torch(self, obs, act, next_obs, done, rew):
         with torch.no_grad():
@@ -132,11 +132,11 @@ class TD3Agent(nn.Module, OffPolicyAgent):
             abs_td_error = torch.abs(torch.min(q_values, dim=0)[0] - q_target)
 
         info = dict(
-            LossQ=q_values_loss,
-            TDError=abs_td_error
+            LossQ=q_values_loss.detach(),
+            TDError=abs_td_error.detach()
         )
         for i in range(self.num_q_ensembles):
-            info[f'Q{i + 1}Vals'] = q_values[i]
+            info[f'Q{i + 1}Vals'] = q_values[i].detach()
         return info
 
     def _update_actor(self, obs, weights=None):
@@ -152,20 +152,21 @@ class TD3Agent(nn.Module, OffPolicyAgent):
         self.policy_optimizer.step()
         self.q_network.train()
         info = dict(
-            LossPi=policy_loss,
+            LossPi=policy_loss.detach(),
         )
         return info
 
     def train_on_batch(self, data, **kwargs):
+        new_data = {}
         for key, d in data.items():
-            data[key] = torch.as_tensor(d).to(self.device, non_blocking=True)
+            new_data[key] = torch.as_tensor(d).to(self.device, non_blocking=True)
 
-        info = self._update_nets(**data)
+        info = self._update_nets(**new_data)
 
         self.policy_updates += 1
 
         if self.policy_updates % 2 == 0:
-            obs = data['obs']
+            obs = new_data['obs']
             actor_info = self._update_actor(obs)
             info.update(actor_info)
             if self.device == "cuda":

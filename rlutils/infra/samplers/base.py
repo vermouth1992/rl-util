@@ -6,6 +6,7 @@ from rlutils.interface.logging import LogUser
 
 class Sampler(LogUser, ABC):
     def __init__(self, env: VectorEnv):
+        super(Sampler, self).__init__()
         self.env = env
 
     def reset(self):

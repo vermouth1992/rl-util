@@ -37,6 +37,7 @@ class PrioritizedReplayBuffer(BaseReplayBuffer):
         self.sum_tree[idx] = priority ** self.alpha
         self.max_tree[idx] = priority ** self.alpha
         self.min_tree[idx] = priority ** self.alpha
+        return idx
 
     def sample(self, batch_size, beta=0.4):
         assert self.idx is None

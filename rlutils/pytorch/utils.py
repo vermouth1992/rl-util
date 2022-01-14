@@ -17,7 +17,7 @@ def set_device(d):
     device = d
 
 
-set_device('cuda')
+set_device('cpu')
 
 
 def to_numpy(tensor):
