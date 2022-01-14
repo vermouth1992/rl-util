@@ -15,9 +15,8 @@ from typing import Callable
 
 import numpy as np
 import torch
-from tensorboardX import SummaryWriter
-
 from rlutils.utils.serialization_utils import convert_json
+from tensorboardX import SummaryWriter
 
 DEFAULT_DATA_DIR = 'data'
 FORCE_DATESTAMP = False
@@ -341,6 +340,28 @@ class EpochLogger(Logger):
                 raise ValueError(f'Unknown dtype {type(v)}')
             # assert isinstance(v, np.ndarray), "The data must be a numpy array or raw data type. Got {}".format(type(v))
             self.epoch_dict[k].append(v)
+
+    def get_epoch_dict(self):
+        stats = {}
+        for key, item in self.epoch_dict.items():
+            default_val = np.array([0])
+            # if the key doesn't exist now
+            v = self.epoch_dict.get(key, [default_val])
+            # if the list is empty
+            if len(v) == 0:
+                v.append(default_val)
+            if isinstance(v[0], np.ndarray):
+                val = np.concatenate(v, axis=0)
+            elif isinstance(v[0], torch.Tensor):
+                val = torch.cat(v, dim=0).cpu().numpy()
+            else:
+                raise ValueError(f'Unknown dtype {type(v[0])}')
+            stats[key] = val
+        return stats
+
+    def clear_epoch_dict(self):
+        for key in self.epoch_dict:
+            self.epoch_dict[key] = []
 
     def log_tabular(self, key, val=None, with_min_and_max=False, average_only=False):
         """

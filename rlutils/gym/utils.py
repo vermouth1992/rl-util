@@ -23,25 +23,15 @@ def get_true_done_from_infos(done, infos):
     return true_d
 
 
-def create_vector_env(env_fn=None,
-                      normalize_action_space=True,
-                      num_parallel_env=1,
-                      asynchronous=False,
-                      seed=None,
-                      action_space_seed=None
-                      ):
-    """
-    Environment is either created by env_name or env_fn. In addition, we apply Rescale action wrappers to
-    run Pendulum-v0 using env_name from commandline.
-    Other complicated wrappers should be included in env_fn.
-    """
-    assert env_fn is not None
+def wrap_env_fn(env_fn,
+                truncate_obs_dtype=True,
+                normalize_action_space=True):
     original_env_fn = env_fn
     dummy_env = original_env_fn()
 
     wrappers = []
     # convert to 32-bit observation and action space
-    if isinstance(dummy_env.observation_space, gym.spaces.Box):
+    if isinstance(dummy_env.observation_space, gym.spaces.Box) and truncate_obs_dtype:
         if dummy_env.observation_space.dtype == np.float64:
             print('Truncating observation_space dtype from np.float64 to np.float32')
             fn = lambda env: rlutils.gym.wrappers.TransformObservationDtype(env, dtype=np.float32)
@@ -65,6 +55,24 @@ def create_vector_env(env_fn=None,
             env = wrapper(env)
         return env
 
+    return _make_env
+
+
+def create_vector_env(env_fn,
+                      truncate_obs_dtype=True,
+                      normalize_action_space=True,
+                      num_parallel_env=1,
+                      asynchronous=False,
+                      seed=None,
+                      action_space_seed=None
+                      ):
+    """
+    Environment is either created by env_name or env_fn. In addition, we apply Rescale action wrappers to
+    run Pendulum-v0 using env_name from commandline.
+    Other complicated wrappers should be included in env_fn.
+    """
+    assert env_fn is not None
+    _make_env = wrap_env_fn(env_fn, truncate_obs_dtype, normalize_action_space)
     VecEnv = rlutils.gym.vector.AsyncVectorEnv if asynchronous else rlutils.gym.vector.SyncVectorEnv
 
     env = VecEnv([_make_env for _ in range(num_parallel_env)])
