@@ -1,13 +1,12 @@
 import copy
 
 import numpy as np
-import torch.nn as nn
-import torch.optim
-
 import rlutils.infra as rl_infra
 import rlutils.np as rln
 import rlutils.pytorch as rlu
 import rlutils.pytorch.utils as ptu
+import torch.nn as nn
+import torch.optim
 from rlutils.interface.agent import OffPolicyAgent
 
 
@@ -78,9 +77,12 @@ class DQN(OffPolicyAgent, nn.Module):
         rlu.functional.hard_update(self.target_q_network, self.q_network)
 
     def compute_priority(self, data):
+        np_data = {}
         for key, d in data.items():
-            data[key] = torch.as_tensor(d).to(self.device, non_blocking=True)
-        return self.compute_priority_torch(**data).cpu().numpy()
+            if not isinstance(d, np.ndarray):
+                d = np.array(d)
+            np_data[key] = torch.as_tensor(d).to(self.device, non_blocking=True)
+        return self.compute_priority_torch(**np_data).cpu().numpy()
 
     def compute_priority_torch(self, obs, act, next_obs, rew, done):
         with torch.no_grad():

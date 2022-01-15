@@ -43,8 +43,8 @@ def wrap_env_fn(env_fn,
         act_lim = 1.
         high_all = np.all(dummy_env.action_space.high == act_lim)
         low_all = np.all(dummy_env.action_space.low == -act_lim)
-        print(f'Original high: {dummy_env.action_space.high}, low: {dummy_env.action_space.low}')
         if not (high_all and low_all):
+            print(f'Original high: {dummy_env.action_space.high}, low: {dummy_env.action_space.low}')
             print(f'Rescale action space to [-{act_lim}, {act_lim}]')
             fn = lambda env: gym.wrappers.RescaleAction(env, -act_lim, act_lim)
             wrappers.append(fn)

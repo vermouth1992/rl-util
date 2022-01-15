@@ -1,5 +1,5 @@
 from . import utils
-from .base import BaseReplayBuffer, PyDictReplayBuffer
+from .base import BaseReplayBuffer, PyDictReplayBuffer, MemoryEfficientDictReplayBuffer
 from .gae_py import GAEBuffer
 from .prioritized import PrioritizedPyDictReplayBuffer, PrioritizedMemoryEfficientPyDictReplayBuffer
 from .storage import PyDictStorage, MemoryEfficientPyDictStorage

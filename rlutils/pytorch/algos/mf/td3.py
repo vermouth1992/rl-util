@@ -29,6 +29,7 @@ class TD3Agent(nn.Module, OffPolicyAgent):
                  actor_noise=0.1,
                  target_noise=0.2,
                  noise_clip=0.5,
+                 reward_scale=1.0,
                  device=ptu.device
                  ):
         nn.Module.__init__(self)
@@ -47,6 +48,7 @@ class TD3Agent(nn.Module, OffPolicyAgent):
         self.q_lr = q_lr
         self.num_q_ensembles = num_q_ensembles
         self.device = device
+        self.reward_scale = reward_scale
         if len(self.obs_spec.shape) == 1:  # 1D observation
             self.obs_dim = self.obs_spec.shape[0]
             self.policy_net = build_mlp(self.obs_dim, self.act_dim, mlp_hidden=policy_mlp_hidden, num_layers=3,
@@ -95,7 +97,7 @@ class TD3Agent(nn.Module, OffPolicyAgent):
     def compute_priority_torch(self, obs, act, next_obs, done, rew):
         with torch.no_grad():
             next_q_value = self._compute_next_obs_q(next_obs)
-            q_target = compute_target_value(rew, self.gamma, done, next_q_value)
+            q_target = compute_target_value(rew / self.reward_scale, self.gamma, done, next_q_value)
             q_values = self.q_network((obs, act), training=False)  # (None,)
             abs_td_error = torch.abs(q_values - q_target)
             return abs_td_error
@@ -114,7 +116,7 @@ class TD3Agent(nn.Module, OffPolicyAgent):
         # compute target q
         with torch.no_grad():
             next_q_value = self._compute_next_obs_q(next_obs)
-            q_target = compute_target_value(rew, self.gamma, done, next_q_value)
+            q_target = compute_target_value(rew / self.reward_scale, self.gamma, done, next_q_value)
         # q loss
         self.q_optimizer.zero_grad()
         q_values = self.q_network((obs, act), training=True)  # (num_ensembles, None)
