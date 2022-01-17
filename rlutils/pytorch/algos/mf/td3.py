@@ -11,7 +11,7 @@ import torch.nn as nn
 from rlutils.gym.utils import verify_continuous_action_space
 from rlutils.infra.runner import run_func_as_main, PytorchOffPolicyRunner
 from rlutils.interface.agent import OffPolicyAgent
-from rlutils.pytorch.functional import soft_update, hard_update, compute_target_value
+from rlutils.pytorch.functional import soft_update, compute_target_value, hard_update
 from rlutils.pytorch.nn import EnsembleMinQNet
 from rlutils.pytorch.nn.functional import build_mlp, freeze
 
@@ -53,13 +53,6 @@ class TD3Agent(nn.Module, OffPolicyAgent):
             self.obs_dim = self.obs_spec.shape[0]
             self.policy_net = build_mlp(self.obs_dim, self.act_dim, mlp_hidden=policy_mlp_hidden, num_layers=3,
                                         out_activation='tanh').to(self.device)
-            # optimization for GPU-based implement. We create a separate inference network on CPU instead of sending
-            # small observation to GPU, which is bounded by PCIe.
-            if self.device == "cuda":
-                self.inference_net = copy.deepcopy(self.policy_net).cpu()
-            else:
-                self.inference_net = self.policy_net
-
             self.target_policy_net = copy.deepcopy(self.policy_net).to(self.device)
             self.q_network = EnsembleMinQNet(self.obs_dim, self.act_dim, q_mlp_hidden,
                                              num_ensembles=num_q_ensembles).to(self.device)
@@ -171,8 +164,6 @@ class TD3Agent(nn.Module, OffPolicyAgent):
             obs = new_data['obs']
             actor_info = self._update_actor(obs)
             info.update(actor_info)
-            if self.device == "cuda":
-                hard_update(self.inference_net, self.policy_net)
 
         if self.policy_updates % 2 == 0:
             self.update_target()
@@ -183,18 +174,55 @@ class TD3Agent(nn.Module, OffPolicyAgent):
         return info
 
     def act_batch_test(self, obs):
-        obs = torch.as_tensor(obs, dtype=torch.float32)
+        obs = torch.as_tensor(obs, dtype=torch.float32, device=self.device)
         with torch.no_grad():
-            return self.inference_net(obs).numpy()
+            result = self.policy_net(obs)
+            return ptu.to_numpy(result)
 
     def act_batch_explore(self, obs, global_steps):
-        obs = torch.as_tensor(obs, dtype=torch.float32)
+        obs = torch.as_tensor(obs, dtype=torch.float32, device=self.device)
         with torch.no_grad():
-            pi_final = self.inference_net(obs)
+            pi_final = self.policy_net(obs)
             noise = torch.randn_like(pi_final) * self.actor_noise
             pi_final = pi_final + noise
             pi_final = torch.clip(pi_final, -self.act_lim, self.act_lim)
-            return pi_final.numpy()
+            return ptu.to_numpy(pi_final)
+
+
+class TD3Agent_v2(TD3Agent):
+    def __init__(self, tau=1000, q_lr=1e-3, policy_lr=1e-3, **kwargs):
+        super(TD3Agent_v2, self).__init__(**kwargs, tau=tau, q_lr=q_lr, policy_lr=policy_lr)
+        assert isinstance(tau, int), 'Tau must be an integer that represents the hard target update frequency'
+
+    def update_target(self):
+        hard_update(self.target_q_network, self.q_network)
+        hard_update(self.target_policy_net, self.policy_net)
+
+    def train_on_batch(self, data, **kwargs):
+        new_data = {}
+        for key, d in data.items():
+            new_data[key] = torch.as_tensor(d).to(self.device, non_blocking=True)
+        update_target = kwargs.pop('update_target', None)
+
+        info = self._update_nets(**new_data)
+
+        self.policy_updates += 1
+
+        obs = new_data['obs']
+        actor_info = self._update_actor(obs)
+        info.update(actor_info)
+
+        if update_target is None:
+            if self.policy_updates % self.tau == 0:
+                self.update_target()
+        else:
+            if update_target:
+                self.update_target()
+
+        if self.logger is not None:
+            self.logger.store(**info)
+
+        return info
 
 
 class Runner(PytorchOffPolicyRunner):
