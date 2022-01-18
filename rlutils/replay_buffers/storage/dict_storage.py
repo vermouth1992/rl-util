@@ -42,9 +42,10 @@ class PyDictStorage(Storage):
             index = np.arange(self.ptr, self.ptr + batch_size)
         return index
 
-    def add(self, data: Dict[str, np.ndarray]):
+    def add(self, data: Dict[str, np.ndarray], index=None):
         batch_size = list(data.values())[0].shape[0]
-        index = self.get_available_indexes(batch_size)
+        if index is None:
+            index = self.get_available_indexes(batch_size)
         for key, item in data.items():
             assert batch_size == item.shape[0], 'The batch size in the data is not consistent'
             self.storage[key][index] = item
@@ -80,9 +81,10 @@ class MemoryEfficientPyDictStorage(PyDictStorage):
             data[key] = output
         return data
 
-    def add(self, data: Dict[str, np.ndarray]):
+    def add(self, data: Dict[str, np.ndarray], index=None):
         batch_size = len(data[self.np_key[0]])
-        index = self.get_available_indexes(batch_size)
+        if index is None:
+            index = self.get_available_indexes(batch_size)
         for key, item in data.items():
             if key in self.np_key:
                 self.storage[key][index] = item
