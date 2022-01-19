@@ -198,23 +198,6 @@ class TD3Agent_v2(TD3Agent):
         hard_update(self.target_q_network, self.q_network)
         hard_update(self.target_policy_net, self.policy_net)
 
-    def _update_actor(self, obs, weights=None):
-        # policy loss
-        self.q_network.eval()
-        self.policy_optimizer.zero_grad()
-        a = self.policy_net(obs)
-        q = self.target_q_network((obs, a), training=False)
-        if weights is not None:
-            q = q * weights
-        policy_loss = -torch.mean(q, dim=0)
-        policy_loss.backward()
-        self.policy_optimizer.step()
-        self.q_network.train()
-        info = dict(
-            LossPi=policy_loss.detach(),
-        )
-        return info
-
     def train_on_batch(self, data, **kwargs):
         new_data = {}
         for key, d in data.items():
