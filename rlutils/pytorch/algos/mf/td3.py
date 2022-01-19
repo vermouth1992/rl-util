@@ -162,7 +162,8 @@ class TD3Agent(nn.Module, OffPolicyAgent):
 
         if self.policy_updates % 2 == 0:
             obs = new_data['obs']
-            actor_info = self._update_actor(obs)
+            weights = new_data.get('weights', None)
+            actor_info = self._update_actor(obs, weights)
             info.update(actor_info)
 
         if self.policy_updates % 2 == 0:
@@ -209,7 +210,8 @@ class TD3Agent_v2(TD3Agent):
         self.policy_updates += 1
 
         obs = new_data['obs']
-        actor_info = self._update_actor(obs)
+        weights = new_data.get('weights', None)
+        actor_info = self._update_actor(obs, weights)
         info.update(actor_info)
 
         if update_target is None:
