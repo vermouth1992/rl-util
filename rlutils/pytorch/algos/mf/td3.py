@@ -199,6 +199,26 @@ class TD3Agent_v2(TD3Agent):
         hard_update(self.target_q_network, self.q_network)
         hard_update(self.target_policy_net, self.policy_net)
 
+    def train_on_batch_q_network(self, data, **kwargs):
+        new_data = {}
+        for key, d in data.items():
+            new_data[key] = torch.as_tensor(d).to(self.device, non_blocking=True)
+        info = self._update_nets(**new_data)
+        if self.logger is not None:
+            self.logger.store(**info)
+        return info
+
+    def train_on_batch_actor_network(self, data, **kwargs):
+        new_data = {}
+        for key, d in data.items():
+            new_data[key] = torch.as_tensor(d).to(self.device, non_blocking=True)
+        obs = new_data['obs']
+        weights = new_data.get('weights', None)
+        info = self._update_actor(obs, weights)
+        if self.logger is not None:
+            self.logger.store(**info)
+        return info
+
     def train_on_batch(self, data, **kwargs):
         new_data = {}
         for key, d in data.items():
