@@ -213,8 +213,7 @@ class TD3Agent_v2(TD3Agent):
         for key, d in data.items():
             new_data[key] = torch.as_tensor(d).to(self.device, non_blocking=True)
         obs = new_data['obs']
-        weights = new_data.get('weights', None)
-        info = self._update_actor(obs, weights)
+        info = self._update_actor(obs)
         if self.logger is not None:
             self.logger.store(**info)
         return info
@@ -230,8 +229,7 @@ class TD3Agent_v2(TD3Agent):
         self.policy_updates += 1
 
         obs = new_data['obs']
-        weights = new_data.get('weights', None)
-        actor_info = self._update_actor(obs, weights)
+        actor_info = self._update_actor(obs)
         info.update(actor_info)
 
         if update_target is None:
