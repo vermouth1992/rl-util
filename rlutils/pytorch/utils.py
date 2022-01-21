@@ -2,6 +2,7 @@
 Handle global pytorch device and data types
 """
 
+import numpy as np
 import torch
 
 device = None
@@ -22,6 +23,15 @@ set_device('cpu')
 
 def to_numpy(tensor):
     return tensor.detach().cpu().numpy()
+
+
+def convert_dict_to_tensor(data, device=None):
+    tensor_data = {}
+    for key, d in data.items():
+        if not isinstance(d, np.ndarray):
+            d = np.array(d)
+        tensor_data[key] = torch.as_tensor(d).to(device, non_blocking=True)
+    return tensor_data
 
 
 cpu = torch.device('cpu')

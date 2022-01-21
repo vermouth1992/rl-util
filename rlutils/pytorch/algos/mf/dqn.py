@@ -125,10 +125,9 @@ class DQN(OffPolicyAgent, nn.Module):
         return info
 
     def train_on_batch(self, data, **kwargs):
-        for key, d in data.items():
-            data[key] = torch.as_tensor(d).to(self.device, non_blocking=True)
+        tensor_data = ptu.convert_dict_to_tensor(data, device=self.device)
 
-        info = self._update_nets(**data)
+        info = self._update_nets(**tensor_data)
 
         self.policy_updates += 1
         if self.policy_updates % self.target_update_freq == 0:
