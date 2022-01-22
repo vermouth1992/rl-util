@@ -1,11 +1,10 @@
 import time
 
 import numpy as np
-from tqdm.auto import tqdm
-
 import rlutils
 from rlutils.gym.vector import VectorEnv
 from rlutils.interface.logging import LogUser
+from tqdm.auto import tqdm
 
 
 class Tester(LogUser):
@@ -44,7 +43,7 @@ class Tester(LogUser):
                 time.sleep(0.01)
             print(f'Episode: {i}. Total Reward: {total_reward:.2f}. Episode Length: {ep_len}')
 
-    def test_agent(self, get_action, name, num_test_episodes, max_episode_length=None):
+    def test_agent(self, get_action, name, num_test_episodes, max_episode_length=None, timeout=None):
         if self.seed is not None:
             self.test_env.seed(self.seed)  # keep evaluating the same random obs
 
@@ -54,6 +53,9 @@ class Tester(LogUser):
 
         all_ep_ret = []
         all_ep_len = []
+
+        start = time.time()
+        already_timeout = False
 
         for _ in range(num_iterations):
             o = self.test_env.reset()
@@ -75,11 +77,24 @@ class Tester(LogUser):
                 steps += 1
                 if max_episode_length is not None and steps >= max_episode_length:
                     break
+
+                elapsed = time.time() - start
+                if elapsed > timeout:
+                    already_timeout = True
+                    break
+
             if np.any(d):
                 if self.logger is not None:
                     self.logger.store(TestEpRet=ep_ret[d], TestEpLen=ep_len[d])
                 all_ep_ret.append(ep_ret[d])
                 all_ep_len.append(ep_len[d])
+
+            if already_timeout:
+                break
+
         t.close()
 
-        return np.concatenate(all_ep_ret, axis=0), np.concatenate(all_ep_len, axis=0)
+        if len(all_ep_ret) > 0:
+            return np.concatenate(all_ep_ret, axis=0), np.concatenate(all_ep_len, axis=0)
+        else:
+            return None, None
