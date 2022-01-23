@@ -82,17 +82,19 @@ def create_vector_env(env_fn,
     return env
 
 
-def create_atari_env_fn(env_name):
+def create_atari_env_fn(env_name, terminal_on_life_loss=True):
     if 'NoFrameskip' not in env_name:
         frame_skip = 1
     else:
         frame_skip = 4
-    env_fn = lambda: gym.wrappers.AtariPreprocessing(gym.make(env_name), frame_skip=frame_skip)
+    env_fn = lambda: gym.wrappers.AtariPreprocessing(gym.make(env_name), frame_skip=frame_skip,
+                                                     terminal_on_life_loss=terminal_on_life_loss)
     return env_fn
 
 
-def create_atari_vector_env(env_name, num_parallel_env=1, asynchronous=False, seed=None, action_space_seed=None):
-    env_fn = create_atari_env_fn(env_name=env_name)
+def create_atari_vector_env(env_name, num_parallel_env=1, asynchronous=False, seed=None, action_space_seed=None,
+                            terminal_on_life_loss=True):
+    env_fn = create_atari_env_fn(env_name=env_name, terminal_on_life_loss=terminal_on_life_loss)
     env = rlutils.gym.utils.create_vector_env(env_fn=env_fn,
                                               normalize_action_space=True,
                                               num_parallel_env=num_parallel_env,

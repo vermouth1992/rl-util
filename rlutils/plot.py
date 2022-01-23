@@ -22,6 +22,35 @@ def smooth_dataframe(dataframe, value, smooth):
     dataframe[value] = smoothed_x
 
 
+def plot(data, xaxis='Epoch', value="AverageEpRet", condition="Condition1", smooth=1, **kwargs):
+    maxlen = min([len(d) for d in data])
+    if smooth > maxlen:
+        print(f'Truncate smooth to {maxlen}')
+        smooth = maxlen
+    if smooth > 1:
+        """
+        smooth data with moving window average.
+        that is,
+            smoothed_y[t] = average(y[t-k], y[t-k+1], ..., y[t+k-1], y[t+k])
+        where the "smooth" param is width of that window (2k+1)
+        """
+        for datum in data:
+            smooth_dataframe(datum, value, smooth)
+
+    if isinstance(data, list):
+        data = pd.concat(data, ignore_index=True)
+
+    if xaxis not in data:
+        if 'GradientSteps' in data:
+            xaxis = 'GradientSteps'
+        else:
+            xaxis = 'Epoch'
+
+    sns.set(style="darkgrid", font_scale=1.5)
+    g = sns.lineplot(data=data, x=xaxis, y=value, hue=condition, ci='sd', **kwargs)
+    return g
+
+
 def plot_data(data, xaxis='Epoch', value="AverageEpRet", condition="Condition1", smooth=1, **kwargs):
     maxlen = min([len(d) for d in data])
     if smooth > maxlen:
