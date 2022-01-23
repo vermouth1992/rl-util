@@ -67,6 +67,7 @@ class Tester(LogUser):
                 a = get_action(o)
                 assert isinstance(a, np.ndarray), f'Action a must be np.ndarray. Got {type(a)}'
                 o, r, d_, _ = self.test_env.step(a, mask=np.logical_not(d))
+
                 ep_ret = r * (1 - d) + ep_ret
                 ep_len = np.ones(shape=self.test_env.num_envs, dtype=np.int64) * (1 - d) + ep_len
                 prev_d = d.copy()
@@ -79,7 +80,7 @@ class Tester(LogUser):
                     break
 
                 elapsed = time.time() - start
-                if elapsed > timeout:
+                if timeout is not None and elapsed > timeout:
                     already_timeout = True
                     break
 

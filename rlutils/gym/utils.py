@@ -87,8 +87,15 @@ def create_atari_env_fn(env_name, terminal_on_life_loss=True):
         frame_skip = 1
     else:
         frame_skip = 4
+
     env_fn = lambda: gym.wrappers.AtariPreprocessing(gym.make(env_name), frame_skip=frame_skip,
                                                      terminal_on_life_loss=terminal_on_life_loss)
+
+    dummy_env = gym.make(env_name)
+    if terminal_on_life_loss and 'FIRE' in dummy_env.unwrapped.get_action_meanings():
+        old_env_fn = env_fn
+        env_fn = lambda: rlutils.gym.wrappers.atari.FireResetEnv(old_env_fn())
+
     return env_fn
 
 
