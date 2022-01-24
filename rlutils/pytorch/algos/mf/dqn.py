@@ -22,12 +22,14 @@ class DQN(OffPolicyAgent, nn.Module):
                  q_lr=1e-4,
                  gamma=0.99,
                  huber_delta=None,
+                 grad_norm=None,
                  epsilon_greedy_steps=1000,
                  target_update_freq=500,
                  device=ptu.device,
                  ):
         OffPolicyAgent.__init__(self, env=env)
         nn.Module.__init__(self)
+        self.grad_norm = grad_norm
         self.target_update_freq = target_update_freq
         self.gamma = gamma
         self.double_q = double_q
@@ -114,6 +116,8 @@ class DQN(OffPolicyAgent, nn.Module):
             loss = loss * weights
         loss = torch.mean(loss, dim=0)
         loss.backward()
+        if self.grad_norm is not None:
+            torch.nn.utils.clip_grad_norm(self.q_network.parameters(), max_norm=self.grad_norm)
         self.q_optimizer.step()
         info = dict(
             QVals=q_values,
