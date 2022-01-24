@@ -129,13 +129,18 @@ class DQN(OffPolicyAgent, nn.Module):
         return info
 
     def train_on_batch(self, data, **kwargs):
+        update_target = kwargs.pop('update_target', None)
         tensor_data = ptu.convert_dict_to_tensor(data, device=self.device)
 
         info = self._update_nets(**tensor_data)
 
         self.policy_updates += 1
-        if self.policy_updates % self.target_update_freq == 0:
-            self.update_target()
+        if update_target is None:
+            if self.policy_updates % self.target_update_freq == 0:
+                self.update_target()
+        else:
+            if update_target:
+                self.update_target()
 
         if self.logger is not None:
             self.logger.store(**info)

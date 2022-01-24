@@ -2,13 +2,12 @@ import copy
 import itertools
 
 import numpy as np
-import torch.nn as nn
-import torch.optim
-
 import rlutils.infra as rl_infra
 import rlutils.np as rln
 import rlutils.pytorch as rlu
 import rlutils.pytorch.utils as ptu
+import torch.nn as nn
+import torch.optim
 from rlutils.interface.agent import OffPolicyAgent
 
 
@@ -126,7 +125,8 @@ class MaxMinDQN(OffPolicyAgent, nn.Module):
         loss = torch.mean(loss, dim=0)
         loss.backward()
         if self.grad_norm is not None:
-            torch.nn.utils.clip_grad_norm(self.q_network.parameters(), max_norm=self.grad_norm)
+            params = itertools.chain(self.q_network_1.parameters(), self.q_network_2.parameters())
+            torch.nn.utils.clip_grad_norm(params, max_norm=self.grad_norm)
         self.q_optimizer.step()
         info = dict(
             Q1Vals=q_values_1,
