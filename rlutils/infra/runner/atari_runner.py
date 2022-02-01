@@ -1,6 +1,6 @@
 import gym
-from gym.wrappers import AtariPreprocessing
 
+import rlutils.gym as rl_gym
 import rlutils.infra as rl_infra
 from rlutils.replay_buffers import UniformMemoryEfficientPyDictReplayBuffer as ReplayBuffer
 from .off_policy import OffPolicyRunner
@@ -27,11 +27,7 @@ class AtariRunner(OffPolicyRunner):
                   asynchronous=False,
                   num_test_episodes=None):
         assert env_fn is None
-        if 'NoFrameskip' not in env_name:
-            frame_skip = 1
-        else:
-            frame_skip = 4
-        env_fn = lambda: AtariPreprocessing(gym.make(env_name), frame_skip=frame_skip)
+        env_fn = rl_gym.utils.create_atari_env_fn(env_name)
         # we handle frame stack in the sampler
         super(AtariRunner, self).setup_env(env_name=env_name, env_fn=env_fn,
                                            num_parallel_env=num_parallel_env,

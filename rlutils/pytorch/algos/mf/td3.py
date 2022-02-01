@@ -257,6 +257,7 @@ class Runner(PytorchOffPolicyRunner):
              actor_noise=0.1,
              target_noise=0.2,
              noise_clip=0.5,
+             reward_scale=1.0,
              tau=5e-3,
              gamma=0.99,
              seed=1,
@@ -272,7 +273,9 @@ class Runner(PytorchOffPolicyRunner):
             gamma=gamma,
             actor_noise=actor_noise,
             target_noise=target_noise,
-            noise_clip=noise_clip
+            noise_clip=noise_clip,
+            reward_scale=reward_scale,
+            device=ptu.device
         )
 
         super(Runner, cls).main(env_name=env_name,
