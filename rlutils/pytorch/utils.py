@@ -18,7 +18,8 @@ def set_device(d):
     device = d
 
 
-set_device('cpu')
+def get_device():
+    return 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
 def to_numpy(tensor):

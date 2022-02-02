@@ -1,3 +1,5 @@
+import collections
+
 import numpy as np
 
 import rlutils.np as rln
@@ -5,6 +7,14 @@ from .base import Sampler
 
 
 class BatchSampler(Sampler):
+    def __init__(self, n_steps, gamma, **kwargs):
+        super(BatchSampler, self).__init__(**kwargs)
+        self.n_steps = n_steps
+        self.gamma_vector = gamma ** np.arange(self.n_steps)
+        self.gamma_vector = np.expand_dims(self.gamma_vector, axis=0)  # (1, n_steps)
+        self.oa_queue = collections.deque(maxlen=n_steps)
+        self.rew_queue = collections.deque(maxlen=n_steps)
+
     @property
     def total_env_steps(self):
         return self._global_env_step
@@ -35,14 +45,24 @@ class BatchSampler(Sampler):
             # that isn't based on the agent's state)
             true_d = np.logical_and(d, np.logical_not(timeouts))
 
-            # Store experience to replay buffer
-            replay_buffer.add(dict(
-                obs=self.o,
-                act=a,
-                rew=r,
-                next_obs=o2,
-                done=true_d
-            ))
+            self.oa_queue.append((self.o, a))
+            self.rew_queue.append(r)
+
+            valid = self.ep_len >= self.n_steps
+
+            if np.any(valid):
+                last_o, last_a = self.oa_queue.popleft()
+                last_r = np.sum(np.stack(self.rew_queue, axis=-1) * self.gamma_vector, axis=-1)  # (num_envs,)
+                self.rew_queue.popleft()
+
+                # Store experience to replay buffer
+                replay_buffer.add(dict(
+                    obs=last_o[valid],
+                    act=last_a[valid],
+                    rew=last_r[valid],
+                    next_obs=o2[valid],
+                    done=true_d[valid]
+                ))
 
             # Super critical, easy to overlook step: make sure to update
             # most recent observation!

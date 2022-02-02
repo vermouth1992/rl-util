@@ -85,7 +85,7 @@ class BaseRunner(ABC):
         self.env_name = env_name
         if env_fn is None:
             env_fn = lambda: gym.make(env_name)
-        self.env_fn = env_fn
+        self.env_fn = rlutils.gym.utils.wrap_env_fn(env_fn, truncate_obs_dtype=True, normalize_action_space=True)
         self.dummy_env = self.env_fn()
 
         if num_parallel_env > 0:

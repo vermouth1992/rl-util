@@ -1,6 +1,7 @@
 import rlutils.infra as rl_infra
 import rlutils.np as rln
 import rlutils.pytorch as rlu
+import rlutils.pytorch.utils as ptu
 from rlutils.pytorch.algos.mf.dqn import DQN
 
 
@@ -31,6 +32,7 @@ class Runner(rl_infra.runner.PytorchAtariRunner):
              q_lr=1e-4,
              gamma=0.99,
              target_update_freq=2500,
+             n_steps=1,
              **kwargs
              ):
         agent_kwargs = dict(
@@ -38,6 +40,8 @@ class Runner(rl_infra.runner.PytorchAtariRunner):
             gamma=gamma,
             target_update_freq=target_update_freq,
             epsilon_greedy_steps=1000000,
+            n_steps=n_steps,
+            device=ptu.get_device()
         )
 
         super(Runner, cls).main(env_name=env_name,
@@ -47,5 +51,6 @@ class Runner(rl_infra.runner.PytorchAtariRunner):
                                 update_every=4,
                                 update_per_step=0.25,
                                 num_test_episodes=10,
+                                n_steps=n_steps,
                                 **kwargs
                                 )

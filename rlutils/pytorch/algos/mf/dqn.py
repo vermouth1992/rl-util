@@ -1,12 +1,13 @@
 import copy
 
 import numpy as np
+import torch.nn as nn
+import torch.optim
+
 import rlutils.infra as rl_infra
 import rlutils.np as rln
 import rlutils.pytorch as rlu
 import rlutils.pytorch.utils as ptu
-import torch.nn as nn
-import torch.optim
 from rlutils.interface.agent import OffPolicyAgent
 
 
@@ -21,17 +22,18 @@ class DQN(OffPolicyAgent, nn.Module):
                  double_q=True,
                  q_lr=1e-4,
                  gamma=0.99,
+                 n_steps=1,
                  huber_delta=None,
                  grad_norm=None,
                  epsilon_greedy_steps=1000,
                  target_update_freq=500,
-                 device=ptu.device,
+                 device=None,
                  ):
         OffPolicyAgent.__init__(self, env=env)
         nn.Module.__init__(self)
         self.grad_norm = grad_norm
         self.target_update_freq = target_update_freq
-        self.gamma = gamma
+        self.gamma = gamma ** n_steps
         self.double_q = double_q
         self.q_lr = q_lr
         self.obs_spec = env.observation_space
@@ -170,17 +172,21 @@ class Runner(rl_infra.runner.PytorchOffPolicyRunner):
     def main(cls,
              env_name: str,
              # agent args
-             q_lr=1e-4,
+             q_lr=1e-3,
              gamma=0.99,
-             target_update_freq=2500,
+             n_steps=1,
+             target_update_freq=500,
              **kwargs
              ):
         agent_kwargs = dict(
             q_lr=q_lr,
             gamma=gamma,
-            target_update_freq=target_update_freq
+            target_update_freq=target_update_freq,
+            n_steps=n_steps,
+            device=ptu.get_device()
         )
         super(Runner, cls).main(env_name=env_name,
                                 agent_cls=DQN,
                                 agent_kwargs=agent_kwargs,
+                                n_steps=n_steps,
                                 )

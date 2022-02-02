@@ -34,6 +34,6 @@ class AtariRunner(OffPolicyRunner):
                                            asynchronous=asynchronous,
                                            num_test_episodes=num_test_episodes)
 
-    def setup_sampler(self, start_steps, **kwargs):
+    def setup_sampler(self, start_steps, n_steps, gamma, **kwargs):
         self.start_steps = start_steps
-        self.sampler = rl_infra.samplers.BatchFrameStackSampler(env=self.env)
+        self.sampler = rl_infra.samplers.BatchFrameStackSampler(env=self.env, n_steps=n_steps, gamma=gamma)

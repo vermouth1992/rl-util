@@ -5,9 +5,10 @@ To obtain DDPG, set target smooth to zero and Q network ensembles to 1.
 
 import copy
 
-import rlutils.pytorch.utils as ptu
 import torch
 import torch.nn as nn
+
+import rlutils.pytorch.utils as ptu
 from rlutils.gym.utils import verify_continuous_action_space
 from rlutils.infra.runner import run_func_as_main, PytorchOffPolicyRunner
 from rlutils.interface.agent import OffPolicyAgent
@@ -26,6 +27,7 @@ class TD3Agent(nn.Module, OffPolicyAgent):
                  q_lr=3e-4,
                  tau=5e-3,
                  gamma=0.99,
+                 n_steps=1,
                  actor_noise=0.1,
                  target_noise=0.2,
                  noise_clip=0.5,
@@ -43,7 +45,7 @@ class TD3Agent(nn.Module, OffPolicyAgent):
         self.target_noise = target_noise
         self.noise_clip = noise_clip
         self.tau = tau
-        self.gamma = gamma
+        self.gamma = gamma ** n_steps
         self.policy_lr = policy_lr
         self.q_lr = q_lr
         self.num_q_ensembles = num_q_ensembles
@@ -260,6 +262,7 @@ class Runner(PytorchOffPolicyRunner):
              reward_scale=1.0,
              tau=5e-3,
              gamma=0.99,
+             n_steps=1,
              seed=1,
              logger_path: str = None,
              **kwargs
@@ -275,7 +278,8 @@ class Runner(PytorchOffPolicyRunner):
             target_noise=target_noise,
             noise_clip=noise_clip,
             reward_scale=reward_scale,
-            device=ptu.device
+            n_steps=n_steps,
+            device=ptu.get_device()
         )
 
         super(Runner, cls).main(env_name=env_name,
@@ -284,9 +288,10 @@ class Runner(PytorchOffPolicyRunner):
                                 agent_kwargs=agent_kwargs,
                                 seed=seed,
                                 logger_path=logger_path,
+                                gamma=gamma,
+                                n_steps=n_steps,
                                 **kwargs)
 
 
 if __name__ == '__main__':
-    ptu.set_device('cuda')
     run_func_as_main(Runner.main)

@@ -62,14 +62,31 @@ class BatchFrameStackSampler(BatchSampler):
             self.append_obs(o2)
             next_frame = self.get_lazy_frames()
 
-            # Store experience to replay buffer
-            replay_buffer.add(dict(
-                obs=current_frame,
-                act=a,
-                rew=r,
-                next_obs=next_frame,
-                done=true_d
-            ))
+            self.oa_queue.append((current_frame, a))
+            self.rew_queue.append(r)
+
+            valid = self.ep_len >= self.n_steps
+
+            if np.any(valid):
+                last_o, last_a = self.oa_queue.popleft()
+                last_r = np.sum(np.stack(self.rew_queue, axis=-1) * self.gamma_vector, axis=-1)  # (num_envs,)
+                self.rew_queue.popleft()
+
+                valid_o = []
+                valid_next_o = []
+                for i in range(self.num_envs):
+                    if valid[i]:
+                        valid_o.append(last_o[i])
+                        valid_next_o.append(next_frame[i])
+
+                # Store experience to replay buffer
+                replay_buffer.add(dict(
+                    obs=valid_o,
+                    act=last_a[valid],
+                    rew=last_r[valid],
+                    next_obs=valid_next_o,
+                    done=true_d[valid]
+                ))
 
             # End of trajectory handling
             if np.any(d):

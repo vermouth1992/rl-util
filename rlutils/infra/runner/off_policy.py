@@ -1,9 +1,9 @@
 import pprint
 
 import numpy as np
+
 import rlutils.infra as rl_infra
 from rlutils.replay_buffers import UniformPyDictReplayBuffer as ReplayBuffer
-
 from .base import BaseRunner
 
 
@@ -27,9 +27,9 @@ class OffPolicyRunner(BaseRunner):
         self.replay_buffer = ReplayBuffer.from_vec_env(vec_env=self.env, capacity=replay_size,
                                                        seed=self.seeds_info['replay_buffer'])
 
-    def setup_sampler(self, start_steps, **kwargs):
+    def setup_sampler(self, start_steps, n_steps, gamma, **kwargs):
         self.start_steps = start_steps
-        self.sampler = rl_infra.samplers.BatchSampler(env=self.env)
+        self.sampler = rl_infra.samplers.BatchSampler(env=self.env, n_steps=n_steps, gamma=gamma)
 
     def setup_updater(self, update_after, update_per_step, update_every, batch_size, **kwargs):
         self.updater = rl_infra.OffPolicyUpdater(agent=self.agent,
@@ -77,6 +77,8 @@ class OffPolicyRunner(BaseRunner):
              batch_size=256,
              num_parallel_env=1,
              num_test_episodes=30,
+             n_steps=1,
+             gamma=0.99,
              seed=1,
              # agent args
              agent_cls=None,
@@ -93,7 +95,7 @@ class OffPolicyRunner(BaseRunner):
                          asynchronous=False, num_test_episodes=num_test_episodes)
         runner.setup_agent(agent_cls=agent_cls, **agent_kwargs)
         runner.setup_replay_buffer(replay_size=replay_size)
-        runner.setup_sampler(start_steps=start_steps)
+        runner.setup_sampler(start_steps=start_steps, n_steps=n_steps, gamma=gamma)
         runner.setup_tester(num_test_episodes=num_test_episodes)
         runner.setup_updater(update_after=update_after,
                              update_per_step=update_per_step,
