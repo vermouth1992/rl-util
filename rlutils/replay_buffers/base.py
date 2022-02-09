@@ -87,7 +87,11 @@ class PyDictReplayBuffer(BaseReplayBuffer):
         return cls(data_spec=data_spec, capacity=capacity, seed=seed)
 
 
-class MemoryEfficientDictReplayBuffer(PyDictReplayBuffer):
+class MemoryEfficientPyDictReplayBuffer(BaseReplayBuffer):
+    def __init__(self, data_spec, capacity, seed=None, **kwargs):
+        self.data_spec = data_spec
+        super(MemoryEfficientPyDictReplayBuffer, self).__init__(capacity=capacity, seed=seed)
+
     def _create_storage(self, capacity):
         return MemoryEfficientPyDictStorage(self.data_spec, capacity)
 

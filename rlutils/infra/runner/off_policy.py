@@ -3,7 +3,7 @@ import pprint
 import numpy as np
 
 import rlutils.infra as rl_infra
-from rlutils.replay_buffers import UniformPyDictReplayBuffer as ReplayBuffer
+from rlutils.replay_buffers import UniformReplayBuffer as ReplayBuffer
 from .base import BaseRunner
 
 
@@ -24,8 +24,9 @@ class OffPolicyRunner(BaseRunner):
                             replay_size,
                             **kwargs):
         self.seeds_info['replay_buffer'] = self.seeder.generate_seed()
-        self.replay_buffer = ReplayBuffer.from_vec_env(vec_env=self.env, capacity=replay_size,
-                                                       seed=self.seeds_info['replay_buffer'])
+        self.replay_buffer = ReplayBuffer.from_env(env=self.env, capacity=replay_size, is_vec_env=True,
+                                                   seed=self.seeds_info['replay_buffer'],
+                                                   memory_efficient=False)
 
     def setup_sampler(self, start_steps, n_steps, gamma, **kwargs):
         self.start_steps = start_steps

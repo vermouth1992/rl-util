@@ -36,4 +36,3 @@ class OffPolicyUpdater(PolicyUpdater):
                 for _ in range(int(self.update_per_step * self.update_every)):
                     batch = self.replay_buffer.sample(self.batch_size)
                     info = self.agent.train_on_batch(data=batch)
-                    self.replay_buffer.post_process(info)

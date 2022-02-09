@@ -12,7 +12,7 @@ import torch.optim
 import rlutils.infra as rl_infra
 import rlutils.pytorch as rlu
 import rlutils.pytorch.utils as ptu
-from rlutils.pytorch.algos.mf.dqn import DQN
+from rlalgos.pytorch.mf.dqn import DQN
 
 
 class QRDQN(DQN):

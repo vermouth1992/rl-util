@@ -3,7 +3,7 @@ import pprint
 import numpy as np
 
 from rlutils.logx import EpochLogger
-from rlutils.replay_buffers import UniformPyDictReplayBuffer as ReplayBuffer
+from rlutils.replay_buffers import UniformReplayBuffer as ReplayBuffer
 from .off_policy import OffPolicyRunner
 
 

@@ -58,31 +58,7 @@ def wrap_env_fn(env_fn,
     return _make_env
 
 
-def create_vector_env(env_fn,
-                      truncate_obs_dtype=True,
-                      normalize_action_space=True,
-                      num_parallel_env=1,
-                      asynchronous=False,
-                      seed=None,
-                      action_space_seed=None
-                      ):
-    """
-    Environment is either created by env_name or env_fn. In addition, we apply Rescale action wrappers to
-    run Pendulum-v0 using env_name from commandline.
-    Other complicated wrappers should be included in env_fn.
-    """
-    assert env_fn is not None
-    _make_env = wrap_env_fn(env_fn, truncate_obs_dtype, normalize_action_space)
-    VecEnv = rlutils.gym.vector.AsyncVectorEnv if asynchronous else rlutils.gym.vector.SyncVectorEnv
-
-    env = VecEnv([_make_env for _ in range(num_parallel_env)])
-    env.seed(seed)
-    env.action_space.seed(action_space_seed)
-
-    return env
-
-
-def create_atari_env_fn(env_name, terminal_on_life_loss=True):
+def wrap_atari_env_fn(env_name, terminal_on_life_loss=True):
     if 'NoFrameskip' not in env_name:
         frame_skip = 1
     else:
@@ -99,13 +75,22 @@ def create_atari_env_fn(env_name, terminal_on_life_loss=True):
     return env_fn
 
 
-def create_atari_vector_env(env_name, num_parallel_env=1, asynchronous=False, seed=None, action_space_seed=None,
-                            terminal_on_life_loss=True):
-    env_fn = create_atari_env_fn(env_name=env_name, terminal_on_life_loss=terminal_on_life_loss)
-    env = rlutils.gym.utils.create_vector_env(env_fn=env_fn,
-                                              normalize_action_space=True,
-                                              num_parallel_env=num_parallel_env,
-                                              asynchronous=asynchronous,
-                                              seed=seed,
-                                              action_space_seed=action_space_seed)
+def create_vector_env(env_fn,
+                      num_parallel_env=1,
+                      asynchronous=False,
+                      seed=None,
+                      action_space_seed=None
+                      ):
+    """
+    Environment is either created by env_name or env_fn. In addition, we apply Rescale action wrappers to
+    run Pendulum-v0 using env_name from commandline.
+    Other complicated wrappers should be included in env_fn.
+    """
+    assert env_fn is not None
+    VecEnv = rlutils.gym.vector.AsyncVectorEnv if asynchronous else rlutils.gym.vector.SyncVectorEnv
+
+    env = VecEnv([env_fn for _ in range(num_parallel_env)])
+    env.seed(seed)
+    env.action_space.seed(action_space_seed)
+
     return env

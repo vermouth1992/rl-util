@@ -3,7 +3,7 @@ from typing import Callable
 import rlutils.infra as rl_infra
 import rlutils.pytorch as rlu
 import rlutils.pytorch.utils as ptu
-from rlutils.pytorch.algos.mf.categorical_dqn import CategoricalDQN
+from rlalgos.pytorch.mf.categorical_dqn import CategoricalDQN
 
 
 class CategoricalAtariDQN(CategoricalDQN):

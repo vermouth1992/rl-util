@@ -1,10 +1,11 @@
 import time
 
 import numpy as np
+from tqdm.auto import tqdm
+
 import rlutils
 from rlutils.gym.vector import VectorEnv
 from rlutils.interface.logging import LogUser
-from tqdm.auto import tqdm
 
 
 class Tester(LogUser):
@@ -14,9 +15,8 @@ class Tester(LogUser):
 
     def __init__(self, env_fn, num_parallel_env, asynchronous=False, seed=None):
         super(Tester, self).__init__()
-        self.env_fn = env_fn
-        self.test_env = rlutils.gym.utils.create_vector_env(env_fn=env_fn,
-                                                            normalize_action_space=True,
+        self.env_fn = rlutils.gym.utils.wrap_env_fn(env_fn, truncate_obs_dtype=True, normalize_action_space=True)
+        self.test_env = rlutils.gym.utils.create_vector_env(env_fn=self.env_fn,
                                                             num_parallel_env=num_parallel_env,
                                                             asynchronous=asynchronous)
         self.seed = seed

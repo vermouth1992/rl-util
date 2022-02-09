@@ -1,7 +1,7 @@
 import rlutils.infra as rl_infra
 import rlutils.np as rln
 import rlutils.pytorch as rlu
-from rlutils.pytorch.algos.mf.maxmin_dqn import MaxMinDQN
+from rlalgos.pytorch.mf.maxmin_dqn import MaxMinDQN
 
 
 class AtariMaxMinDQN(MaxMinDQN):

@@ -6,7 +6,7 @@ import numpy as np
 import rlutils.infra as rl_infra
 import rlutils.np as rln
 import tensorflow as tf
-from rlutils.tf.algos.mf import td3
+from rlalgos.tf.mf import td3
 
 
 class TD3Agent(td3.TD3Agent):

@@ -89,8 +89,7 @@ class BaseRunner(ABC):
         self.dummy_env = self.env_fn()
 
         if num_parallel_env > 0:
-            self.env = rlutils.gym.utils.create_vector_env(env_fn=env_fn,
-                                                           normalize_action_space=True,
+            self.env = rlutils.gym.utils.create_vector_env(env_fn=self.env_fn,
                                                            num_parallel_env=num_parallel_env,
                                                            asynchronous=asynchronous)
             env_seed = self.seeder.generate_seed()
