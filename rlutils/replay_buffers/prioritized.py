@@ -15,7 +15,7 @@ from . import utils, storage
 
 
 class PrioritizedReplayBuffer(object):
-    def __init__(self, data_spec, capacity, memory_efficient, alpha=0.6, eviction=None, seed=None):
+    def __init__(self, data_spec, capacity, memory_efficient, alpha=0.6, beta=0.4, eviction=None, seed=None):
         self.eviction = eviction
         if eviction is None:
             print('Using FIFO eviction policy')
@@ -30,6 +30,7 @@ class PrioritizedReplayBuffer(object):
             self.storage = storage.PyDictStorage(data_spec=data_spec, capacity=capacity)
         self.storage.reset()
         self.alpha = alpha
+        self.beta = beta
         self.max_tree = utils.segtree.MaxTree(size=capacity)
         self.min_tree = utils.segtree.MinTree(size=capacity)
         self.sum_tree = utils.segtree.SumTree(size=capacity)
@@ -85,7 +86,10 @@ class PrioritizedReplayBuffer(object):
 
             return idx
 
-    def sample(self, batch_size, beta=0.4):
+    def sample(self, batch_size, beta=None):
+        if beta is None:
+            beta = self.beta
+
         with self.lock:
             # assert self.idx is None
             scalar = self.np_random.rand(batch_size) * self.sum_tree.reduce()
