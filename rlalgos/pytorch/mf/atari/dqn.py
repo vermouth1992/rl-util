@@ -1,3 +1,5 @@
+import numpy as np
+
 import rlutils.infra as rl_infra
 import rlutils.np as rln
 import rlutils.pytorch as rlu
@@ -22,6 +24,14 @@ class AtariDQN(DQN):
         return rln.schedulers.LinearSchedule(schedule_timesteps=self.epsilon_greedy_steps,
                                              final_p=0.1,
                                              initial_p=1.0)
+
+    def act_batch_test(self, obs):
+        actions = super(AtariDQN, self).act_batch_test(obs)
+        # have 1% to randomly select an action to avoid game freeze due to FIRE
+        mask = np.random.rand(obs.shape[0]) < 0.01
+        random_actions = np.random.randint(low=0, high=self.act_dim, size=obs.shape[0])
+        actions[mask] = random_actions[mask]
+        return actions
 
 
 class Runner(rl_infra.runner.PytorchAtariRunner):

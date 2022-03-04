@@ -119,7 +119,7 @@ class DQN(OffPolicyAgent, nn.Module):
         loss = torch.mean(loss, dim=0)
         loss.backward()
         if self.grad_norm is not None:
-            torch.nn.utils.clip_grad_norm(self.q_network.parameters(), max_norm=self.grad_norm)
+            torch.nn.utils.clip_grad_norm_(self.q_network.parameters(), max_norm=self.grad_norm)
         self.q_optimizer.step()
         info = dict(
             QVals=q_values,
