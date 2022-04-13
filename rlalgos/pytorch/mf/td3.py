@@ -210,32 +210,6 @@ class TD3Agent(nn.Module, OffPolicyAgent):
             pi_final = torch.clip(pi_final, -self.act_lim, self.act_lim)
             return ptu.to_numpy(pi_final)
 
-    def train_on_batch(self, data, **kwargs):
-        new_data = {}
-        for key, d in data.items():
-            new_data[key] = torch.as_tensor(d).to(self.device, non_blocking=True)
-        update_target = kwargs.pop('update_target', None)
-
-        info = self._update_nets(**new_data)
-
-        self.policy_updates += 1
-
-        obs = new_data['obs']
-        actor_info = self._update_actor(obs)
-        info.update(actor_info)
-
-        if update_target is None:
-            if self.policy_updates % self.tau == 0:
-                self.update_target()
-        else:
-            if update_target:
-                self.update_target()
-
-        if self.logger is not None:
-            self.logger.store(**info)
-
-        return info
-
 
 class Runner(PytorchOffPolicyRunner):
     @classmethod

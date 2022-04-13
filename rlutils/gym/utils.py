@@ -25,6 +25,7 @@ def get_true_done_from_infos(done, infos):
 
 def wrap_env_fn(env_fn,
                 truncate_obs_dtype=True,
+                truncate_act_dtype=True,
                 normalize_action_space=True):
     original_env_fn = env_fn
     dummy_env = original_env_fn()
@@ -39,15 +40,19 @@ def wrap_env_fn(env_fn,
     else:
         raise NotImplementedError
 
-    if isinstance(dummy_env.action_space, gym.spaces.Box) and normalize_action_space:
-        act_lim = 1.
-        high_all = np.all(dummy_env.action_space.high == act_lim)
-        low_all = np.all(dummy_env.action_space.low == -act_lim)
-        if not (high_all and low_all):
-            print(f'Original high: {dummy_env.action_space.high}, low: {dummy_env.action_space.low}')
-            print(f'Rescale action space to [-{act_lim}, {act_lim}]')
-            fn = lambda env: gym.wrappers.RescaleAction(env, -act_lim, act_lim)
-            wrappers.append(fn)
+    if isinstance(dummy_env.action_space, gym.spaces.Box):
+        if truncate_act_dtype:
+            wrappers.append(lambda env: rlutils.gym.wrappers.TransformActionDtype(env, dtype=np.float32))
+
+        if normalize_action_space:
+            act_lim = 1.
+            high_all = np.all(dummy_env.action_space.high == act_lim)
+            low_all = np.all(dummy_env.action_space.low == -act_lim)
+            if not (high_all and low_all):
+                print(f'Original high: {dummy_env.action_space.high}, low: {dummy_env.action_space.low}')
+                print(f'Rescale action space to [-{act_lim}, {act_lim}]')
+                fn = lambda env: gym.wrappers.RescaleAction(env, -act_lim, act_lim)
+                wrappers.append(fn)
 
     def _make_env():
         env = original_env_fn()
