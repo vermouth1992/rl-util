@@ -59,8 +59,14 @@ class PrioritizedReplayBuffer(object):
         with self.lock:
             return len(self.storage)
 
-    def add(self, data: Dict[str, np.ndarray], priority: np.ndarray):
-        batch_size = priority.shape[0]
+    def add(self, data: Dict[str, np.ndarray], priority: np.ndarray = None):
+        batch_size = data[list(data.keys())[0]].shape[0]
+        if priority is None:
+            if len(self) == 0:
+                max_priority = 1.0
+            else:
+                max_priority = self.max_tree.reduce()
+            priority = np.ones(shape=(batch_size,), dtype=np.float32) * max_priority
         with self.lock:
             priority = np.abs(priority) + EPS
             # assert np.all(priority > 0.), f'Priority must be all greater than zero. Got {priority}'
@@ -112,7 +118,7 @@ class PrioritizedReplayBuffer(object):
         with self.lock:
             idx = self.sampled_idx.pop(0)
             mask = self.sampled_mask.pop(0)
-            assert len(self.sampled_idx) == 0
+            # assert len(self.sampled_idx) == 0
 
             # only update valid entries
             idx = idx[mask]

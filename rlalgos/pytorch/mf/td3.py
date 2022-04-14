@@ -5,15 +5,13 @@ To obtain DDPG, set target smooth to zero and Q network ensembles to 1.
 
 import copy
 
+import rlutils.pytorch as rlu
+import rlutils.pytorch.utils as ptu
 import torch
 import torch.nn as nn
-
-import rlutils.pytorch.utils as ptu
 from rlutils.gym.utils import verify_continuous_action_space
 from rlutils.infra.runner import run_func_as_main, PytorchOffPolicyRunner
 from rlutils.interface.agent import OffPolicyAgent
-
-import rlutils.pytorch as rlu
 
 
 class TD3Agent(nn.Module, OffPolicyAgent):
@@ -22,6 +20,7 @@ class TD3Agent(nn.Module, OffPolicyAgent):
                  num_q_ensembles=2,
                  policy_mlp_hidden=128,
                  policy_lr=3e-4,
+                 policy_update_freq=2,
                  q_mlp_hidden=256,
                  q_lr=3e-4,
                  tau=5e-3,
@@ -57,6 +56,7 @@ class TD3Agent(nn.Module, OffPolicyAgent):
         self.num_q_ensembles = num_q_ensembles
         self.device = device
         self.reward_scale = reward_scale
+        self.policy_update_freq = policy_update_freq
         if len(self.obs_spec.shape) == 1:  # 1D observation
             self.obs_dim = self.obs_spec.shape[0]
             self.policy_net = rlu.nn.build_mlp(self.obs_dim, self.act_dim, mlp_hidden=policy_mlp_hidden, num_layers=3,
@@ -169,7 +169,7 @@ class TD3Agent(nn.Module, OffPolicyAgent):
 
         self.policy_updates += 1
 
-        if self.policy_updates % 2 == 0:
+        if self.policy_updates % self.policy_update_freq == 0:
             obs = new_data['obs']
             actor_info = self.train_actor_on_batch(obs)
             info.update(actor_info)
