@@ -10,7 +10,7 @@ import rlutils.pytorch.utils as ptu
 import torch
 import torch.nn as nn
 from rlutils.gym.utils import verify_continuous_action_space
-from rlutils.infra.runner import run_func_as_main, PytorchOffPolicyRunner
+from rlutils.infra.runner import run_func_as_main
 from rlutils.interface.agent import OffPolicyAgent
 
 
@@ -211,51 +211,10 @@ class TD3Agent(nn.Module, OffPolicyAgent):
             return ptu.to_numpy(pi_final)
 
 
-class Runner(PytorchOffPolicyRunner):
-    @classmethod
-    def main(cls,
-             env_name,
-             epochs=200,
-             policy_mlp_hidden=256,
-             policy_lr=3e-4,
-             q_mlp_hidden=256,
-             q_lr=3e-4,
-             actor_noise=0.1,
-             target_noise=0.2,
-             noise_clip=0.5,
-             reward_scale=1.0,
-             tau=5e-3,
-             gamma=0.99,
-             n_steps=1,
-             seed=1,
-             logger_path: str = None,
-             **kwargs
-             ):
-        agent_kwargs = dict(
-            policy_mlp_hidden=policy_mlp_hidden,
-            policy_lr=policy_lr,
-            q_mlp_hidden=q_mlp_hidden,
-            q_lr=q_lr,
-            tau=tau,
-            gamma=gamma,
-            actor_noise=actor_noise,
-            target_noise=target_noise,
-            noise_clip=noise_clip,
-            reward_scale=reward_scale,
-            n_steps=n_steps,
-            device=ptu.get_device()
-        )
-
-        super(Runner, cls).main(env_name=env_name,
-                                epochs=epochs,
-                                agent_cls=TD3Agent,
-                                agent_kwargs=agent_kwargs,
-                                seed=seed,
-                                logger_path=logger_path,
-                                gamma=gamma,
-                                n_steps=n_steps,
-                                **kwargs)
-
-
 if __name__ == '__main__':
-    run_func_as_main(Runner.main)
+    from rlutils.infra.runner import run_offpolicy
+
+    make_agent_fn = lambda env: TD3Agent(env, device='cuda' if torch.cuda.is_available() else 'cpu')
+    run_func_as_main(run_offpolicy, passed_args={
+        'make_agent_fn': make_agent_fn
+    })

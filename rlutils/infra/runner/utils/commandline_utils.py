@@ -4,7 +4,7 @@ import inspect
 import docstring_parser
 
 
-def get_argparser_from_func(func, parser):
+def get_argparser_from_func(func, parser, exclude=None):
     """ Read the argument of a function and parse it as ArgumentParser. """
     if parser is None:
         parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -14,8 +14,13 @@ def get_argparser_from_func(func, parser):
     # transform docstring.params to dictionary
     params = {p.arg_name: p.description for p in docstring.params}
 
+    if exclude is None:
+        exclude = []
+
+    exclude.extend(['self', 'cls', 'args', 'kwargs'])
+
     for k, v in signature.parameters.items():
-        if k in ['self', 'cls', 'args', 'kwargs']:
+        if k in exclude:
             continue
         if v.default is inspect.Parameter.empty:
             parser.add_argument('--' + k, help=params.get(k, ' '), required=True)
@@ -39,8 +44,11 @@ def get_argparser_from_func(func, parser):
     return parser
 
 
-def run_func_as_main(func, parser=None):
+def run_func_as_main(func, parser=None, passed_args=None):
     """ Run function as the main. Put the function arguments into argument parser """
-    parser = get_argparser_from_func(func, parser=parser)
+    if passed_args is None:
+        passed_args = {}
+    parser = get_argparser_from_func(func, parser=parser, exclude=list(passed_args.keys()))
     args = vars(parser.parse_args())
+    args.update(passed_args)
     func(**args)
