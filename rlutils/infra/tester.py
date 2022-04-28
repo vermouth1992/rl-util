@@ -63,10 +63,17 @@ class Tester(LogUser):
             ep_ret = np.zeros(shape=self.test_env.num_envs, dtype=np.float64)
             ep_len = np.zeros(shape=self.test_env.num_envs, dtype=np.int64)
             steps = 0
+            batch_action = None
             while not np.all(d):
-                a = get_action(o)
+                a = get_action(o[np.logical_not(d)])  # only inference on valid observations
+
+                # init batch action
+                if batch_action is None:
+                    batch_action = np.zeros_like(a)
+
+                batch_action[np.logical_not(d)] = a
                 assert isinstance(a, np.ndarray), f'Action a must be np.ndarray. Got {type(a)}'
-                o, r, d_, _ = self.test_env.step(a, mask=np.logical_not(d))
+                o, r, d_, _ = self.test_env.step(batch_action, mask=np.logical_not(d))
 
                 ep_ret = r * (1 - d) + ep_ret
                 ep_len = np.ones(shape=self.test_env.num_envs, dtype=np.int64) * (1 - d) + ep_len
