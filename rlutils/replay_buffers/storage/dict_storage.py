@@ -2,8 +2,6 @@ from typing import Dict
 
 import gym
 import numpy as np
-import rlutils.pytorch.utils as ptu
-import torch
 from rlutils.replay_buffers.utils import combined_shape
 
 from .base import Storage
@@ -96,30 +94,4 @@ class MemoryEfficientPyDictStorage(PyDictStorage):
 
         self.ptr = (self.ptr + batch_size) % self.capacity
         self.size = min(self.size + batch_size, self.capacity)
-        return index
-
-
-"""
-Implemented but reserved for future use
-"""
-
-
-class TorchDictStorage(PyDictStorage):
-    def __init__(self, device=ptu.device, **kwargs):
-        self.device = device
-        super(TorchDictStorage, self).__init__(**kwargs)
-
-    def _create_storage(self):
-        storage = super(TorchDictStorage, self)._create_storage()
-        for key, item in storage.items():
-            storage[key] = torch.as_tensor(item, device=self.device)
-        return storage
-
-    def get_available_indexes(self, batch_size):
-        if self.ptr + batch_size > self.max_size:
-            index = torch.cat((torch.arange(self.ptr, self.capacity, device=self.device),
-                               torch.arange(batch_size - (self.capacity - self.ptr), device=self.device)), dim=0)
-            print('Reaches the end of the replay buffer')
-        else:
-            index = torch.arange(self.ptr, self.ptr + batch_size, device=self.device)
         return index
