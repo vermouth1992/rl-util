@@ -89,9 +89,9 @@ class SyncVectorEnv(VectorEnv):
     reset
     """
 
-    def reset_wait(self):
+    def reset_wait(self, **kwargs):
         for i, env in enumerate(self.envs):
-            self.observations[i] = env.reset()
+            self.observations[i] = env.reset(**kwargs)
         return np.copy(self.observations) if self.copy else self.observations
 
     """

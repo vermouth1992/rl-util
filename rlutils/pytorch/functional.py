@@ -21,9 +21,6 @@ def model_averaging(global_model: nn.Module, local_models: Iterable[nn.Module]):
         param = torch.mean(torch.stack(param, dim=0), dim=0)
         target_param.data.copy_(param.to(target_param.data.device))
 
-    for local_q_network in local_models:
-        hard_update(local_q_network, global_model)
-
 
 def soft_update(target: nn.Module, source: nn.Module, tau):
     with torch.no_grad():
