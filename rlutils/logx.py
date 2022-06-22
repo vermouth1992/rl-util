@@ -16,7 +16,7 @@ from typing import Callable
 import numpy as np
 import torch
 from rlutils.utils.serialization_utils import convert_json
-from tensorboardX import SummaryWriter
+from torch.utils.tensorboard import SummaryWriter
 
 DEFAULT_DATA_DIR = 'data'
 FORCE_DATESTAMP = False

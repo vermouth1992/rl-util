@@ -8,8 +8,7 @@ import unittest
 import gym
 import numpy as np
 import rlutils.infra as rl_infra
-import rlutils.tf as rlu
-import tensorflow as tf
+import rlutils.pytorch as rlu
 from gym.wrappers import RescaleAction
 
 os.environ['TF_DETERMINISTIC_OPS'] = '1'

@@ -92,7 +92,8 @@ def create_vector_env(env_fn,
     Other complicated wrappers should be included in env_fn.
     """
     assert env_fn is not None
-    VecEnv = rlutils.gym.vector.AsyncVectorEnv if asynchronous else rlutils.gym.vector.SyncVectorEnv
+    # VecEnv = rlutils.gym.vector.AsyncVectorEnv if asynchronous else rlutils.gym.vector.SyncVectorEnv
+    VecEnv = gym.vector.AsyncVectorEnv if asynchronous else gym.vector.SyncVectorEnv
 
     env = VecEnv([env_fn for _ in range(num_parallel_env)])
     env.seed(seed)

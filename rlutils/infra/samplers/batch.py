@@ -39,11 +39,25 @@ class BatchSampler(Sampler):
             self.ep_ret += r
             self.ep_len += 1
 
-            timeouts = rln.gather_dict_key(infos=infos, key='TimeLimit.truncated', default=False, dtype=np.bool_)
+            timeouts = np.zeros(shape=self.env.num_envs, dtype=np.bool_)
+            keyword = 'TimeLimit.truncated'
+            if keyword in infos:
+                timeouts['_' + keyword] = infos[keyword]
+                from IPython import embed
+                embed()
+
             # Ignore the "done" signal if it comes from hitting the time
             # horizon (that is, when it's an artificial terminal signal
             # that isn't based on the agent's state)
             true_d = np.logical_and(d, np.logical_not(timeouts))
+
+            # according to the latest version of gym.vector, if done due to terminal state or timeout, terminal
+            if np.any(d):
+                next_obs = np.copy(o2)
+                terminal_obs = np.asarray(infos['terminal_observation'][d].tolist())
+                next_obs[d] = terminal_obs
+            else:
+                next_obs = o2
 
             self.oa_queue.append((self.o, a))
             self.rew_queue.append(r)
@@ -60,7 +74,7 @@ class BatchSampler(Sampler):
                     obs=last_o[valid],
                     act=last_a[valid],
                     rew=last_r[valid],
-                    next_obs=o2[valid],
+                    next_obs=next_obs[valid],
                     done=true_d[valid]
                 ))
 
@@ -74,6 +88,5 @@ class BatchSampler(Sampler):
                     self.logger.store(EpRet=self.ep_ret[d], EpLen=self.ep_len[d])
                 self.ep_ret[d] = 0
                 self.ep_len[d] = 0
-                self.o = self.env.reset_done()
 
             self._global_env_step += self.env.num_envs

@@ -73,7 +73,7 @@ class Tester(LogUser):
 
                 batch_action[np.logical_not(d)] = a
                 assert isinstance(a, np.ndarray), f'Action a must be np.ndarray. Got {type(a)}'
-                o, r, d_, _ = self.test_env.step(batch_action, mask=np.logical_not(d))
+                o, r, d_, _ = self.test_env.step(batch_action)
 
                 ep_ret = r * (1 - d) + ep_ret
                 ep_len = np.ones(shape=self.test_env.num_envs, dtype=np.int64) * (1 - d) + ep_len
