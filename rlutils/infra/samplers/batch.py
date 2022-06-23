@@ -2,7 +2,6 @@ import collections
 
 import numpy as np
 
-import rlutils.np as rln
 from .base import Sampler
 
 
@@ -42,9 +41,8 @@ class BatchSampler(Sampler):
             timeouts = np.zeros(shape=self.env.num_envs, dtype=np.bool_)
             keyword = 'TimeLimit.truncated'
             if keyword in infos:
-                timeouts['_' + keyword] = infos[keyword]
-                from IPython import embed
-                embed()
+                mask = infos['_' + keyword]
+                timeouts[mask] = infos[keyword][mask]
 
             # Ignore the "done" signal if it comes from hitting the time
             # horizon (that is, when it's an artificial terminal signal

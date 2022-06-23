@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from rlutils.gym.vector import VectorEnv
+from gym.vector import VectorEnv
 from rlutils.interface.logging import LogUser
 
 

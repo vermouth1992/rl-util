@@ -18,7 +18,7 @@ class TD3Agent(nn.Module, OffPolicyAgent):
     def __init__(self,
                  env,
                  num_q_ensembles=2,
-                 policy_mlp_hidden=128,
+                 policy_mlp_hidden=256,
                  policy_lr=3e-4,
                  policy_update_freq=2,
                  q_mlp_hidden=256,

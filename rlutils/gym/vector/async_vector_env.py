@@ -85,7 +85,7 @@ class AsyncVectorEnv(VectorEnv):
         self._state = AsyncState.DEFAULT
         self._check_observation_spaces()
 
-        self.rewards = np.zeros(shape=[self.num_envs], dtype=np.float32)
+        self.rewards = np.zeros(shape=[self.num_envs], dtype=np.float64)
         self.dones = np.zeros(shape=[self.num_envs], dtype=np.bool_)
 
     def seed(self, seeds=None):
