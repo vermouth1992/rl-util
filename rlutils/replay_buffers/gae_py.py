@@ -16,7 +16,15 @@ class GAEBuffer(object):
     for calculating the advantages of state-action pairs.
     """
 
-    def __init__(self, obs_shape, obs_dtype, act_shape, act_dtype, num_envs, length, gamma=0.99, lam=0.95):
+    def __init__(self, vec_env, length, gamma=0.99, lam=0.95):
+        obs_spec = vec_env.observation_space
+        act_spec = vec_env.action_space
+        obs_shape = obs_spec.shape[1:]
+        obs_dtype = obs_spec.dtype
+        act_shape = act_spec.shape[1:]
+        act_dtype = act_spec.dtype
+        assert obs_shape[0] == act_shape[0]
+        num_envs = obs_shape[0]
         self.obs_buf = np.zeros(shape=combined_shape(num_envs, (length, *obs_shape)), dtype=obs_dtype)
         self.act_buf = np.zeros(shape=combined_shape(num_envs, (length, *act_shape)), dtype=act_dtype)
         self.adv_buf = np.zeros(shape=(num_envs, length), dtype=np.float32)
