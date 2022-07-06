@@ -35,6 +35,10 @@ class TrajectorySampler(Sampler):
             self.ep_ret += rew
             self.ep_len += 1
 
+            # TODO: retrieve next observation
+
+            # TODO: retrieve truncated signal
+
             # There are four cases there:
             # 1. if done is False. Bootstrap (truncated due to trajectory length)
             # 2. if done is True, if TimeLimit.truncated not in info. Don't bootstrap (didn't truncate)

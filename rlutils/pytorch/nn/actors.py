@@ -5,6 +5,33 @@ from rlutils.pytorch.distributions import make_independent_normal_from_params, a
 from .functional import build_mlp
 
 
+class CategoricalActor(nn.Module):
+    def __init__(self, obs_dim, act_dim, mlp_hidden, num_layers=3):
+        super(CategoricalActor, self).__init__()
+        self.net = build_mlp(obs_dim, act_dim, mlp_hidden, num_layers=num_layers)
+        self.act_dim = act_dim
+        self.pi_dist_layer = lambda param: torch.distributions.Categorical(logits=param)
+
+    @torch.no_grad()
+    def select_action(self, inputs):
+        params = self.net(inputs)
+        pi_distribution = self.pi_dist_layer(params)
+        return pi_distribution.sample()
+
+    def compute_pi_distribution(self, inputs):
+        return self.pi_dist_layer(self.net(inputs))
+
+    def compute_log_prob(self, inputs):
+        obs, act = inputs
+        params = self.net(obs)
+        pi_distribution = self.pi_dist_layer(params)
+        return pi_distribution.log_prob(act)
+
+
+class NormalActor(nn.Module):
+
+
+
 class SquashedGaussianMLPActor(nn.Module):
     def __init__(self, ob_dim, ac_dim, mlp_hidden, num_layers=3):
         super(SquashedGaussianMLPActor, self).__init__()
