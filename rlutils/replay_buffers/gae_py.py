@@ -19,14 +19,14 @@ class GAEBuffer(object):
     def __init__(self, vec_env, length, gamma=0.99, lam=0.95):
         obs_spec = vec_env.observation_space
         act_spec = vec_env.action_space
-        obs_shape = obs_spec.shape[1:]
+        obs_shape = obs_spec.shape
         obs_dtype = obs_spec.dtype
-        act_shape = act_spec.shape[1:]
+        act_shape = act_spec.shape
         act_dtype = act_spec.dtype
         assert obs_shape[0] == act_shape[0]
         num_envs = obs_shape[0]
-        self.obs_buf = np.zeros(shape=combined_shape(num_envs, (length, *obs_shape)), dtype=obs_dtype)
-        self.act_buf = np.zeros(shape=combined_shape(num_envs, (length, *act_shape)), dtype=act_dtype)
+        self.obs_buf = np.zeros(shape=combined_shape(num_envs, (length, *obs_shape[1:])), dtype=obs_dtype)
+        self.act_buf = np.zeros(shape=combined_shape(num_envs, (length, *act_shape[1:])), dtype=act_dtype)
         self.adv_buf = np.zeros(shape=(num_envs, length), dtype=np.float32)
         self.rew_buf = np.zeros(shape=(num_envs, length), dtype=np.float32)
         self.ret_buf = np.zeros(shape=(num_envs, length), dtype=np.float32)
@@ -36,16 +36,6 @@ class GAEBuffer(object):
         self.num_envs = num_envs
         self.max_size = length
         self.reset()
-
-    @classmethod
-    def from_vec_env(cls, vec_env, max_length, gamma, lam):
-        obs_shape = vec_env.single_observation_space.shape
-        obs_dtype = vec_env.single_observation_space.dtype
-        act_shape = vec_env.single_action_space.shape
-        act_dtype = vec_env.single_action_space.dtype
-        buffer = cls(obs_shape=obs_shape, obs_dtype=obs_dtype, act_shape=act_shape, act_dtype=act_dtype,
-                     num_envs=vec_env.num_envs, length=max_length, gamma=gamma, lam=lam)
-        return buffer
 
     def reset(self):
         self.ptr, self.path_start_idx = 0, np.zeros(shape=(self.num_envs), dtype=np.int32)

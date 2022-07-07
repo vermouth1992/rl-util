@@ -25,8 +25,8 @@ class TrajectorySampler(Sampler):
         actor_fn, value_fn = collect_fn
         for t in trange(num_steps, desc='Sampling'):
             act, logp, val = actor_fn(self.obs)
-            if isinstance(act, np.float32):
-                act_taken = np.clip(act, -1., 1.)
+            if act.dtype == np.float32 or act.dtype == np.float64:
+                act_taken = np.clip(act, self.env.action_space.low, self.env.action_space.high)
             else:
                 act_taken = act
             obs2, rew, dones, infos = self.env.step(act_taken)
@@ -37,7 +37,20 @@ class TrajectorySampler(Sampler):
 
             # TODO: retrieve next observation
 
+            # according to the latest version of gym.vector, if done due to terminal state or timeout, terminal
+            if np.any(dones):
+                next_obs = np.copy(obs2)
+                terminal_obs = np.asarray(infos['terminal_observation'][dones].tolist())
+                next_obs[dones] = terminal_obs
+            else:
+                next_obs = obs2
+
             # TODO: retrieve truncated signal
+            timeouts = np.zeros(shape=self.env.num_envs, dtype=np.bool_)
+            keyword = 'TimeLimit.truncated'
+            if keyword in infos:
+                mask = infos['_' + keyword]
+                timeouts[mask] = infos[keyword][mask]
 
             # There are four cases there:
             # 1. if done is False. Bootstrap (truncated due to trajectory length)
@@ -46,26 +59,20 @@ class TrajectorySampler(Sampler):
             # 4. if done is True, if TimeLimit.truncated in info, if it is False. Don't bootstrap (same time)
 
             if t == num_steps - 1:
-                time_truncated_dones = np.array([info.get('TimeLimit.truncated', False) for info in infos],
-                                                dtype=np.bool_)
                 # need to finish path for all the environments
-                last_vals = value_fn(obs2)
-                last_vals = last_vals * np.logical_or(np.logical_not(dones), time_truncated_dones)
+                last_vals = value_fn(next_obs)
+                last_vals = last_vals * np.logical_or(np.logical_not(dones), timeouts)
                 replay_buffer.finish_path(dones=np.ones(shape=self.env.num_envs, dtype=np.bool_),
                                           last_vals=last_vals)
                 self.logger.store(EpRet=self.ep_ret[dones], EpLen=self.ep_len[dones])
-                self.obs = None
             elif np.any(dones):
-                time_truncated_dones = np.array([info.get('TimeLimit.truncated', False) for info in infos],
-                                                dtype=np.bool_)
-                last_vals = value_fn(obs2) * time_truncated_dones
+                last_vals = value_fn(next_obs) * timeouts
                 replay_buffer.finish_path(dones=dones,
                                           last_vals=last_vals)
                 self.logger.store(EpRet=self.ep_ret[dones], EpLen=self.ep_len[dones])
                 self.ep_ret[dones] = 0.
                 self.ep_len[dones] = 0
-                self.obs = self.env.reset_done()
 
-            else:
-                self.obs = obs2
+            self.obs = obs2
+
         self._global_env_step += num_steps * self.env.num_envs
