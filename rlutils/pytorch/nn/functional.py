@@ -14,6 +14,8 @@ str_to_activation = {
 def decode_activation(activation):
     if isinstance(activation, str):
         act_fn = str_to_activation.get(activation)
+    elif isinstance(activation, nn.Module):
+        act_fn = lambda: activation
     elif callable(activation):
         act_fn = lambda: LambdaLayer(activation)
     elif activation is None:
