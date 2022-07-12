@@ -4,6 +4,30 @@ import numpy as np
 import rlutils.gym
 import rlutils.np as rln
 
+atari_games_lst = ['adventure', 'air_raid', 'alien', 'amidar', 'assault', 'asterix', 'asteroids', 'atlantis',
+                   'bank_heist', 'battle_zone', 'beam_rider', 'berzerk', 'bowling', 'boxing', 'breakout', 'carnival',
+                   'centipede', 'chopper_command', 'crazy_climber', 'defender', 'demon_attack', 'double_dunk',
+                   'elevator_action', 'enduro', 'fishing_derby', 'freeway', 'frostbite', 'gopher', 'gravitar', 'hero',
+                   'ice_hockey', 'jamesbond', 'journey_escape', 'kaboom', 'kangaroo', 'krull', 'kung_fu_master',
+                   'montezuma_revenge', 'ms_pacman', 'name_this_game', 'phoenix', 'pitfall', 'pong', 'pooyan',
+                   'private_eye', 'qbert', 'riverraid', 'road_runner', 'robotank', 'seaquest', 'skiing', 'solaris',
+                   'space_invaders', 'star_gunner', 'tennis', 'time_pilot', 'tutankham', 'up_n_down', 'venture',
+                   'video_pinball', 'wizard_of_wor', 'yars_revenge', 'zaxxon']
+
+
+def get_atari_capitalize(name):
+    name = name.split('_')
+    name = list(map(lambda s: s.capitalize(), name))
+    return ''.join(name)
+
+
+def is_atari_env(env_name):
+    for name in atari_games_lst:
+        atari_name = get_atari_capitalize(name)
+        if atari_name in env_name:
+            return True
+    return False
+
 
 def verify_continuous_action_space(act_spec: gym.spaces.Box):
     assert np.max(act_spec.high) == np.min(act_spec.high), \
