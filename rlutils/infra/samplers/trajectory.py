@@ -17,13 +17,18 @@ class TrajectorySampler(Sampler):
     def total_env_steps(self):
         return self._global_env_step
 
-    def sample(self, num_steps, collect_fn, replay_buffer):
+    def sample(self, num_steps, collect_fn, replay_buffer, verbose=True):
         """ Only collect dataset. No computation """
         self.obs = self.env.reset()
         self.ep_ret = np.zeros(shape=self.env.num_envs, dtype=np.float32)
         self.ep_len = np.zeros(shape=self.env.num_envs, dtype=np.int32)
         actor_fn, value_fn = collect_fn
-        for t in trange(num_steps, desc='Sampling'):
+
+        if verbose:
+            iterator = trange(num_steps, desc='Sampling')
+        else:
+            iterator = range(num_steps)
+        for t in iterator:
             act, logp, val = actor_fn(self.obs)
             if act.dtype == np.float32 or act.dtype == np.float64:
                 act_taken = np.clip(act, self.env.action_space.low, self.env.action_space.high)
