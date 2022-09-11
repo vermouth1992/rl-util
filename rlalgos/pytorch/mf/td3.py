@@ -18,10 +18,18 @@ class TD3Agent(nn.Module, OffPolicyAgent):
     def __init__(self,
                  env,
                  num_q_ensembles=2,
-                 policy_mlp_hidden=256,
+                 make_policy_net=lambda env: rlu.nn.build_mlp(env.observation_space.shape[0],
+                                                              env.action_space.shape[0],
+                                                              mlp_hidden=256,
+                                                              num_layers=3,
+                                                              out_activation='tanh'),
                  policy_lr=3e-4,
                  policy_update_freq=2,
-                 q_mlp_hidden=256,
+                 make_q_network=lambda env, num_q_ensembles: rlu.nn.EnsembleMinQNet(env.observation_space.shape[0],
+                                                                                    env.action_space.shape[0],
+                                                                                    mlp_hidden=256,
+                                                                                    num_layers=3,
+                                                                                    num_ensembles=num_q_ensembles),
                  q_lr=3e-4,
                  tau=5e-3,
                  gamma=0.99,
@@ -59,11 +67,9 @@ class TD3Agent(nn.Module, OffPolicyAgent):
         self.policy_update_freq = policy_update_freq
         if len(self.obs_spec.shape) == 1:  # 1D observation
             self.obs_dim = self.obs_spec.shape[0]
-            self.policy_net = rlu.nn.build_mlp(self.obs_dim, self.act_dim, mlp_hidden=policy_mlp_hidden, num_layers=3,
-                                               out_activation='tanh').to(self.device)
+            self.policy_net = make_policy_net(env).to(self.device)
             self.target_policy_net = copy.deepcopy(self.policy_net).to(self.device)
-            self.q_network = rlu.nn.EnsembleMinQNet(self.obs_dim, self.act_dim, q_mlp_hidden,
-                                                    num_ensembles=num_q_ensembles).to(self.device)
+            self.q_network = make_q_network(env, num_q_ensembles).to(self.device)
             self.target_q_network = copy.deepcopy(self.q_network).to(self.device)
 
             rlu.nn.functional.freeze(self.target_policy_net)

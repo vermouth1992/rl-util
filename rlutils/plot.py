@@ -46,7 +46,7 @@ def plot(data, xaxis='Epoch', value="AverageEpRet", condition="Condition1", smoo
         else:
             xaxis = 'Epoch'
 
-    sns.set(style="darkgrid", font_scale=1.5)
+    sns.set(style="whitegrid", font_scale=1.5)
     g = sns.lineplot(data=data, x=xaxis, y=value, hue=condition, ci='sd', **kwargs)
     return g
 
@@ -75,7 +75,7 @@ def plot_data(data, xaxis='Epoch', value="AverageEpRet", condition="Condition1",
         else:
             xaxis = 'Epoch'
 
-    sns.set(style="darkgrid", font_scale=1.5)
+    sns.set(style="whitegrid", font_scale=1.5)
     sns.lineplot(data=data, x=xaxis, y=value, hue=condition, ci='sd', **kwargs)
     """
     If you upgrade to any version of Seaborn greater than 0.8.1, switch from 
