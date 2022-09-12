@@ -12,6 +12,7 @@ class PyDictStorage(Storage):
         self.data_spec = data_spec
         self.max_size = capacity
         self.storage = self._create_storage()
+        self.reset()
 
     def _create_storage(self):
         return {key: np.zeros(combined_shape(self.capacity, item.shape), dtype=item.dtype)
