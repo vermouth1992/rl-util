@@ -20,7 +20,7 @@ class BatchSampler(Sampler):
 
     def reset(self):
         self._global_env_step = 0
-        self.o = self.env.reset()
+        self.o, info = self.env.reset(seed=self.seed)
         self.ep_ret = np.zeros(shape=self.env.num_envs)
         self.ep_len = np.zeros(shape=self.env.num_envs, dtype=np.int64)
 
@@ -34,25 +34,18 @@ class BatchSampler(Sampler):
             a = collect_fn(self.o)
             assert not np.any(np.isnan(a)), f'NAN action: {a}'
             # Step the env
-            o2, r, d, infos = self.env.step(a)
+            o2, r, terminate, truncate, infos = self.env.step(a)
             self.ep_ret += r
             self.ep_len += 1
 
-            timeouts = np.zeros(shape=self.env.num_envs, dtype=np.bool_)
-            keyword = 'TimeLimit.truncated'
-            if keyword in infos:
-                mask = infos['_' + keyword]
-                timeouts[mask] = infos[keyword][mask]
+            d = np.logical_or(terminate, truncate)
 
-            # Ignore the "done" signal if it comes from hitting the time
-            # horizon (that is, when it's an artificial terminal signal
-            # that isn't based on the agent's state)
-            true_d = np.logical_and(d, np.logical_not(timeouts))
+            true_d = terminate  # affect value function boostrap
 
             # according to the latest version of gym.vector, if done due to terminal state or timeout, terminal
             if np.any(d):
                 next_obs = np.copy(o2)
-                terminal_obs = np.asarray(infos['terminal_observation'][d].tolist())
+                terminal_obs = np.asarray(infos['final_observation'][d].tolist())
                 next_obs[d] = terminal_obs
             else:
                 next_obs = o2

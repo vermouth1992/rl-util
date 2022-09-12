@@ -73,7 +73,7 @@ class PrioritizedReplayBuffer(object):
             if self.eviction_tree is None or (not self.storage.is_full()):
                 idx = self.storage.add(data)
             else:
-                scalar = self.np_random.rand(batch_size) * self.eviction_tree.reduce()
+                scalar = self.np_random.random(batch_size) * self.eviction_tree.reduce()
                 eviction_idx = self.eviction_tree.get_prefix_sum_idx(scalar)
                 idx = self.storage.add(data, index=eviction_idx)
                 assert np.all(idx == eviction_idx)
@@ -98,7 +98,7 @@ class PrioritizedReplayBuffer(object):
 
         with self.lock:
             # assert self.idx is None
-            scalar = self.np_random.rand(batch_size) * self.sum_tree.reduce()
+            scalar = self.np_random.random(batch_size) * self.sum_tree.reduce()
             idx = self.sum_tree.get_prefix_sum_idx(scalar)
             # get data
             data = self.storage[idx]
@@ -107,7 +107,7 @@ class PrioritizedReplayBuffer(object):
             data['weights'] = weights
             # create mask
             self.sampled_idx.append(idx)
-            self.sampled_mask.append(np.ones(shape=(batch_size,), dtype=np.bool))
+            self.sampled_mask.append(np.ones(shape=(batch_size,), dtype=bool))
 
         for key, item in data.items():
             if not isinstance(item, np.ndarray):

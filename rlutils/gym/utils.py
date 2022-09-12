@@ -107,7 +107,6 @@ def wrap_atari_env_fn(env_name, terminal_on_life_loss=True):
 def create_vector_env(env_fn,
                       num_parallel_env=1,
                       asynchronous=False,
-                      seed=None,
                       action_space_seed=None
                       ):
     """
@@ -120,7 +119,6 @@ def create_vector_env(env_fn,
     VecEnv = gym.vector.AsyncVectorEnv if asynchronous else gym.vector.SyncVectorEnv
 
     env = VecEnv([env_fn for _ in range(num_parallel_env)])
-    env.seed(seed)
     env.action_space.seed(action_space_seed)
 
     return env

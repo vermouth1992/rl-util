@@ -1,3 +1,7 @@
+import gym
+
+print(f'Using gym version: {gym.__version__}. We print gym version here as the API is changing frequently.')
+
 from gym import register, make
 
 from . import utils

@@ -84,12 +84,12 @@ class TD3Agent(nn.Module, OffPolicyAgent):
         self.q_optimizer = torch.optim.Adam(params=self.q_network.parameters(), lr=self.q_lr)
 
     def log_tabular(self):
-        super(TD3Agent, self).log_tabular()
         for i in range(self.num_q_ensembles):
             self.logger.log_tabular(f'Q{i + 1}Vals', with_min_and_max=True)
         self.logger.log_tabular('LossPi', average_only=True)
         self.logger.log_tabular('LossQ', average_only=True)
         self.logger.log_tabular('TDError', average_only=True)
+        super(TD3Agent, self).log_tabular()
 
     def update_target(self):
         if self.target_update_method == 'soft':

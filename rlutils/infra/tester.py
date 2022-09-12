@@ -44,9 +44,6 @@ class Tester(LogUser):
             print(f'Episode: {i}. Total Reward: {total_reward:.2f}. Episode Length: {ep_len}')
 
     def test_agent(self, get_action, name, num_test_episodes, max_episode_length=None, timeout=None):
-        if self.seed is not None:
-            self.test_env.seed(self.seed)  # keep evaluating the same random obs
-
         assert num_test_episodes % self.test_env.num_envs == 0
         num_iterations = num_test_episodes // self.test_env.num_envs
         t = tqdm(total=num_test_episodes, desc=f'Testing {name}')
@@ -58,7 +55,7 @@ class Tester(LogUser):
         already_timeout = False
 
         for _ in range(num_iterations):
-            o = self.test_env.reset()
+            o, _ = self.test_env.reset(seed=self.seed)  # keep evaluating the same random obs
             d = np.zeros(shape=self.test_env.num_envs, dtype=np.bool_)
             ep_ret = np.zeros(shape=self.test_env.num_envs, dtype=np.float64)
             ep_len = np.zeros(shape=self.test_env.num_envs, dtype=np.int64)
@@ -73,7 +70,10 @@ class Tester(LogUser):
 
                 batch_action[np.logical_not(d)] = a
                 assert isinstance(a, np.ndarray), f'Action a must be np.ndarray. Got {type(a)}'
-                o, r, d_, _ = self.test_env.step(batch_action)
+                o, r, terminate, truncate, _ = self.test_env.step(batch_action)
+
+                # done happens either it is truely terminated or is truncated due to time limits
+                d_ = np.logical_or(terminate, truncate)
 
                 ep_ret = r * (1 - d) + ep_ret
                 ep_len = np.ones(shape=self.test_env.num_envs, dtype=np.int64) * (1 - d) + ep_len

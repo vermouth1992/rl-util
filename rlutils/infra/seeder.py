@@ -15,7 +15,7 @@ class Seeder(object):
         self.np_random, _ = seeding.np_random(self.seed)  # won't be interfered by the global numpy random
 
     def generate_seed(self):
-        return self.np_random.randint(self.max_seed)
+        return int(self.np_random.integers(self.max_seed))
 
     def setup_random_global_seed(self):
         import random
