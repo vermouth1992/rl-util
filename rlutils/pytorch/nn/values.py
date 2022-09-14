@@ -4,6 +4,10 @@ import torch.nn as nn
 import rlutils.pytorch as rlu
 
 
+def gather_q_values(q_values, action):
+    return q_values.gather(1, action.unsqueeze(1)).squeeze(1)
+
+
 class EnsembleMinQNet(nn.Module):
     def __init__(self, ob_dim, ac_dim, mlp_hidden, num_ensembles=2, num_layers=3):
         super(EnsembleMinQNet, self).__init__()
@@ -72,7 +76,8 @@ class AtariDuelQModule(nn.Module):
         adv = adv - torch.mean(adv, dim=-1, keepdim=True)
         out = value + adv
         if action is not None:
-            out = out[torch.arange(batch_size), action]
+            out = gather_q_values(out, action)  # this is faster
+            # out = out[torch.arange(batch_size), action]
         return out
 
 
