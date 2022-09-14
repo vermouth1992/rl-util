@@ -51,6 +51,35 @@ def build_atari_q(frame_stack, action_dim, output_fn=None):
     return nn.Sequential(*layers)
 
 
+class LazyAtariDuelQModule(nn.Module):
+    def __init__(self, action_dim):
+        super(LazyAtariDuelQModule, self).__init__()
+        self.model = nn.Sequential(
+            rlu.nn.LambdaLayer(function=lambda state: (state.to(torch.float32) - 127.5) / 127.5),
+            nn.LazyConv2d(out_channels=32, kernel_size=8, stride=4, padding=4),
+            nn.ReLU(),
+            nn.LazyConv2d(out_channels=64, kernel_size=4, stride=2, padding=2),
+            nn.ReLU(),
+            nn.LazyConv2d(out_channels=64, kernel_size=3, stride=1, padding=1),
+            nn.Flatten(),
+            nn.LazyLinear(512),
+            nn.ReLU()
+        )
+        self.adv_fc = nn.LazyLinear(action_dim)
+        self.value_fc = nn.LazyLinear(1)
+
+    def forward(self, state: torch.Tensor, action=None):
+        state = self.model(state)
+        value = self.value_fc(state)
+        adv = self.adv_fc(state)
+        adv = adv - torch.mean(adv, dim=-1, keepdim=True)
+        out = value + adv
+        if action is not None:
+            out = gather_q_values(out, action)  # this is faster
+            # out = out[torch.arange(batch_size), action]
+        return out
+
+
 class AtariDuelQModule(nn.Module):
     def __init__(self, frame_stack, action_dim):
         super(AtariDuelQModule, self).__init__()
