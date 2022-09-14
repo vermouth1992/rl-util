@@ -165,28 +165,3 @@ class DQN(OffPolicyAgent, nn.Module):
         with torch.no_grad():
             q_values = self.q_network(obs)
             return torch.argmax(q_values, dim=-1).cpu().numpy()
-
-
-class Runner(rl_infra.runner.PytorchOffPolicyRunner):
-    @classmethod
-    def main(cls,
-             env_name: str,
-             # agent args
-             q_lr=1e-3,
-             gamma=0.99,
-             n_steps=1,
-             target_update_freq=500,
-             **kwargs
-             ):
-        agent_kwargs = dict(
-            q_lr=q_lr,
-            gamma=gamma,
-            target_update_freq=target_update_freq,
-            n_steps=n_steps,
-            device=ptu.get_device()
-        )
-        super(Runner, cls).main(env_name=env_name,
-                                agent_cls=DQN,
-                                agent_kwargs=agent_kwargs,
-                                n_steps=n_steps,
-                                )
