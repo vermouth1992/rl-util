@@ -36,7 +36,7 @@ class PyDictStorage(Storage):
         if self.ptr + batch_size > self.max_size:
             index = np.concatenate((np.arange(self.ptr, self.capacity),
                                     np.arange(batch_size - (self.capacity - self.ptr))), axis=0)
-            print('Reaches the end of the replay buffer')
+            # print('Reaches the end of the replay buffer')
         else:
             index = np.arange(self.ptr, self.ptr + batch_size)
         return index
