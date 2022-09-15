@@ -76,7 +76,7 @@ def plot_data(data, xaxis='Epoch', value="AverageEpRet", condition="Condition1",
             xaxis = 'Epoch'
 
     sns.set(style="whitegrid", font_scale=1.5)
-    sns.lineplot(data=data, x=xaxis, y=value, hue=condition, ci='sd', **kwargs)
+    sns.lineplot(data=data, x=xaxis, y=value, hue=condition, errorbar='sd', **kwargs)
     """
     If you upgrade to any version of Seaborn greater than 0.8.1, switch from 
     tsplot to lineplot replacing L29 with:
