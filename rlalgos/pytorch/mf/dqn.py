@@ -97,6 +97,20 @@ class DQN(OffPolicyAgent, nn.Module):
             abs_td_error = torch.abs(q_values - target_q_values)
             return abs_td_error
 
+    def compute_q_val(self, data):
+        np_data = {}
+        for key, d in data.items():
+            if not isinstance(d, np.ndarray):
+                d = np.array(d)
+            np_data[key] = torch.as_tensor(d).to(self.device, non_blocking=True)
+        return self.compute_q_val_torch(**np_data).cpu().numpy()
+
+    def compute_q_val_torch(self, obs, act, **kwargs):
+        with torch.no_grad():
+            q_values = self.q_network(obs)
+            q_values = gather_q_values(q_values, act)
+            return q_values
+
     def compute_target_values(self, next_obs, rew, done):
         with torch.no_grad():
             target_q_values = self.target_q_network(next_obs)  # (None, act_dim)
