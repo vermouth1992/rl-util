@@ -113,6 +113,16 @@ class TD3Agent(nn.Module, OffPolicyAgent):
             abs_td_error = torch.abs(q_values - q_target)
             return abs_td_error
 
+    def compute_q_val(self, data):
+        data_tensor = {}
+        for key, d in data.items():
+            data_tensor[key] = torch.as_tensor(d).to(self.device, non_blocking=True)
+        return self.compute_q_val_torch(**data_tensor).cpu().numpy()
+
+    def compute_q_val_torch(self, obs, act, **kwargs):
+        with torch.no_grad():
+            return self.q_network((obs, act), training=False)
+
     def _compute_next_obs_q(self, next_obs):
         next_action = self.target_policy_net(next_obs)
         # Target policy smoothing
