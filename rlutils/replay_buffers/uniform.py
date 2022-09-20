@@ -46,7 +46,7 @@ class UniformReplayBuffer(object):
     def sample(self, batch_size):
         assert not self.is_empty()
         with self.lock:
-            idxs = self.np_random.randint(0, len(self.storage), size=batch_size)
+            idxs = self.np_random.integers(0, len(self.storage), size=batch_size)
             data = self.storage[idxs]
             if self.memory_efficient:
                 for key in self.storage.obj_key:

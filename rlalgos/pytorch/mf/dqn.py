@@ -165,3 +165,12 @@ class DQN(OffPolicyAgent, nn.Module):
         with torch.no_grad():
             q_values = self.q_network(obs)
             return torch.argmax(q_values, dim=-1).cpu().numpy()
+
+
+if __name__ == '__main__':
+    from rlutils.infra.runner import run_offpolicy
+
+    make_agent_fn = lambda env: DQN(env, device='cuda' if torch.cuda.is_available() else 'cpu')
+    rl_infra.runner.run_func_as_main(run_offpolicy, passed_args={
+        'make_agent_fn': make_agent_fn
+    })

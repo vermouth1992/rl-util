@@ -64,7 +64,6 @@ def run_offpolicy(env_name: str,
                                               num_parallel_env=num_parallel_env,
                                               asynchronous=asynchronous)
 
-    env.seed(seeder.generate_seed())
     env.action_space.seed(seeder.generate_seed())
 
     # replay buffer
