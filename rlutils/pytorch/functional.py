@@ -11,6 +11,9 @@ def gather_q_values(q_values, action):
 
 
 def model_averaging(global_model: nn.Module, local_models: Iterable[nn.Module]):
+    if len(local_models) == 1:
+        global_model.load_state_dict(local_models[0].state_dict())
+
     global_weights = list(global_model.parameters())
     trainable_weights = [[] for _ in range(len(global_weights))]
     for model in local_models:
