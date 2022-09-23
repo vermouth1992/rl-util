@@ -43,10 +43,13 @@ class Tester(LogUser):
                 time.sleep(0.01)
             print(f'Episode: {i}. Total Reward: {total_reward:.2f}. Episode Length: {ep_len}')
 
-    def test_agent(self, get_action, name, num_test_episodes, max_episode_length=None, timeout=None):
+    def test_agent(self, get_action, name, num_test_episodes, max_episode_length=None, timeout=None, verbose=True):
         assert num_test_episodes % self.test_env.num_envs == 0
         num_iterations = num_test_episodes // self.test_env.num_envs
-        t = tqdm(total=num_test_episodes, desc=f'Testing {name}')
+        if verbose:
+            t = tqdm(total=num_test_episodes, desc=f'Testing {name}')
+        else:
+            t = None
 
         all_ep_ret = []
         all_ep_len = []
@@ -79,9 +82,11 @@ class Tester(LogUser):
                 ep_len = np.ones(shape=self.test_env.num_envs, dtype=np.int64) * (1 - d) + ep_len
                 prev_d = d.copy()
                 d = np.logical_or(d, d_)
-                newly_finished = np.sum(d) - np.sum(prev_d)
-                if newly_finished > 0:
-                    t.update(newly_finished)
+
+                if t is not None:
+                    newly_finished = np.sum(d) - np.sum(prev_d)
+                    if newly_finished > 0:
+                        t.update(newly_finished)
                 steps += 1
                 if max_episode_length is not None and steps >= max_episode_length:
                     break
@@ -100,7 +105,8 @@ class Tester(LogUser):
             if already_timeout:
                 break
 
-        t.close()
+        if t is not None:
+            t.close()
 
         if len(all_ep_ret) > 0:
             return np.concatenate(all_ep_ret, axis=0), np.concatenate(all_ep_len, axis=0)
