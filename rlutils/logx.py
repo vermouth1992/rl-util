@@ -34,6 +34,11 @@ color2num = dict(
 )
 
 
+def log(msg, color='green'):
+    """Print a colorized message to stdout."""
+    print(colorize(msg, color, bold=True))
+
+
 def statistics_scalar(x, with_min_and_max=False):
     """
     Get mean/std and optional min/max of scalar x across MPI processes.
