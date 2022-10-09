@@ -49,17 +49,23 @@ class BatchFrameStackSampler(BatchSampler):
             a = collect_fn(o)
             assert not np.any(np.isnan(a)), f'NAN action: {a}'
             # Step the env
-            o2, r, d, infos = self.env.step(a)
+            o2, r, terminate, truncate, infos = self.env.step(a)
             self.ep_ret += r
             self.ep_len += 1
 
-            timeouts = rln.gather_dict_key(infos=infos, key='TimeLimit.truncated', default=False, dtype=np.bool)
-            # Ignore the "done" signal if it comes from hitting the time
-            # horizon (that is, when it's an artificial terminal signal
-            # that isn't based on the agent's state)
-            true_d = np.logical_and(d, np.logical_not(timeouts))
+            d = np.logical_or(terminate, truncate)
 
-            self.append_obs(o2)
+            true_d = terminate  # affect value function boostrap
+
+            # obtain next_obs
+            if np.any(d):
+                next_obs = np.copy(o2)
+                terminal_obs = np.asarray(infos['final_observation'][d].tolist())
+                next_obs[d] = terminal_obs
+            else:
+                next_obs = o2
+
+            self.append_obs(next_obs)
             next_frame = self.get_lazy_frames()
 
             self.oa_queue.append((current_frame, a))
@@ -93,8 +99,8 @@ class BatchFrameStackSampler(BatchSampler):
                 self.logger.store(EpRet=self.ep_ret[d], EpLen=self.ep_len[d])
                 self.ep_ret[d] = 0
                 self.ep_len[d] = 0
-                self.o = self.env.reset_done()
                 # only reset frame of the environments with done
+                self.o = o2
                 self.reset_frame(d)
 
             self._global_env_step += self.env.num_envs

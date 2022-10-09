@@ -54,9 +54,7 @@ class UniformReplayBuffer(object):
             return data
 
     @classmethod
-    def from_env(cls, env, is_vec_env, **kwargs):
-        if is_vec_env:
-            data_spec = utils.get_data_spec_from_vec_env(env)
-        else:
-            data_spec = utils.get_data_spec_from_env(env)
-        return cls(data_spec=data_spec, **kwargs)
+    def from_env(cls, env, is_vec_env, memory_efficient, **kwargs):
+        data_spec = utils.get_data_spec_from_env(env, is_vec_env=is_vec_env,
+                                                 memory_efficient=memory_efficient)
+        return cls(data_spec=data_spec, memory_efficient=memory_efficient, **kwargs)

@@ -6,7 +6,7 @@ if __name__ == '__main__':
     from gym.wrappers import AtariPreprocessing, LazyFrames
     from collections import deque
 
-    from rlutils.replay_buffers.memory_efficient import PyMemoryEfficientReplayBuffer
+    from rlutils.replay_buffers import UniformReplayBuffer
 
 
     def make_env(env_name, **kwargs):
@@ -24,9 +24,11 @@ if __name__ == '__main__':
     env = gym.vector.AsyncVectorEnv(
         [make_env('BreakoutNoFrameskip-v4') for _ in range(num_envs)])
 
-    replay_buffer = PyMemoryEfficientReplayBuffer.from_env(env, capacity=1000, batch_size=32)
+    replay_buffer = UniformReplayBuffer.from_env(env, capacity=1000,
+                                                 memory_efficient=True,
+                                                 is_vec_env=True)
 
-    obs = env.reset()  # (2, ...)
+    obs, info = env.reset()  # (2, ...)
 
     frames = [deque(maxlen=num_frames) for _ in range(num_envs)]
 
@@ -40,7 +42,7 @@ if __name__ == '__main__':
         current_lazy_frame = [LazyFrames(list(f)) for f in frames]
 
         actions = env.action_space.sample()
-        next_obs, rew, done, _ = env.step(actions)
+        next_obs, rew, terminate, truncate, _ = env.step(actions)
 
         for j in range(num_envs):
             frames[j].append(next_obs[j])
@@ -51,12 +53,12 @@ if __name__ == '__main__':
             obs=current_lazy_frame,
             act=np.array(actions),
             next_obs=next_lazy_frame,
-            done=done,
+            done=terminate,
             rew=rew
         ))
 
-    replay_buffer_lazy = list(replay_buffer.storage["obs"])
-    replay_buffer_nolazy = list(map(np.asarray, replay_buffer.storage["obs"]))
+    replay_buffer_lazy = list(replay_buffer.storage.storage["obs"])
+    replay_buffer_nolazy = list(map(np.asarray, replay_buffer.storage.storage["obs"]))
 
     print(f'Size of replay buffer: {len(pickle.dumps(replay_buffer_lazy)) / 1000:.2f}kb')
     print(f'Size of replay buffer (not lazy): {len(pickle.dumps(replay_buffer_nolazy)) / 1000:.2f}kb')
