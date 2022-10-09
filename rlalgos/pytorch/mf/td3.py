@@ -10,7 +10,6 @@ import rlutils.pytorch.utils as ptu
 import torch
 import torch.nn as nn
 from rlutils.gym.utils import verify_continuous_action_space
-from rlutils.infra.runner import run_func_as_main
 from rlutils.interface.agent import OffPolicyAgent
 
 
@@ -42,12 +41,6 @@ class TD3Agent(nn.Module, OffPolicyAgent):
                  ):
         nn.Module.__init__(self)
         OffPolicyAgent.__init__(self, env=env)
-        if isinstance(tau, float):
-            self.target_update_method = 'soft'
-        elif isinstance(tau, int):
-            self.target_update_method = 'hard'
-        else:
-            raise ValueError(f'tau must be float or int. Got {tau}')
 
         self.obs_spec = env.observation_space
         self.act_spec = env.action_space
@@ -65,19 +58,21 @@ class TD3Agent(nn.Module, OffPolicyAgent):
         self.device = device
         self.reward_scale = reward_scale
         self.policy_update_freq = policy_update_freq
-        if len(self.obs_spec.shape) == 1:  # 1D observation
-            self.obs_dim = self.obs_spec.shape[0]
-            self.policy_net = make_policy_net(env).to(self.device)
-            self.target_policy_net = copy.deepcopy(self.policy_net).to(self.device)
-            self.q_network = make_q_network(env, num_q_ensembles).to(self.device)
-            self.target_q_network = copy.deepcopy(self.q_network).to(self.device)
 
-            rlu.nn.functional.freeze(self.target_policy_net)
-            rlu.nn.functional.freeze(self.target_q_network)
-        else:
-            raise NotImplementedError
+        self.obs_dim = self.obs_spec.shape[0]
+        self.policy_net = make_policy_net(env)
+        self.target_policy_net = copy.deepcopy(self.policy_net)
+        self.q_network = make_q_network(env, num_q_ensembles)
+        self.target_q_network = copy.deepcopy(self.q_network)
+
+        rlu.nn.functional.freeze(self.target_policy_net)
+        rlu.nn.functional.freeze(self.target_q_network)
 
         self.reset_optimizer()
+
+        self.to(self.device)
+
+        self.policy_updates = 0
 
     def reset_optimizer(self):
         self.policy_optimizer = torch.optim.Adam(params=self.policy_net.parameters(), lr=self.policy_lr)
@@ -92,38 +87,10 @@ class TD3Agent(nn.Module, OffPolicyAgent):
         super(TD3Agent, self).log_tabular()
 
     def update_target(self):
-        if self.target_update_method == 'soft':
-            rlu.functional.soft_update(self.target_q_network, self.q_network, self.tau)
-            rlu.functional.soft_update(self.target_policy_net, self.policy_net, self.tau)
-        else:
-            rlu.functional.hard_update(self.target_q_network, self.q_network)
-            rlu.functional.hard_update(self.target_policy_net, self.policy_net)
+        rlu.functional.soft_update(self.target_q_network, self.q_network, self.tau)
+        rlu.functional.soft_update(self.target_policy_net, self.policy_net, self.tau)
 
-    def compute_priority(self, data):
-        data_tensor = {}
-        for key, d in data.items():
-            data_tensor[key] = torch.as_tensor(d).to(self.device, non_blocking=True)
-        return self.compute_priority_torch(**data_tensor).cpu().numpy()
-
-    def compute_priority_torch(self, obs, act, next_obs, done, rew):
-        with torch.no_grad():
-            next_q_value = self._compute_next_obs_q(next_obs)
-            q_target = rlu.functional.compute_target_value(rew / self.reward_scale, self.gamma, done, next_q_value)
-            q_values = self.q_network((obs, act), training=False)  # (None,)
-            abs_td_error = torch.abs(q_values - q_target)
-            return abs_td_error
-
-    def compute_q_val(self, data):
-        data_tensor = {}
-        for key, d in data.items():
-            data_tensor[key] = torch.as_tensor(d).to(self.device, non_blocking=True)
-        return self.compute_q_val_torch(**data_tensor).cpu().numpy()
-
-    def compute_q_val_torch(self, obs, act, **kwargs):
-        with torch.no_grad():
-            return self.q_network((obs, act), training=False)
-
-    def _compute_next_obs_q(self, next_obs):
+    def compute_next_obs_q_torch(self, next_obs):
         next_action = self.target_policy_net(next_obs)
         # Target policy smoothing
         epsilon = torch.randn_like(next_action) * self.target_noise
@@ -133,10 +100,10 @@ class TD3Agent(nn.Module, OffPolicyAgent):
         next_q_value = self.target_q_network((next_obs, next_action), training=False)
         return next_q_value
 
-    def train_q_network_on_batch(self, obs, act, next_obs, done, rew, weights=None):
+    def train_q_network_on_batch_torch(self, obs, act, next_obs, done, rew, weights=None):
         # compute target q
         with torch.no_grad():
-            next_q_value = self._compute_next_obs_q(next_obs)
+            next_q_value = self.compute_next_obs_q_torch(next_obs)
             q_target = rlu.functional.compute_target_value(rew / self.reward_scale, self.gamma, done, next_q_value)
         # q loss
         self.q_optimizer.zero_grad()
@@ -162,7 +129,7 @@ class TD3Agent(nn.Module, OffPolicyAgent):
             info[f'Q{i + 1}Vals'] = q_values[i].detach()
         return info
 
-    def train_actor_on_batch(self, obs):
+    def train_actor_on_batch_torch(self, obs):
         # policy loss
         self.q_network.eval()
         self.policy_optimizer.zero_grad()
@@ -177,34 +144,17 @@ class TD3Agent(nn.Module, OffPolicyAgent):
         )
         return info
 
-    def train_on_batch(self, data, **kwargs):
-        update_target = kwargs.pop('update_target', None)
-
+    def train_on_batch(self, data):
         new_data = ptu.convert_dict_to_tensor(data, device=self.device)
-        info = self.train_q_network_on_batch(**new_data)
+        info = self.train_q_network_on_batch_torch(**new_data)
 
         self.policy_updates += 1
 
         if self.policy_updates % self.policy_update_freq == 0:
             obs = new_data['obs']
-            actor_info = self.train_actor_on_batch(obs)
+            actor_info = self.train_actor_on_batch_torch(obs)
             info.update(actor_info)
-
-        def update_target_fn():
-            if self.target_update_method == 'soft':
-                if self.policy_updates % 2 == 0:
-                    self.update_target()
-            elif self.target_update_method == 'hard':
-                if self.policy_updates % self.tau == 0:
-                    self.update_target()
-
-        if update_target is None:
-            # let the number of policy updates decide
-            update_target_fn()
-        else:
-            # force update target network
-            if update_target:
-                self.update_target()
+            self.update_target()
 
         if self.logger is not None:
             self.logger.store(**info)
@@ -228,9 +178,11 @@ class TD3Agent(nn.Module, OffPolicyAgent):
 
 
 if __name__ == '__main__':
-    from rlutils.infra.runner import run_offpolicy
+    from rlalgos.runner import run_offpolicy
+    from rlutils.infra.runner import run_func_as_main
 
-    make_agent_fn = lambda env: TD3Agent(env, device='cuda' if torch.cuda.is_available() else 'cpu')
+    make_agent_fn = lambda env: TD3Agent(env, device=ptu.get_cuda_device())
     run_func_as_main(run_offpolicy, passed_args={
-        'make_agent_fn': make_agent_fn
+        'make_agent_fn': make_agent_fn,
+        'backend': 'torch'
     })

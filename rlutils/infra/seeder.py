@@ -6,10 +6,13 @@ class Seeder(object):
     A seeder generate a random number between [0, max_seed). We first seed np and use it to generate seeds for others
     """
 
-    def __init__(self, seed):
+    def __init__(self, seed, backend=None):
         self.max_seed = 2 ** 31 - 1
         self.seed = seed
         self.reset()
+        self.backend = backend
+        if self.backend is not None:
+            assert isinstance(self.backend, str)
 
     def reset(self):
         self.np_random, _ = seeding.np_random(self.seed)  # won't be interfered by the global numpy random
@@ -26,6 +29,13 @@ class Seeder(object):
         import numpy as np
         global_np_seed = self.generate_seed()
         np.random.seed(global_np_seed)
+
+    def setup_backend_seed(self):
+        backends = self.backend.split(',')
+        if 'tf' in self.backend:
+            self.setup_tf_global_seed()
+        if 'torch' in self.backend:
+            self.setup_torch_global_seed()
 
     def setup_tf_global_seed(self):
         import tensorflow as tf

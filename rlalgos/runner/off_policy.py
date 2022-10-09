@@ -33,13 +33,15 @@ def run_offpolicy(env_name: str,
                   batch_size=256,
                   seed=1,
                   logger_path: str = None,
+                  backend=None
                   ):
     config = locals()
 
     # setup seed
-    seeder = rl_infra.Seeder(seed=seed)
+    seeder = rl_infra.Seeder(seed=seed, backend=backend)
     seeder.setup_np_global_seed()
     seeder.setup_random_global_seed()
+    seeder.setup_backend_seed()
 
     if env_fn is None:
         env_fn = lambda: gym.make(env_name)
@@ -57,7 +59,7 @@ def run_offpolicy(env_name: str,
 
     timer = rl_infra.StopWatch()
 
-    # environment
+    # environmentq
     env_fn = rlutils.gym.utils.wrap_env_fn(env_fn, truncate_obs_dtype=True, normalize_action_space=True)
 
     env = rlutils.gym.utils.create_vector_env(env_fn=env_fn,
@@ -72,7 +74,8 @@ def run_offpolicy(env_name: str,
                                           memory_efficient=False)
 
     # setup sampler
-    sampler = rl_infra.samplers.BatchSampler(env=env, n_steps=n_steps, gamma=gamma)
+    sampler = rl_infra.samplers.BatchSampler(env=env, n_steps=n_steps, gamma=gamma,
+                                             seed=seeder.generate_seed())
 
     # setup tester
     test_env_seed = seeder.generate_seed()

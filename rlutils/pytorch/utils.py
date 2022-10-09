@@ -8,7 +8,7 @@ import torch
 device = None
 
 
-def set_device(d):
+def set_default_device(d):
     global device
     print(f'Setting global Pytorch device to {d}')
     if d == 'cuda':
@@ -18,8 +18,20 @@ def set_device(d):
     device = d
 
 
-def get_device():
-    return 'cuda' if torch.cuda.is_available() else 'cpu'
+def get_cuda_device(id=None):
+    if not torch.cuda.is_available():
+        raise ValueError('Cuda is not available')
+    else:
+        if id is None:
+            cuda_device = 'cuda'
+        else:
+            assert isinstance(id, int)
+            total_device_count = torch.cuda.device_count()
+            if id < 0 or id >= torch.cuda.device_count():
+                raise ValueError(f'id {id} exceeds total device count {total_device_count}')
+            else:
+                cuda_device = f'cuda:{cuda}'
+    return cuda_device
 
 
 def to_numpy(tensor):

@@ -10,6 +10,7 @@ from torch import nn
 import rlutils.pytorch as rlu
 import rlutils.pytorch.utils as ptu
 from rlutils.interface.agent import OffPolicyAgent
+from rlutils.gym.utils import verify_continuous_action_space
 
 
 class SACAgent(OffPolicyAgent, nn.Module):
@@ -17,7 +18,7 @@ class SACAgent(OffPolicyAgent, nn.Module):
                  env,
                  make_policy_net=lambda env: rlu.nn.SquashedGaussianMLPActor(env.observation_space.shape[0],
                                                                              env.action_space.shape[0],
-                                                                             mlp_hidden=256, ),
+                                                                             mlp_hidden=256),
                  policy_lr=3e-4,
                  num_q_ensembles=2,
                  make_q_network=lambda env, num_q_ensembles: rlu.nn.EnsembleMinQNet(env.observation_space.shape[0],
@@ -37,6 +38,7 @@ class SACAgent(OffPolicyAgent, nn.Module):
         OffPolicyAgent.__init__(self, env=env)
         self.obs_spec = env.observation_space
         self.act_spec = env.action_space
+        verify_continuous_action_space(self.act_spec)
         self.policy_lr = policy_lr
         self.q_lr = q_lr
         self.alpha_lr = alpha_lr
@@ -77,7 +79,7 @@ class SACAgent(OffPolicyAgent, nn.Module):
     def update_target(self):
         rlu.functional.soft_update(self.target_q_network, self.q_network, self.tau)
 
-    def _update_nets(self, obs, act, next_obs, done, rew):
+    def train_on_batch_torch(self, obs, act, next_obs, done, rew):
         """ Sample a mini-batch from replay buffer and update the network
 
         Args:
@@ -135,9 +137,9 @@ class SACAgent(OffPolicyAgent, nn.Module):
 
         return info
 
-    def train_on_batch(self, data, **kwargs):
+    def train_on_batch(self, data):
         data = ptu.convert_dict_to_tensor(data, device=self.device)
-        info = self._update_nets(**data)
+        info = self.train_on_batch_torch(**data)
         self.logger.store(**info)
         self.update_target()
 
@@ -159,8 +161,8 @@ if __name__ == '__main__':
     from rlalgos.runner import run_offpolicy
     from rlutils.infra.runner import run_func_as_main
 
-    ptu.set_device('cuda')
-    make_agent_fn = lambda env: SACAgent(env, device=ptu.device)
+    make_agent_fn = lambda env: SACAgent(env, device=ptu.get_cuda_device())
     run_func_as_main(run_offpolicy, passed_args={
-        'make_agent_fn': make_agent_fn
+        'make_agent_fn': make_agent_fn,
+        'backend': 'torch'
     })

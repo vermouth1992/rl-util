@@ -29,10 +29,13 @@ class OffPolicyAgent(Agent):
     def update_target(self):
         pass
 
+    def compute_q_val(self, data):
+        raise NotImplementedError
+
     def compute_priority(self, data):
         raise NotImplementedError
 
-    def train_on_batch(self, data, **kwargs):
+    def train_on_batch(self, data):
         raise NotImplementedError
 
     def reset_optimizer(self):
