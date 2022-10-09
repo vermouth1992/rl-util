@@ -25,14 +25,6 @@ class Agent(LogUser, ABC):
 class OffPolicyAgent(Agent):
     def __init__(self, env):
         super(OffPolicyAgent, self).__init__(env=env)
-        self.reset()
-
-    def reset(self):
-        self.policy_updates = 0
-
-    def log_tabular(self):
-        super(OffPolicyAgent, self).log_tabular()
-        self.logger.log_tabular('PolicyUpdates', self.policy_updates)
 
     def update_target(self):
         pass

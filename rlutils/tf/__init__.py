@@ -1,3 +1,5 @@
+assert False, 'rlutils TensorFlow API is deprecated.'
+
 from .utils import set_tf_allow_growth, print_tf_version
 
 set_tf_allow_growth()

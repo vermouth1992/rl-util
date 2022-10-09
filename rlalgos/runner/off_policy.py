@@ -74,14 +74,6 @@ def run_offpolicy(env_name: str,
     # setup sampler
     sampler = rl_infra.samplers.BatchSampler(env=env, n_steps=n_steps, gamma=gamma)
 
-    # setup updater
-    updater = rl_infra.OffPolicyUpdater(agent=agent,
-                                        replay_buffer=replay_buffer,
-                                        update_per_step=update_per_step,
-                                        update_every=update_every,
-                                        update_after=update_after,
-                                        batch_size=batch_size)
-
     # setup tester
     test_env_seed = seeder.generate_seed()
 
@@ -97,6 +89,8 @@ def run_offpolicy(env_name: str,
     sampler.reset()
     timer.start()
     global_step = 0
+    policy_updates = 0
+
     for epoch in range(1, epochs + 1):
         for t in trange(steps_per_epoch, desc=f'Epoch {epoch}/{epochs}'):
             if sampler.total_env_steps < start_steps:
@@ -108,7 +102,13 @@ def run_offpolicy(env_name: str,
                                collect_fn=lambda obs: agent.act_batch_explore(obs, global_step),
                                replay_buffer=replay_buffer)
             # Update handling
-            updater.update(global_step)
+            if global_step > update_after:
+                if global_step % update_every == 0:
+                    for _ in range(int(update_per_step * update_every)):
+                        batch = replay_buffer.sample(batch_size)
+                        agent.train_on_batch(data=batch)
+                        policy_updates += 1
+
             global_step += 1
 
         tester.test_agent(get_action=lambda obs: agent.act_batch_test(obs),
@@ -116,4 +116,5 @@ def run_offpolicy(env_name: str,
                           num_test_episodes=num_test_episodes)
         # Log info about epoch
         logger.log_tabular('Epoch', epoch)
+        logger.log_tabular('PolicyUpdates', policy_updates)
         logger.dump_tabular()

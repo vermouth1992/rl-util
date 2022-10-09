@@ -1,7 +1,7 @@
-# Reinforcement learning utility
+# Reinforcement Learning Utility and Algorithms
 
 This package includes common utilities to build novel reinforcement learning algorithms. Users can use either Tensorflow
-or Pytorch.
+or Pytorch. It also contains existing algorithms serving as baselines.
 
 ## Install
 
@@ -15,8 +15,12 @@ python -m rlutils.check_dependencies
 
 TODO
 
-## TODO
-* [ ] Update Pytorch version to have the same code as Tensorflow version
+## Implemented Algorithms
+### Model-free
+* [x] Soft actor-critic
+* [x] TD3
+* [x] PPO
+* [x] TRPO
 
 ## LICENSE
 

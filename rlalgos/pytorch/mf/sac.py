@@ -9,41 +9,43 @@ from torch import nn
 
 import rlutils.pytorch as rlu
 import rlutils.pytorch.utils as ptu
-from rlutils.infra.runner import PytorchOffPolicyRunner, run_func_as_main
 from rlutils.interface.agent import OffPolicyAgent
 
 
 class SACAgent(OffPolicyAgent, nn.Module):
     def __init__(self,
-                 obs_spec,
-                 act_spec,
-                 num_ensembles=2,
-                 policy_mlp_hidden=128,
+                 env,
+                 make_policy_net=lambda env: rlu.nn.SquashedGaussianMLPActor(env.observation_space.shape[0],
+                                                                             env.action_space.shape[0],
+                                                                             mlp_hidden=256, ),
                  policy_lr=3e-4,
-                 q_mlp_hidden=256,
+                 num_q_ensembles=2,
+                 make_q_network=lambda env, num_q_ensembles: rlu.nn.EnsembleMinQNet(env.observation_space.shape[0],
+                                                                                    env.action_space.shape[0],
+                                                                                    mlp_hidden=256,
+                                                                                    num_layers=3,
+                                                                                    num_ensembles=num_q_ensembles),
                  q_lr=3e-4,
                  alpha=1.0,
                  alpha_lr=1e-3,
                  tau=5e-3,
                  gamma=0.99,
                  target_entropy=None,
+                 device=ptu.device
                  ):
-        super(SACAgent, self).__init__()
-        self.obs_spec = obs_spec
-        self.act_spec = act_spec
+        nn.Module.__init__(self)
+        OffPolicyAgent.__init__(self, env=env)
+        self.obs_spec = env.observation_space
+        self.act_spec = env.action_space
         self.policy_lr = policy_lr
         self.q_lr = q_lr
         self.alpha_lr = alpha_lr
         self.act_dim = self.act_spec.shape[0]
-        if len(self.obs_spec.shape) == 1:  # 1D observation
-            self.obs_dim = self.obs_spec.shape[0]
-            self.policy_net = rlu.nn.SquashedGaussianMLPActor(self.obs_dim, self.act_dim, policy_mlp_hidden)
-            self.q_network = rlu.nn.EnsembleMinQNet(self.obs_dim, self.act_dim, q_mlp_hidden,
-                                                    num_ensembles=num_ensembles)
-            self.target_q_network = copy.deepcopy(self.q_network)
-            rlu.nn.functional.freeze(self.target_q_network)
-        else:
-            raise NotImplementedError
+        self.policy_net = make_policy_net(env)
+        self.num_q_ensembles = num_q_ensembles
+        self.q_network = make_q_network(env, self.num_q_ensembles)
+        self.target_q_network = copy.deepcopy(self.q_network)
+        rlu.nn.functional.freeze(self.target_q_network)
 
         self.alpha_net = rlu.nn.LagrangeLayer(initial_value=alpha)
 
@@ -52,7 +54,10 @@ class SACAgent(OffPolicyAgent, nn.Module):
         self.tau = tau
         self.gamma = gamma
 
-        self.to(ptu.device)
+        self.reset_optimizer()
+
+        self.device = device
+        self.to(device)
 
     def reset_optimizer(self):
         self.policy_optimizer = torch.optim.Adam(params=self.policy_net.parameters(), lr=self.policy_lr)
@@ -60,19 +65,17 @@ class SACAgent(OffPolicyAgent, nn.Module):
         self.alpha_optimizer = torch.optim.Adam(params=self.alpha_net.parameters(), lr=self.alpha_lr)
 
     def log_tabular(self):
-        self.logger.log_tabular('Q1Vals', with_min_and_max=True)
-        self.logger.log_tabular('Q2Vals', with_min_and_max=True)
+        for i in range(self.num_q_ensembles):
+            self.logger.log_tabular(f'Q{i + 1}Vals', with_min_and_max=True)
         self.logger.log_tabular('LogPi', average_only=True)
         self.logger.log_tabular('LossPi', average_only=True)
         self.logger.log_tabular('LossQ', average_only=True)
         self.logger.log_tabular('Alpha', average_only=True)
         self.logger.log_tabular('LossAlpha', average_only=True)
+        super(SACAgent, self).log_tabular()
 
     def update_target(self):
         rlu.functional.soft_update(self.target_q_network, self.q_network, self.tau)
-
-    def sync_target(self):
-        rlu.functional.hard_update(self.target_q_network, self.q_network)
 
     def _update_nets(self, obs, act, next_obs, done, rew):
         """ Sample a mini-batch from replay buffer and update the network
@@ -120,23 +123,23 @@ class SACAgent(OffPolicyAgent, nn.Module):
         self.alpha_optimizer.step()
 
         info = dict(
-            Q1Vals=q_values[0],
-            Q2Vals=q_values[1],
             LogPi=log_prob,
             Alpha=alpha,
             LossQ=q_values_loss,
             LossAlpha=alpha_loss,
             LossPi=policy_loss,
         )
+
+        for i in range(self.num_q_ensembles):
+            info[f'Q{i + 1}Vals'] = q_values[i]
+
         return info
 
     def train_on_batch(self, data, **kwargs):
-        update_target = data.pop('update_target')
-        data = {key: torch.as_tensor(value).to(ptu.device, non_blocking=True) for key, value in data.items()}
+        data = ptu.convert_dict_to_tensor(data, device=self.device)
         info = self._update_nets(**data)
         self.logger.store(**info)
-        if update_target:
-            self.update_target()
+        self.update_target()
 
     def act_batch_torch(self, obs, deterministic):
         with torch.no_grad():
@@ -152,46 +155,12 @@ class SACAgent(OffPolicyAgent, nn.Module):
         return self.act_batch_torch(obs, deterministic=True).cpu().numpy()
 
 
-class Runner(PytorchOffPolicyRunner):
-    @classmethod
-    def main(cls,
-             env_name,
-             epochs=100,
-             # sac args
-             policy_mlp_hidden=256,
-             policy_lr=3e-4,
-             q_mlp_hidden=256,
-             q_lr=3e-4,
-             alpha=0.2,
-             tau=5e-3,
-             gamma=0.99,
-             seed=1,
-             logger_path: str = None,
-             **kwargs
-             ):
-        agent_kwargs = dict(
-            policy_mlp_hidden=policy_mlp_hidden,
-            policy_lr=policy_lr,
-            q_mlp_hidden=q_mlp_hidden,
-            q_lr=q_lr,
-            alpha=alpha,
-            alpha_lr=q_lr,
-            tau=tau,
-            gamma=gamma,
-            target_entropy=None
-        )
-
-        super(Runner, cls).main(
-            env_name=env_name,
-            epochs=epochs,
-            agent_cls=SACAgent,
-            agent_kwargs=agent_kwargs,
-            policy_delay=1,
-            seed=seed,
-            logger_path=logger_path,
-            **kwargs
-        )
-
-
 if __name__ == '__main__':
-    run_func_as_main(Runner.main)
+    from rlalgos.runner import run_offpolicy
+    from rlutils.infra.runner import run_func_as_main
+
+    ptu.set_device('cuda')
+    make_agent_fn = lambda env: SACAgent(env, device=ptu.device)
+    run_func_as_main(run_offpolicy, passed_args={
+        'make_agent_fn': make_agent_fn
+    })

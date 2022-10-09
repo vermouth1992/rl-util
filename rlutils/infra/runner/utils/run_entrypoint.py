@@ -1,10 +1,6 @@
 import base64
-import os.path as osp
 import pickle
-import sys
 import zlib
-
-# sys.path.append(osp.join(osp.abspath(osp.dirname(__file__)), '../../'))
 
 if __name__ == '__main__':
     import argparse
