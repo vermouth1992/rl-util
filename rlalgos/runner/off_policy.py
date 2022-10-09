@@ -59,7 +59,7 @@ def run_offpolicy(env_name: str,
 
     timer = rl_infra.StopWatch()
 
-    # environmentq
+    # environment
     env_fn = rlutils.gym.utils.wrap_env_fn(env_fn, truncate_obs_dtype=True, normalize_action_space=True)
 
     env = rlutils.gym.utils.create_vector_env(env_fn=env_fn,
@@ -78,10 +78,8 @@ def run_offpolicy(env_name: str,
                                              seed=seeder.generate_seed())
 
     # setup tester
-    test_env_seed = seeder.generate_seed()
-
     tester = rl_infra.Tester(env_fn=env_fn, num_parallel_env=num_test_episodes,
-                             asynchronous=asynchronous, seed=test_env_seed)
+                             asynchronous=asynchronous, seed=seeder.generate_seed())
 
     # register log_tabular args
     timer.set_logger(logger=logger)
