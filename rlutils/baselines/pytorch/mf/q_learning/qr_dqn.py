@@ -81,7 +81,7 @@ class QRDQN(DQN):
         )
         return info
 
-    def act_batch_test(self, obs):
+    def act_batch_deterministic(self, obs):
         obs = torch.as_tensor(obs, device=self.device)
         with torch.no_grad():
             target_logits_action = self.q_network(obs)  # (None, act_dim, num_atoms)

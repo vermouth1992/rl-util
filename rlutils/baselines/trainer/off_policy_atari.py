@@ -30,7 +30,7 @@ def run_offpolicy_atari(env_name: str,
                         gamma=0.99,
                         num_stack=4,
                         # runner args
-                        epochs=100,
+                        epochs=200,
                         steps_per_epoch=10000,
                         num_test_episodes=10,
                         start_steps=10000,
@@ -62,7 +62,7 @@ def run_offpolicy_atari(env_name: str,
 
     # setup logger
     if exp_name is None:
-        exp_name = f'{env_name}_{agent.__class__.__name__}_test'
+        exp_name = f'{env_name.replace("/", "-")}_{agent.__class__.__name__}_test'
     logger_kwargs = setup_logger_kwargs(exp_name=exp_name, data_dir=logger_path, seed=seed)
     logger = EpochLogger(**logger_kwargs, tensorboard=False)
     logger.save_config(config)

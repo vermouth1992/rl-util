@@ -26,9 +26,7 @@ class DQN(OffPolicyAgent, nn.Module):
                  n_steps=1,
                  huber_delta=None,
                  grad_norm=None,
-                 epsilon_greedy_scheduler=rln.schedulers.LinearSchedule(schedule_timesteps=1000,
-                                                                        final_p=0.1,
-                                                                        initial_p=0.1),
+                 epsilon_greedy_scheduler=rln.schedulers.ConstantSchedule(value=0.1),
                  target_update_freq=500,
                  test_random_prob=None,
                  device=None,
@@ -128,15 +126,18 @@ class DQN(OffPolicyAgent, nn.Module):
             if np.random.rand() < epsilon:
                 actions[i] = np.random.randint(low=0, high=self.act_dim)
             else:
-                actions[i:i + 1] = self.act_batch_test(obs[i:i + 1])
+                actions[i:i + 1] = self.act_batch_deterministic(obs[i:i + 1])
         return actions
 
-    def act_batch_test(self, obs):
+    def act_batch_deterministic(self, obs):
         obs = torch.as_tensor(obs, device=self.device)
         with torch.no_grad():
             q_values = self.q_network(obs)
             actions = torch.argmax(q_values, dim=-1).cpu().numpy()
+        return actions
 
+    def act_batch_test(self, obs):
+        actions = self.act_batch_deterministic(obs)
         if self.test_random_prob is not None:
             mask = np.random.rand(obs.shape[0]) < self.test_random_prob
             random_actions = np.random.randint(low=0, high=self.act_dim, size=obs.shape[0])
