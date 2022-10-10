@@ -30,6 +30,7 @@ class DQN(OffPolicyAgent, nn.Module):
                                                                         final_p=0.1,
                                                                         initial_p=0.1),
                  target_update_freq=500,
+                 test_random_prob=None,
                  device=None,
                  ):
         OffPolicyAgent.__init__(self, env=env)
@@ -42,6 +43,9 @@ class DQN(OffPolicyAgent, nn.Module):
         self.obs_spec = env.observation_space
         self.act_dim = env.action_space.n
         self.epsilon_greedy_scheduler = epsilon_greedy_scheduler
+        self.test_random_prob = test_random_prob
+        if self.test_random_prob is not None:
+            assert self.test_random_prob >= 0. and self.test_random_prob <= 1.
         self.q_network = make_q_net(env)
         self.target_q_network = copy.deepcopy(self.q_network)
         rlu.nn.functional.freeze(self.target_q_network)
@@ -131,7 +135,14 @@ class DQN(OffPolicyAgent, nn.Module):
         obs = torch.as_tensor(obs, device=self.device)
         with torch.no_grad():
             q_values = self.q_network(obs)
-            return torch.argmax(q_values, dim=-1).cpu().numpy()
+            actions = torch.argmax(q_values, dim=-1).cpu().numpy()
+
+        if self.test_random_prob is not None:
+            mask = np.random.rand(obs.shape[0]) < self.test_random_prob
+            random_actions = np.random.randint(low=0, high=self.act_dim, size=obs.shape[0])
+            actions[mask] = random_actions[mask]
+
+        return actions
 
 
 if __name__ == '__main__':

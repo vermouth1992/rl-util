@@ -42,6 +42,8 @@ def run_offpolicy_atari(env_name: str,
                         logger_path: str = None,
                         backend=None
                         ):
+    assert rlutils.gym.utils.is_atari_env(env_name)
+
     config = locals()
 
     # setup seed
