@@ -4,7 +4,6 @@ import numpy as np
 import torch.nn as nn
 import torch.optim
 
-import rlutils.infra as rl_infra
 import rlutils.np as rln
 import rlutils.pytorch as rlu
 import rlutils.pytorch.utils as ptu
@@ -18,14 +17,18 @@ def gather_q_values(q_values, action):
 class DQN(OffPolicyAgent, nn.Module):
     def __init__(self,
                  env,
-                 mlp_hidden=128,
+                 make_q_net=lambda env: rlu.nn.build_mlp(input_dim=env.observation_space.shape[0],
+                                                         output_dim=env.action_space.n,
+                                                         mlp_hidden=256, num_layers=3),
                  double_q=True,
                  q_lr=1e-4,
                  gamma=0.99,
                  n_steps=1,
                  huber_delta=None,
                  grad_norm=None,
-                 epsilon_greedy_steps=1000,
+                 epsilon_greedy_scheduler=rln.schedulers.LinearSchedule(schedule_timesteps=1000,
+                                                                        final_p=0.1,
+                                                                        initial_p=0.1),
                  target_update_freq=500,
                  device=None,
                  ):
@@ -38,9 +41,8 @@ class DQN(OffPolicyAgent, nn.Module):
         self.q_lr = q_lr
         self.obs_spec = env.observation_space
         self.act_dim = env.action_space.n
-        self.mlp_hidden = mlp_hidden
-        self.epsilon_greedy_steps = epsilon_greedy_steps
-        self.q_network = self._create_q_network()
+        self.epsilon_greedy_scheduler = epsilon_greedy_scheduler
+        self.q_network = make_q_net(env)
         self.target_q_network = copy.deepcopy(self.q_network)
         rlu.nn.functional.freeze(self.target_q_network)
         self.reset_optimizer()
@@ -50,26 +52,13 @@ class DQN(OffPolicyAgent, nn.Module):
             self.loss_fn = torch.nn.MSELoss(reduction=reduction)
         else:
             self.loss_fn = torch.nn.HuberLoss(delta=huber_delta, reduction=reduction)
-        self.epsilon_greedy_scheduler = self._create_epsilon_greedy_scheduler()
         self.device = device
 
+        self.policy_updates = 0
         self.to(self.device)
 
     def reset_optimizer(self):
         self.q_optimizer = torch.optim.Adam(self.q_network.parameters(), lr=self.q_lr)
-
-    def _create_q_network(self):
-        if len(self.obs_spec.shape) == 1:  # 1D observation
-            q_network = rlu.nn.build_mlp(input_dim=self.obs_spec.shape[0], output_dim=self.act_dim,
-                                         mlp_hidden=self.mlp_hidden, num_layers=3)
-        else:
-            raise NotImplementedError
-        return q_network
-
-    def _create_epsilon_greedy_scheduler(self):
-        return rln.schedulers.LinearSchedule(schedule_timesteps=self.epsilon_greedy_steps,
-                                             final_p=0.1,
-                                             initial_p=0.1)
 
     def log_tabular(self):
         super(DQN, self).log_tabular()
@@ -79,37 +68,6 @@ class DQN(OffPolicyAgent, nn.Module):
 
     def update_target(self):
         rlu.functional.hard_update(self.target_q_network, self.q_network)
-
-    def compute_priority(self, data):
-        np_data = {}
-        for key, d in data.items():
-            if not isinstance(d, np.ndarray):
-                d = np.array(d)
-            np_data[key] = torch.as_tensor(d).to(self.device, non_blocking=True)
-        return self.compute_priority_torch(**np_data).cpu().numpy()
-
-    def compute_priority_torch(self, obs, act, next_obs, rew, done):
-        with torch.no_grad():
-            batch_size = next_obs.shape[0]
-            target_q_values = self.compute_target_values(next_obs, rew, done)
-            q_values = self.q_network(obs)
-            q_values = gather_q_values(q_values, act)
-            abs_td_error = torch.abs(q_values - target_q_values)
-            return abs_td_error
-
-    def compute_q_val(self, data):
-        np_data = {}
-        for key, d in data.items():
-            if not isinstance(d, np.ndarray):
-                d = np.array(d)
-            np_data[key] = torch.as_tensor(d).to(self.device, non_blocking=True)
-        return self.compute_q_val_torch(**np_data).cpu().numpy()
-
-    def compute_q_val_torch(self, obs, act, **kwargs):
-        with torch.no_grad():
-            q_values = self.q_network(obs)
-            q_values = gather_q_values(q_values, act)
-            return q_values
 
     def compute_target_values(self, next_obs, rew, done):
         with torch.no_grad():
@@ -122,7 +80,7 @@ class DQN(OffPolicyAgent, nn.Module):
             target_q_values = rew + self.gamma * (1. - done) * target_q_values
             return target_q_values
 
-    def _update_nets(self, obs, act, next_obs, rew, done, weights=None):
+    def train_on_batch_torch(self, obs, act, next_obs, rew, done, weights=None):
         target_q_values = self.compute_target_values(next_obs, rew, done)
         self.q_optimizer.zero_grad()
         q_values = self.q_network(obs)
@@ -144,19 +102,14 @@ class DQN(OffPolicyAgent, nn.Module):
         info['TDError'] = abs_td_error
         return info
 
-    def train_on_batch(self, data, **kwargs):
-        update_target = kwargs.pop('update_target', None)
+    def train_on_batch(self, data):
         tensor_data = ptu.convert_dict_to_tensor(data, device=self.device)
 
-        info = self._update_nets(**tensor_data)
-
+        info = self.train_on_batch_torch(**tensor_data)
         self.policy_updates += 1
-        if update_target is None:
-            if self.policy_updates % self.target_update_freq == 0:
-                self.update_target()
-        else:
-            if update_target:
-                self.update_target()
+
+        if self.policy_updates % self.target_update_freq == 0:
+            self.update_target()
 
         if self.logger is not None:
             self.logger.store(**info)
@@ -182,9 +135,11 @@ class DQN(OffPolicyAgent, nn.Module):
 
 
 if __name__ == '__main__':
-    from rlutils.infra.runner import run_offpolicy
+    from rlutils.baselines.trainer import run_offpolicy
+    import rlutils.infra as rl_infra
 
-    make_agent_fn = lambda env: DQN(env, device='cuda' if torch.cuda.is_available() else 'cpu')
+    make_agent_fn = lambda env: DQN(env, device=ptu.get_cuda_device())
     rl_infra.runner.run_func_as_main(run_offpolicy, passed_args={
-        'make_agent_fn': make_agent_fn
+        'make_agent_fn': make_agent_fn,
+        'backend': 'torch'
     })

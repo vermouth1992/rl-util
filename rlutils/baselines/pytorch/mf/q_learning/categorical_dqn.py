@@ -1,18 +1,24 @@
-from typing import Callable
-
 import torch.nn as nn
 import torch.optim
 
-import rlutils.infra as rl_infra
 import rlutils.pytorch as rlu
 import rlutils.pytorch.utils as ptu
 from rlutils.baselines.pytorch.mf.q_learning.dqn import DQN
 
 
 class CategoricalDQN(DQN):
-    def __init__(self, num_atoms=51, v_min=0., v_max=100., **kwargs):
+    def __init__(self, make_q_net=lambda env, num_atoms: rlu.nn.values.CategoricalQModule(
+        rlu.nn.functional.build_mlp(input_dim=env.observation_space.shape[0],
+                                    output_dim=env.action_space.n * num_atoms,
+                                    mlp_hidden=256,
+                                    out_activation=lambda x: torch.reshape(x, shape=(
+                                            -1, env.action_space.n, num_atoms)))),
+                 num_atoms=51, v_min=0., v_max=100.,
+                 **kwargs):
         assert num_atoms > 1, 'The number of atoms must be greater than 1'
-        super(CategoricalDQN, self).__init__(**kwargs)
+        super(CategoricalDQN, self).__init__(double_q=False,
+                                             make_q_net=lambda env: make_q_net(env, num_atoms),
+                                             **kwargs)
         self.num_atoms = num_atoms
         self.v_min = v_min
         self.v_max = v_max
@@ -23,15 +29,7 @@ class CategoricalDQN(DQN):
             self.double_q = False
             print('Double q is set to False in CategoricalDQN')
 
-        self.to(ptu.device)
-
-    def _create_q_network(self):
-        out_activation = lambda x: torch.reshape(x, shape=(-1, self.act_dim, self.num_atoms))
-        model = rlu.nn.functional.build_mlp(input_dim=self.obs_spec.shape[0],
-                                            output_dim=self.act_dim * self.num_atoms,
-                                            mlp_hidden=self.mlp_hidden,
-                                            out_activation=out_activation)
-        return rlu.nn.values.CategoricalQModule(model=model)
+        self.to(self.device)
 
     def compute_target_values(self, next_obs, rew, done):
         # double q doesn't perform very well.
@@ -55,24 +53,33 @@ class CategoricalDQN(DQN):
             probability = torch.sum(atom_distribution * target_logits[:, :, None], dim=1)  # (None, num_atoms)
             return probability
 
-    def _update_nets(self, obs, act, next_obs, rew, done):
+    def train_on_batch_torch(self, obs, act, next_obs, rew, done, weights=None):
         target_q_values = self.compute_target_values(next_obs, rew, done)  # (None, num_atoms)
         self.q_optimizer.zero_grad()
         q_values = self.q_network(obs, act, log_prob=True)  # (None, num_atoms)
         cross_entropy = -torch.sum(target_q_values * q_values, dim=-1)
-        loss = torch.mean(cross_entropy, dim=0)
+
+        loss = cross_entropy
+        if weights is not None:
+            loss = loss * weights
+
+        loss = torch.mean(loss, dim=0)
         loss.backward()
         self.q_optimizer.step()
+
         with torch.no_grad():
             q_values = torch.sum(torch.exp(q_values) * self.support[None, :], dim=-1)
+
         info = dict(
             QVals=q_values,
-            LossQ=loss
+            LossQ=loss,
+            TDError=cross_entropy
         )
+
         return info
 
     def act_batch_test(self, obs):
-        obs = torch.as_tensor(obs, device=ptu.device)
+        obs = torch.as_tensor(obs, device=self.device)
         with torch.no_grad():
             target_logits_action = self.q_network(obs)  # (None, act_dim, num_atoms)
             target_q_values = torch.sum(target_logits_action * self.support[None, None, :], dim=-1)  # (None, act_dim)
@@ -80,55 +87,12 @@ class CategoricalDQN(DQN):
             return target_actions.cpu().numpy()
 
 
-class Runner(rl_infra.runner.PytorchOffPolicyRunner):
-    @classmethod
-    def main(cls,
-             env_name,
-             env_fn: Callable = None,
-             exp_name: str = None,
-             steps_per_epoch=10000,
-             epochs=100,
-             start_steps=10000,
-             update_after=5000,
-             update_every=1,
-             update_per_step=1,
-             policy_delay=1,
-             num_parallel_env=1,
-             num_test_episodes=10,
-             seed=1,
-             # agent args
-             q_lr=1e-4,
-             tau=5e-3,
-             gamma=0.99,
-             # replay
-             replay_size=int(1e6),
-             logger_path: str = None
-             ):
-        agent_kwargs = dict(
-            q_lr=q_lr,
-            tau=tau,
-            gamma=gamma,
-        )
-
-        super(Runner, cls).main(env_name=env_name,
-                                env_fn=None,
-                                exp_name=exp_name,
-                                steps_per_epoch=steps_per_epoch,
-                                epochs=epochs,
-                                start_steps=start_steps,
-                                update_after=update_after,
-                                update_every=update_every,
-                                update_per_step=update_per_step,
-                                policy_delay=1,
-                                num_parallel_env=1,
-                                num_test_episodes=num_test_episodes,
-                                agent_cls=CategoricalDQN,
-                                agent_kwargs=agent_kwargs,
-                                seed=seed,
-                                logger_path=logger_path
-                                )
-
-
 if __name__ == '__main__':
-    ptu.set_device('cuda')
-    rl_infra.runner.run_func_as_main(Runner.main)
+    from rlutils.baselines.trainer import run_offpolicy
+    import rlutils.infra as rl_infra
+
+    make_agent_fn = lambda env: CategoricalDQN(env=env, device=ptu.get_cuda_device())
+    rl_infra.runner.run_func_as_main(run_offpolicy, passed_args={
+        'make_agent_fn': make_agent_fn,
+        'backend': 'torch'
+    })

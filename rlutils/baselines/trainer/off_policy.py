@@ -8,7 +8,7 @@ import rlutils.gym
 
 from tqdm.auto import trange
 
-from typing import Callable
+from typing import Callable, Union
 
 
 def run_offpolicy(env_name: str,
@@ -33,7 +33,7 @@ def run_offpolicy(env_name: str,
                   batch_size=256,
                   seed=1,
                   logger_path: str = None,
-                  backend=None
+                  backend: Union[str, None] = None
                   ):
     config = locals()
 

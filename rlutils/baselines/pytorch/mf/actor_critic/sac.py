@@ -158,7 +158,7 @@ class SACAgent(OffPolicyAgent, nn.Module):
 
 
 if __name__ == '__main__':
-    from rlutils.trainer import run_offpolicy
+    from rlutils.baselines.trainer import run_offpolicy
     from rlutils.infra.runner import run_func_as_main
 
     make_agent_fn = lambda env: SACAgent(env, device=ptu.get_cuda_device())
