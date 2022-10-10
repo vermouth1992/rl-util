@@ -149,11 +149,11 @@ class SACAgent(OffPolicyAgent, nn.Module):
             return pi_final
 
     def act_batch_explore(self, obs, global_steps):
-        obs = torch.as_tensor(obs, device=ptu.device)
+        obs = torch.as_tensor(obs, device=self.device)
         return self.act_batch_torch(obs, deterministic=False).cpu().numpy()
 
     def act_batch_test(self, obs):
-        obs = torch.as_tensor(obs, device=ptu.device)
+        obs = torch.as_tensor(obs, device=self.device)
         return self.act_batch_torch(obs, deterministic=True).cpu().numpy()
 
 
