@@ -5,7 +5,7 @@ import torch
 import rlutils.infra as rl_infra
 import rlutils.pytorch as rlu
 import rlutils.pytorch.utils as ptu
-from rlalgos.pytorch.mf.qr_dqn import QRDQN
+from rlutils.baselines.pytorch.mf.q_learning.qr_dqn import QRDQN
 
 
 class AtariQRDQN(QRDQN):

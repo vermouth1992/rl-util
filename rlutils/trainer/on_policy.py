@@ -8,7 +8,7 @@ import rlutils.gym
 from rlutils.logx import EpochLogger, setup_logger_kwargs
 
 
-def run_on_policy(env_name,
+def run_onpolicy(env_name,
                   env_fn: Callable = None,
                   exp_name: str = None,
                   seed=0,

@@ -178,7 +178,7 @@ class TD3Agent(nn.Module, OffPolicyAgent):
 
 
 if __name__ == '__main__':
-    from rlalgos.runner import run_offpolicy
+    from rlutils.trainer import run_offpolicy
     from rlutils.infra.runner import run_func_as_main
 
     make_agent_fn = lambda env: TD3Agent(env, device=ptu.get_cuda_device())

@@ -1,10 +1,13 @@
+import numpy as np
+
 import rlutils.infra as rl_infra
 import rlutils.np as rln
 import rlutils.pytorch as rlu
-from rlalgos.pytorch.mf.maxmin_dqn import MaxMinDQN
+import rlutils.pytorch.utils as ptu
+from rlutils.baselines.pytorch.mf.q_learning.dqn import DQN
 
 
-class AtariMaxMinDQN(MaxMinDQN):
+class AtariDQN(DQN):
     def __init__(self,
                  env,
                  frame_stack=4,
@@ -12,7 +15,7 @@ class AtariMaxMinDQN(MaxMinDQN):
                  ):
         assert env.observation_space.shape == (84, 84), 'The environment must be Atari Games with 84x84 input'
         self.frame_stack = frame_stack
-        super(AtariMaxMinDQN, self).__init__(env=env, **kwargs)
+        super(AtariDQN, self).__init__(env=env, **kwargs)
 
     def _create_q_network(self):
         return rlu.nn.values.AtariDuelQModule(frame_stack=self.frame_stack, action_dim=self.act_dim)
@@ -21,6 +24,14 @@ class AtariMaxMinDQN(MaxMinDQN):
         return rln.schedulers.LinearSchedule(schedule_timesteps=self.epsilon_greedy_steps,
                                              final_p=0.1,
                                              initial_p=1.0)
+
+    def act_batch_test(self, obs):
+        actions = super(AtariDQN, self).act_batch_test(obs)
+        # have 1% to randomly select an action to avoid game freeze due to FIRE
+        mask = np.random.rand(obs.shape[0]) < 0.01
+        random_actions = np.random.randint(low=0, high=self.act_dim, size=obs.shape[0])
+        actions[mask] = random_actions[mask]
+        return actions
 
 
 class Runner(rl_infra.runner.PytorchAtariRunner):
@@ -31,6 +42,7 @@ class Runner(rl_infra.runner.PytorchAtariRunner):
              q_lr=1e-4,
              gamma=0.99,
              target_update_freq=2500,
+             n_steps=1,
              **kwargs
              ):
         agent_kwargs = dict(
@@ -38,14 +50,17 @@ class Runner(rl_infra.runner.PytorchAtariRunner):
             gamma=gamma,
             target_update_freq=target_update_freq,
             epsilon_greedy_steps=1000000,
+            n_steps=n_steps,
+            device=ptu.get_device()
         )
 
         super(Runner, cls).main(env_name=env_name,
-                                agent_cls=AtariMaxMinDQN,
+                                agent_cls=AtariDQN,
                                 agent_kwargs=agent_kwargs,
                                 batch_size=32,
                                 update_every=4,
                                 update_per_step=0.25,
                                 num_test_episodes=10,
+                                n_steps=n_steps,
                                 **kwargs
                                 )

@@ -1,8 +1,3 @@
-from rlalgos.pytorch.mf import dqn as dqn_pytorch, sac as sac_pytorch, td3 as td3_pytorch, \
-    categorical_dqn as c51_pytorch, qr_dqn as qr_dqn_pytorch
-from rlalgos.pytorch.mf.atari import categorical_dqn as c51_pytorch, dqn as atari_dqn_pytorch, \
-    qr_dqn as atari_qr_dqn_pytorch
-from rlalgos.pytorch.offline import cql as cql_pytorch
 from rlutils.infra.runner import get_argparser_from_func
 
 # from rlutils.tf.algos.mb import pets

@@ -1,3 +1,9 @@
+"""
+A generic template to run Atari Environments. We use LazyFrame to save memory.
+If there are enough memory, you can pass env_fn to the standard offpolicy runner to gain vectorized
+performance on observation array indexing.
+"""
+
 import gym
 import numpy as np
 
@@ -11,31 +17,31 @@ from tqdm.auto import trange
 from typing import Callable
 
 
-def run_offpolicy_frame_stack(env_name: str,
-                              env_fn: Callable = None,
-                              num_parallel_env=1,
-                              asynchronous=True,
-                              exp_name: str = None,
-                              # agent
-                              make_agent_fn: Callable = None,
-                              # replay buffer
-                              replay_size=1000000,
-                              n_steps=1,
-                              gamma=0.99,
-                              num_stack=4,
-                              # runner args
-                              epochs=100,
-                              steps_per_epoch=10000,
-                              num_test_episodes=10,
-                              start_steps=10000,
-                              update_after=5000,
-                              update_every=4,
-                              update_per_step=0.25,
-                              batch_size=64,
-                              seed=1,
-                              logger_path: str = None,
-                              backend=None
-                              ):
+def run_offpolicy_atari(env_name: str,
+                        env_fn: Callable = None,
+                        num_parallel_env=1,
+                        asynchronous=True,
+                        exp_name: str = None,
+                        # agent
+                        make_agent_fn: Callable = None,
+                        # replay buffer
+                        replay_size=1000000,
+                        n_steps=1,
+                        gamma=0.99,
+                        num_stack=4,
+                        # runner args
+                        epochs=100,
+                        steps_per_epoch=10000,
+                        num_test_episodes=10,
+                        start_steps=10000,
+                        update_after=5000,
+                        update_every=4,
+                        update_per_step=0.25,
+                        batch_size=64,
+                        seed=1,
+                        logger_path: str = None,
+                        backend=None
+                        ):
     config = locals()
 
     # setup seed

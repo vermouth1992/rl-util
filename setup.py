@@ -25,7 +25,6 @@ setup(
     entry_points={
         'console_scripts': [
             'rlplot=rlutils.plot:main',
-            'rlrun=rlalgos.run:main'
         ]
     }
 )
