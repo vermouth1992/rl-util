@@ -9,16 +9,22 @@ class Seeder(object):
     def __init__(self, seed, backend=None):
         self.max_seed = 2 ** 31 - 1
         self.seed = seed
-        self.reset()
         self.backend = backend
         if self.backend is not None:
             assert isinstance(self.backend, str)
+
+        self.reset()
 
     def reset(self):
         self.np_random, _ = seeding.np_random(self.seed)  # won't be interfered by the global numpy random
 
     def generate_seed(self):
         return int(self.np_random.integers(self.max_seed))
+
+    def setup_global_seed(self):
+        self.setup_np_global_seed()
+        self.setup_random_global_seed()
+        self.setup_backend_seed()
 
     def setup_random_global_seed(self):
         import random
@@ -32,9 +38,9 @@ class Seeder(object):
 
     def setup_backend_seed(self):
         backends = self.backend.split(',')
-        if 'tf' in self.backend:
+        if 'tf' in backends:
             self.setup_tf_global_seed()
-        if 'torch' in self.backend:
+        if 'torch' in backends:
             self.setup_torch_global_seed()
 
     def setup_tf_global_seed(self):

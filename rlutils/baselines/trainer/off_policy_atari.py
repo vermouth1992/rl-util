@@ -77,7 +77,7 @@ def run_offpolicy_atari(env_name: str,
     env.action_space.seed(seeder.generate_seed())
 
     # replay buffer
-    replay_buffer = ReplayBuffer.from_env(env=env, capacity=replay_size, is_vec_env=True,
+    replay_buffer = ReplayBuffer.from_env(env=env_fn(), capacity=replay_size,
                                           seed=seeder.generate_seed(),
                                           memory_efficient=True)
 

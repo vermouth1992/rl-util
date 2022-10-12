@@ -10,10 +10,10 @@ from rlutils.interface.agent import Agent
 
 
 class PPOAgent(torch.nn.Module, Agent):
-    def __init__(self, env, mlp_hidden=64,
-                 pi_lr=1e-3, vf_lr=1e-3, clip_ratio=0.2,
+    def __init__(self, env,
+                 lr=1e-3, clip_ratio=0.2,
                  entropy_coef=0.001, target_kl=0.05,
-                 train_pi_iters=80, train_vf_iters=80
+                 train_iters=80,
                  ):
         """
         Args:
@@ -31,17 +31,8 @@ class PPOAgent(torch.nn.Module, Agent):
             max_grad_norm:
         """
         super(PPOAgent, self).__init__()
-        obs_spec = env.observation_space
-        act_spec = env.action_space
-        obs_dim = obs_spec.shape[0]
-        if act_spec.dtype == np.int32 or act_spec.dtype == np.int64:
-            self.policy_net = rlu.nn.CategoricalActor(obs_dim=obs_dim, act_dim=act_spec.n, mlp_hidden=mlp_hidden)
-        else:
-            self.policy_net = rlu.nn.NormalActor(obs_dim=obs_dim, act_dim=act_spec.shape[0], mlp_hidden=mlp_hidden)
-        self.pi_optimizer = torch.optim.Adam(lr=pi_lr, params=self.policy_net.)
-        self.v_optimizer = torch.optim.Adam(lr=vf_lr, params=)
-        self.value_net = rlu.nn.build_mlp(input_dim=obs_dim, output_dim=1, squeeze=True, mlp_hidden=mlp_hidden)
-        self.value_net.compile(optimizer=self.v_optimizer, loss='mse')
+        self.policy_net = rlu.nn.MLPActorCriticSeparate(env=env)
+        self.optimizer = torch.optim.Adam(lr=lr, params=self.policy_net.parameters())
 
         self.target_kl = target_kl
         self.clip_ratio = clip_ratio
@@ -96,7 +87,7 @@ class PPOAgent(torch.nn.Module, Agent):
 
         ratio = torch.exp(negative_approx_kl)
         surr1 = ratio * adv
-        surr2 = tf.clip_by_value(ratio, 1.0 - self.clip_ratio, 1.0 + self.clip_ratio) * adv
+        surr2 = torch.clamp(ratio, min=1.0 - self.clip_ratio, max=1.0 + self.clip_ratio) * adv
         policy_loss = -torch.mean(torch.minimum(surr1, surr2))
 
         loss = policy_loss - entropy * self.entropy_coef

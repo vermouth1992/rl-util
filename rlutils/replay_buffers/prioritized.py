@@ -136,9 +136,6 @@ class PrioritizedReplayBuffer(object):
                 self.eviction_tree[idx] = priorities ** self.eviction
 
     @classmethod
-    def from_env(cls, env, is_vec_env, **kwargs):
-        if is_vec_env:
-            data_spec = utils.get_data_spec_from_vec_env(env)
-        else:
-            data_spec = utils.get_data_spec_from_env(env)
+    def from_env(cls, env, **kwargs):
+        data_spec = utils.get_data_spec_from_env(env)
         return cls(data_spec=data_spec, **kwargs)

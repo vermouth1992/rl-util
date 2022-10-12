@@ -1,22 +1,22 @@
-from rlutils.replay_buffers import GAEBuffer
-import rlutils.infra as rl_infra
-
 from typing import Callable
 
 import gym
+
 import rlutils.gym
+import rlutils.infra as rl_infra
 from rlutils.logx import EpochLogger, setup_logger_kwargs
+from rlutils.replay_buffers import GAEBuffer
 
 
 def run_onpolicy(env_name,
-                  env_fn: Callable = None,
-                  exp_name: str = None,
-                  seed=0,
-                  num_parallel_env=5,
-                  asynchronous=False,
-                  make_agent_fn: Callable = None,
-                  batch_size=5000, epochs=200, gamma=0.99, lam=0.97, logger_path: str = None
-                  ):
+                 env_fn: Callable = None,
+                 exp_name: str = None,
+                 seed=0,
+                 num_parallel_env=5,
+                 asynchronous=False,
+                 make_agent_fn: Callable = None,
+                 batch_size=5000, epochs=200, gamma=0.99, lam=0.97, logger_path: str = None
+                 ):
     assert batch_size % num_parallel_env == 0
     num_steps_per_sample = batch_size // num_parallel_env
 
@@ -53,7 +53,7 @@ def run_onpolicy(env_name,
     env.seed(seeder.generate_seed())
     env.action_space.seed(seeder.generate_seed())
 
-    replay_buffer = GAEBuffer.from_vec_env(env, max_length=num_steps_per_sample, gamma=gamma, lam=lam)
+    replay_buffer = GAEBuffer(env, length=num_steps_per_sample, gamma=gamma, lam=lam)
 
     sampler = rl_infra.samplers.TrajectorySampler(env=env)
 

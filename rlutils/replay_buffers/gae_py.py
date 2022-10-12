@@ -3,9 +3,8 @@ Generalized advantage estimation buffer
 """
 
 import numpy as np
-from rlutils.np.functional import discount_cumsum
-from rlutils.np.functional import flatten_leading_dims
 
+from rlutils.np.functional import discount_cumsum, flatten_leading_dims
 from .utils import combined_shape
 
 
@@ -16,17 +15,17 @@ class GAEBuffer(object):
     for calculating the advantages of state-action pairs.
     """
 
-    def __init__(self, vec_env, length, gamma=0.99, lam=0.95):
-        obs_spec = vec_env.observation_space
-        act_spec = vec_env.action_space
+    def __init__(self, env, length, gamma=0.99, lam=0.95):
+        obs_spec = env.observation_space
+        act_spec = env.action_space
         obs_shape = obs_spec.shape
         obs_dtype = obs_spec.dtype
         act_shape = act_spec.shape
         act_dtype = act_spec.dtype
         assert obs_shape[0] == act_shape[0]
         num_envs = obs_shape[0]
-        self.obs_buf = np.zeros(shape=combined_shape(num_envs, (length, *obs_shape[1:])), dtype=obs_dtype)
-        self.act_buf = np.zeros(shape=combined_shape(num_envs, (length, *act_shape[1:])), dtype=act_dtype)
+        self.obs_buf = np.zeros(shape=combined_shape(num_envs, (length, *obs_shape)), dtype=obs_dtype)
+        self.act_buf = np.zeros(shape=combined_shape(num_envs, (length, *act_shape)), dtype=act_dtype)
         self.adv_buf = np.zeros(shape=(num_envs, length), dtype=np.float32)
         self.rew_buf = np.zeros(shape=(num_envs, length), dtype=np.float32)
         self.ret_buf = np.zeros(shape=(num_envs, length), dtype=np.float32)

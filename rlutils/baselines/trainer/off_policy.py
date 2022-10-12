@@ -39,9 +39,7 @@ def run_offpolicy(env_name: str,
 
     # setup seed
     seeder = rl_infra.Seeder(seed=seed, backend=backend)
-    seeder.setup_np_global_seed()
-    seeder.setup_random_global_seed()
-    seeder.setup_backend_seed()
+    seeder.setup_global_seed()
 
     if env_fn is None:
         env_fn = lambda: gym.make(env_name)
@@ -69,7 +67,7 @@ def run_offpolicy(env_name: str,
     env.action_space.seed(seeder.generate_seed())
 
     # replay buffer
-    replay_buffer = ReplayBuffer.from_env(env=env, capacity=replay_size, is_vec_env=True,
+    replay_buffer = ReplayBuffer.from_env(env=env_fn(), capacity=replay_size,
                                           seed=seeder.generate_seed(),
                                           memory_efficient=False)
 

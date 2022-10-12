@@ -10,19 +10,13 @@ def combined_shape(length, shape=None):
     return (length, shape) if np.isscalar(shape) else (length, *shape)
 
 
-def get_data_spec_from_env(env, memory_efficient=False, is_vec_env=False):
+def get_data_spec_from_env(env, memory_efficient=False):
     if memory_efficient:
         obs_spec = None
     else:
-        if is_vec_env:
-            obs_spec = env.single_observation_space
-        else:
-            obs_spec = env.observation_space
+        obs_spec = env.observation_space
 
-    if is_vec_env:
-        act_spec = env.single_action_space
-    else:
-        act_spec = env.action_space
+    act_spec = env.action_space
 
     data_spec = {
         'obs': obs_spec,
