@@ -1,4 +1,5 @@
 import threading
+from typing import Dict
 
 import numpy as np
 from gym.utils import seeding
@@ -57,3 +58,12 @@ class UniformReplayBuffer(object):
     def from_env(cls, env, memory_efficient, **kwargs):
         data_spec = utils.get_data_spec_from_env(env, memory_efficient=memory_efficient)
         return cls(data_spec=data_spec, memory_efficient=memory_efficient, **kwargs)
+
+    @classmethod
+    def from_dataset(cls, dataset: Dict[str, np.ndarray], **kwargs):
+        # sanity check
+        data_spec, capacity = utils.get_data_spec_from_dataset(dataset)
+        replay_buffer = cls(data_spec=data_spec, capacity=capacity, **kwargs)
+        replay_buffer.add(dataset)
+        assert replay_buffer.is_full()
+        return replay_buffer

@@ -329,14 +329,20 @@ from rlutils.logx import EpochLogger, setup_logger_kwargs
 from tqdm.auto import trange
 
 from rlutils.replay_buffers import UniformReplayBuffer
-
+import d4rl
 
 def run_d4rl_cql(env_name: str,
                  exp_name: str = None,
                  asynchronous=False,
                  # agent
-                 make_agent_fn: Callable = None,
+                 policy_mlp_hidden=256,
+                 policy_lr=3e-5,
+                 q_mlp_hidden=256,
+                 q_lr=3e-4,
+                 alpha=0.2,
+                 tau=5e-3,
                  gamma=0.99,
+                 cql_threshold=-5.,
                  # runner args
                  epochs=100,
                  steps_per_epoch=10000,
@@ -358,7 +364,11 @@ def run_d4rl_cql(env_name: str,
     env_fn = rlutils.gym.utils.wrap_env_fn(env_fn, truncate_obs_dtype=True, normalize_action_space=True)
 
     # agent
-    agent = CQLContinuousAgent(env=env_fn())
+    env = env_fn()
+    dataset =
+    agent = CQLContinuousAgent(env=env, policy_lr=policy_lr, policy_mlp_hidden=policy_mlp_hidden,
+                               q_mlp_hidden=q_mlp_hidden, q_lr=q_lr, alpha=alpha,
+                               tau=tau, gamma=gamma, cql_threshold=cql_threshold)
 
     # setup logger
     if exp_name is None:
@@ -371,9 +381,7 @@ def run_d4rl_cql(env_name: str,
     timer = rl_infra.StopWatch()
 
     # replay buffer
-    replay_buffer = UniformReplayBuffer.from_env(env=env_fn(), capacity=replay_size,
-                                                 seed=seeder.generate_seed(),
-                                                 memory_efficient=False)
+    replay_buffer = UniformReplayBuffer.from_dataset(dataset=dataset, seed=seeder.generate_seed())
 
     # setup tester
     tester = rl_infra.Tester(env_fn=env_fn, num_parallel_env=num_test_episodes,
@@ -405,7 +413,6 @@ def run_d4rl_cql(env_name: str,
 
 if __name__ == '__main__':
     from rlutils.infra.runner import run_func_as_main
-    import d4rl
 
     run_func_as_main(func=run_cql, passed_args={
         'dataset':

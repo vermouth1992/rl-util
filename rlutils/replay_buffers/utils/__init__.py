@@ -1,3 +1,5 @@
+from typing import Dict
+
 import gym
 import numpy as np
 
@@ -8,6 +10,18 @@ def combined_shape(length, shape=None):
     if shape is None:
         return (length,)
     return (length, shape) if np.isscalar(shape) else (length, *shape)
+
+
+def get_data_spec_from_dataset(dataset: Dict[str, np.ndarray]):
+    data_spec = {}
+    data_size = None
+    for key, data in dataset.items():
+        data_spec[key] = gym.spaces.Space(shape=data.shape[1:], dtype=data.dtype)
+        if data_size is None:
+            data_size = data.shape[0]
+        else:
+            assert data_size == data.shape[0]
+    return data_spec, data_size
 
 
 def get_data_spec_from_env(env, memory_efficient=False):
