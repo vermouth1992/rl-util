@@ -1,15 +1,18 @@
 import copy
-import pprint
-from typing import Callable, Dict
 
 import gym
 import numpy as np
 import torch.nn as nn
 import torch.optim
+from tqdm.auto import trange
 
+import rlutils.gym
 import rlutils.infra as rl_infra
+import rlutils.pytorch as rlu
 import rlutils.pytorch.utils as ptu
 from rlutils.interface.agent import Agent
+from rlutils.logx import EpochLogger, setup_logger_kwargs
+from rlutils.replay_buffers import UniformReplayBuffer
 
 
 class CQLContinuousAgent(Agent, nn.Module):
@@ -30,7 +33,8 @@ class CQLContinuousAgent(Agent, nn.Module):
                  target_entropy=None,
                  device=None
                  ):
-        super(CQLContinuousAgent, self).__init__()
+        nn.Module.__init__(self)
+        Agent.__init__(self, env=env)
         self.obs_spec = env.observation_space
         self.act_spec = env.action_space
         self.num_samples = num_samples
@@ -118,7 +122,7 @@ class CQLContinuousAgent(Agent, nn.Module):
         cql_q_values_pi = torch.reshape(cql_q_values_pi, shape=(self.num_samples, batch_size))
 
         pi_random_actions = torch.rand(size=(self.num_samples * batch_size, self.act_dim),
-                                       device=ptu.device) * 2. - 1.  # [-1., 1]
+                                       device=self.device) * 2. - 1.  # [-1., 1]
         log_prob_random = -np.log(2.)  # uniform distribution from [-1, 1], prob=0.5
         cql_q_values_random = self.q_network((obs_tile, pi_random_actions), training=False) - log_prob_random
         cql_q_values_random = torch.reshape(cql_q_values_random, shape=(self.num_samples, batch_size))
@@ -183,7 +187,7 @@ class CQLContinuousAgent(Agent, nn.Module):
         raise NotImplementedError
 
     def act_batch_test(self, obs):
-        obs = torch.as_tensor(obs).to(ptu.device)
+        obs = torch.as_tensor(obs).to(self.device)
         return self.act_batch_test_pytorch(obs).cpu().numpy()
 
     def act_batch_test_pytorch(self, obs):
@@ -202,27 +206,6 @@ class CQLContinuousAgent(Agent, nn.Module):
             return actions
 
 
-class CQLUpdater(rl_infra.updater.OffPolicyUpdater):
-    def __init__(self, agent, replay_buffer, policy_delay, update_per_step, update_every, behavior_cloning_steps):
-        super(CQLUpdater, self).__init__(agent, replay_buffer, policy_delay, update_per_step, update_every)
-        self.policy_delay = policy_delay
-        self.update_per_step = update_per_step
-        self.update_every = update_every
-        self.behavior_cloning_steps = behavior_cloning_steps
-
-    def update(self, global_step):
-        if global_step % self.update_every == 0:
-            for _ in range(int(self.update_per_step * self.update_every)):
-                batch = self.replay_buffer.sample()
-                batch['update_target'] = ((self.policy_updates + 1) % self.policy_delay == 0)
-                if global_step < self.behavior_cloning_steps:
-                    batch['behavior_cloning'] = True
-                else:
-                    batch['behavior_cloning'] = False
-                self.agent.train_on_batch(data=batch)
-                self.policy_updates += 1
-
-
 class Tester(rl_infra.Tester):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -238,99 +221,6 @@ class Tester(rl_infra.Tester):
         super().log_tabular()
 
 
-class Runner(rl_infra.runner.OfflineRunner):
-    def setup_tester(self, num_test_episodes, **kwargs):
-        test_env_seed = self.seeder.generate_seed()
-        self.seeds_info['test_env'] = test_env_seed
-        self.num_test_episodes = num_test_episodes
-        self.tester = Tester(env_fn=self.env_fn, num_parallel_env=num_test_episodes,
-                             asynchronous=self.asynchronous, seed=test_env_seed)
-
-    def setup_updater(self, update_after, policy_delay, update_per_step, update_every, behavior_cloning_steps=5000):
-        self.updater = CQLUpdater(agent=self.agent,
-                                  replay_buffer=self.replay_buffer,
-                                  policy_delay=policy_delay,
-                                  update_per_step=update_per_step,
-                                  update_every=update_every,
-                                  behavior_cloning_steps=behavior_cloning_steps)
-
-    @classmethod
-    def main(cls,
-             env_name,
-             env_fn: Callable = None,
-             exp_name: str = None,
-             steps_per_epoch=4000,
-             epochs=250,
-             behavior_cloning_epochs=2,
-             update_every=1,
-             update_per_step=1,
-             policy_delay=1,
-             batch_size=256,
-             num_test_episodes=20,
-             seed=1,
-             # agent args
-             # sac args
-             policy_mlp_hidden=256,
-             policy_lr=3e-5,
-             q_mlp_hidden=256,
-             q_lr=3e-4,
-             alpha=0.2,
-             tau=5e-3,
-             gamma=0.99,
-             cql_threshold=-5.,
-             # replay
-             dataset: Dict = None,
-             logger_path: str = None,
-             **kwargs
-             ):
-        ptu.set_device('cuda')
-
-        agent_kwargs = dict(
-            policy_mlp_hidden=policy_mlp_hidden,
-            policy_lr=policy_lr,
-            q_mlp_hidden=q_mlp_hidden,
-            q_lr=q_lr,
-            alpha=alpha,
-            alpha_lr=q_lr,
-            alpha_cql=alpha,
-            alpha_cql_lr=q_lr,
-            tau=tau,
-            gamma=gamma,
-            target_entropy=None,
-            cql_threshold=cql_threshold
-        )
-
-        config = locals()
-
-        runner = cls(seed=seed, steps_per_epoch=steps_per_epoch, epochs=epochs,
-                     exp_name=exp_name, logger_path=logger_path)
-        runner.setup_env(env_name=env_name, env_fn=env_fn, num_parallel_env=1,
-                         asynchronous=False, num_test_episodes=num_test_episodes)
-        runner.setup_agent(agent_cls=CQLAgent, **agent_kwargs)
-        runner.setup_replay_buffer(dataset=dataset,
-                                   batch_size=batch_size)
-        runner.setup_tester(num_test_episodes=num_test_episodes)
-        runner.setup_updater(update_after=-1,
-                             policy_delay=policy_delay,
-                             update_per_step=update_per_step,
-                             update_every=update_every,
-                             behavior_cloning_steps=behavior_cloning_epochs * steps_per_epoch)
-        runner.setup_logger(config=config, tensorboard=False)
-
-        pprint.pprint(runner.seeds_info)
-
-        runner.run()
-
-
-import rlutils.pytorch as rlu
-import rlutils.gym
-from typing import Union
-from rlutils.logx import EpochLogger, setup_logger_kwargs
-from tqdm.auto import trange
-
-from rlutils.replay_buffers import UniformReplayBuffer
-import d4rl
-
 def run_d4rl_cql(env_name: str,
                  exp_name: str = None,
                  asynchronous=False,
@@ -344,19 +234,18 @@ def run_d4rl_cql(env_name: str,
                  gamma=0.99,
                  cql_threshold=-5.,
                  # runner args
-                 epochs=100,
-                 steps_per_epoch=10000,
+                 epochs=250,
+                 steps_per_epoch=4000,
                  num_test_episodes=30,
                  batch_size=256,
                  seed=1,
                  behavior_cloning_steps=20000,
-                 logger_path: str = None,
-                 backend: Union[str, None] = None
+                 logger_path: str = None
                  ):
     config = locals()
 
     # setup seed
-    seeder = rl_infra.Seeder(seed=seed, backend=backend)
+    seeder = rl_infra.Seeder(seed=seed, backend='torch')
     seeder.setup_global_seed()
 
     # environment
@@ -365,10 +254,19 @@ def run_d4rl_cql(env_name: str,
 
     # agent
     env = env_fn()
-    dataset =
+
+    import d4rl
+    dataset = d4rl.qlearning_dataset(env)
+    dataset['obs'] = dataset.pop('observations').astype(np.float32)
+    dataset['act'] = dataset.pop('actions').astype(np.float32)
+    dataset['next_obs'] = dataset.pop('next_observations').astype(np.float32)
+    dataset['rew'] = dataset.pop('rewards').astype(np.float32)
+    dataset['done'] = dataset.pop('terminals').astype(np.float32)
+
     agent = CQLContinuousAgent(env=env, policy_lr=policy_lr, policy_mlp_hidden=policy_mlp_hidden,
                                q_mlp_hidden=q_mlp_hidden, q_lr=q_lr, alpha=alpha,
-                               tau=tau, gamma=gamma, cql_threshold=cql_threshold)
+                               tau=tau, gamma=gamma, cql_threshold=cql_threshold,
+                               device=ptu.get_cuda_device())
 
     # setup logger
     if exp_name is None:
@@ -384,8 +282,8 @@ def run_d4rl_cql(env_name: str,
     replay_buffer = UniformReplayBuffer.from_dataset(dataset=dataset, seed=seeder.generate_seed())
 
     # setup tester
-    tester = rl_infra.Tester(env_fn=env_fn, num_parallel_env=num_test_episodes,
-                             asynchronous=asynchronous, seed=seeder.generate_seed())
+    tester = Tester(env_fn=env_fn, num_parallel_env=num_test_episodes,
+                    asynchronous=asynchronous, seed=seeder.generate_seed())
 
     # register log_tabular args
     timer.set_logger(logger=logger)
@@ -414,6 +312,4 @@ def run_d4rl_cql(env_name: str,
 if __name__ == '__main__':
     from rlutils.infra.runner import run_func_as_main
 
-    run_func_as_main(func=run_cql, passed_args={
-        'dataset':
-    })
+    run_func_as_main(func=run_d4rl_cql)

@@ -1,7 +1,6 @@
 import gym.spaces
 import torch
 from torch import nn
-import torch
 
 import rlutils.pytorch as rlu
 
@@ -62,7 +61,7 @@ class MLPActorCriticSeparate(nn.Module):
 
 
 class MLPActorCriticShared(nn.Module):
-    raise NotImplementedError
+    pass
 
 
 class AtariActorCriticShared(nn.Module):

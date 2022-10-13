@@ -8,13 +8,9 @@ from . import storage, utils
 
 
 class UniformReplayBuffer(object):
-    def __init__(self, capacity, data_spec, memory_efficient, seed=None):
+    def __init__(self, capacity, data_spec, seed=None):
         self.data_spec = data_spec
-        self.memory_efficient = memory_efficient
-        if self.memory_efficient:
-            self.storage = storage.MemoryEfficientPyDictStorage(data_spec=self.data_spec, capacity=capacity)
-        else:
-            self.storage = storage.PyDictStorage(self.data_spec, capacity)
+        self.storage = storage.PyDictStorage(self.data_spec, capacity)
         self.set_seed(seed)
 
         self.lock = threading.Lock()
@@ -49,20 +45,21 @@ class UniformReplayBuffer(object):
         with self.lock:
             idxs = self.np_random.integers(0, len(self.storage), size=batch_size)
             data = self.storage[idxs]
-            if self.memory_efficient:
-                for key in self.storage.obj_key:
-                    data[key] = np.array(data[key])
+            for key in self.storage.obj_key:
+                data[key] = np.array(data[key])
             return data
 
     @classmethod
     def from_env(cls, env, memory_efficient, **kwargs):
         data_spec = utils.get_data_spec_from_env(env, memory_efficient=memory_efficient)
-        return cls(data_spec=data_spec, memory_efficient=memory_efficient, **kwargs)
+        return cls(data_spec=data_spec, **kwargs)
 
     @classmethod
-    def from_dataset(cls, dataset: Dict[str, np.ndarray], **kwargs):
+    def from_dataset(cls, dataset: Dict[str, np.ndarray], obj_keys=None, **kwargs):
         # sanity check
-        data_spec, capacity = utils.get_data_spec_from_dataset(dataset)
+        if obj_keys is None:
+            obj_keys = set()
+        data_spec, capacity = utils.get_data_spec_from_dataset(dataset, obj_keys=obj_keys)
         replay_buffer = cls(data_spec=data_spec, capacity=capacity, **kwargs)
         replay_buffer.add(dataset)
         assert replay_buffer.is_full()

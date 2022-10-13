@@ -12,11 +12,18 @@ def combined_shape(length, shape=None):
     return (length, shape) if np.isscalar(shape) else (length, *shape)
 
 
-def get_data_spec_from_dataset(dataset: Dict[str, np.ndarray]):
+def get_data_spec_from_dataset(dataset: Dict[str, np.ndarray], obj_keys=None):
+    if obj_keys is None:
+        obj_keys = set()
     data_spec = {}
     data_size = None
     for key, data in dataset.items():
-        data_spec[key] = gym.spaces.Space(shape=data.shape[1:], dtype=data.dtype)
+        if key in obj_keys:
+            print(f'Store key {key} as object')
+            data_spec[key] = None
+        else:
+            data_spec[key] = gym.spaces.Space(shape=data.shape[1:], dtype=data.dtype)
+
         if data_size is None:
             data_size = data.shape[0]
         else:
