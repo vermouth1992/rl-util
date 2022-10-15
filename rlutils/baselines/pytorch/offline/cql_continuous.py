@@ -89,7 +89,7 @@ class CQLContinuousAgent(Agent, nn.Module):
         with torch.no_grad():
             batch_size = next_obs.shape[0]
             next_obs = torch.tile(next_obs, (self.num_samples, 1))
-            actions = self.policy_net.select_action((next_obs, False))
+            actions = self.target_policy_net.select_action((next_obs, False))
             q_values = self.target_q_network(inputs=(next_obs, actions), training=False)
             q_values = torch.reshape(q_values, (self.num_samples, batch_size))  # (num_samples, None)
             if max_backup:
