@@ -63,7 +63,7 @@ class CQLDiscreteAgent(Agent, nn.Module):
             target_q_values = self.target_q_network(next_obs)  # (None, act_dim)
             if self.double_q:
                 target_actions = torch.argmax(self.q_network(next_obs), dim=-1)  # (None,)
-                target_q_values = gather_q_values(target_q_values, target_actions)
+                target_q_values = rlu.functional.gather_q_values(target_q_values, target_actions)
             else:
                 target_q_values = torch.max(target_q_values, dim=-1)[0]
             return target_q_values
@@ -73,33 +73,18 @@ class CQLDiscreteAgent(Agent, nn.Module):
         with torch.no_grad():
             alpha_cql = self.log_cql()
             next_q_values = self._compute_next_obs_q(next_obs)
-            q_target = rlu.functional.compute_target_value(rew, self.gamma, done, next_q_values)
+            target_q_values = rew + self.gamma * (1. - done) * next_q_values
 
         # q loss
         self.q_optimizer.zero_grad()
-        q_values = self.q_network(obs)
-        q_values = rlu.functional.gather_q_values(q_values, act)
+        q_values_all = self.q_network(obs)  # (None, act_dim)
+        q_values = rlu.functional.gather_q_values(q_values_all, act)  # (None,)
 
-        mse_q_values_loss = torch.nn.functional.mse_loss(q_values, q_target)
+        mse_q_values_loss = torch.nn.functional.mse_loss(q_values, target_q_values)
 
-        # in-distribution q values is simply q_values
-        # max_a Q(s,a)
-        with torch.no_grad():
-            obs_tile = torch.tile(obs, (self.num_samples, 1))
-            actions, log_prob, _, _ = self.policy_net((obs_tile, False))  # (num_samples * None, act_dim)
-        cql_q_values_pi = self.q_network((obs_tile, actions), training=False) - log_prob  # (num_samples * None)
-        cql_q_values_pi = torch.reshape(cql_q_values_pi, shape=(self.num_samples, batch_size))
+        cql_q_values = torch.logsumexp(q_values_all, dim=-1)  # (None,)
 
-        pi_random_actions = torch.rand(size=(self.num_samples * batch_size, self.act_dim),
-                                       device=self.device) * 2. - 1.  # [-1., 1]
-        log_prob_random = -np.log(2.)  # uniform distribution from [-1, 1], prob=0.5
-        cql_q_values_random = self.q_network((obs_tile, pi_random_actions), training=False) - log_prob_random
-        cql_q_values_random = torch.reshape(cql_q_values_random, shape=(self.num_samples, batch_size))
-
-        cql_q_values = torch.cat((cql_q_values_pi, cql_q_values_random), dim=0)  # (2 * num_samples, None)
-        cql_q_values = torch.logsumexp(cql_q_values, dim=0) - np.log(2 * self.num_samples)
-
-        cql_threshold = torch.mean(cql_q_values - torch.min(q_values, dim=0)[0].detach(), dim=0)
+        cql_threshold = torch.mean(cql_q_values - q_values.detach(), dim=0)
 
         q_loss = mse_q_values_loss + alpha_cql * cql_threshold
         q_loss.backward()
@@ -114,22 +99,17 @@ class CQLDiscreteAgent(Agent, nn.Module):
         self.cql_alpha_optimizer.step()
 
         info = dict(
-            Q1Vals=q_values[0],
-            Q2Vals=q_values[1],
-            LogPi=log_prob,
-            Alpha=alpha,
+            QVals=q_values,
             LossQ=mse_q_values_loss,
-            LossAlpha=alpha_loss,
-            LossPi=policy_loss,
             AlphaCQL=alpha_cql,
             AlphaCQLLoss=alpha_cql_loss,
             DeltaCQL=cql_threshold,
         )
         return info
 
-    def train_on_batch(self, data, behavior_cloning=False):
+    def train_on_batch(self, data):
         data = ptu.convert_dict_to_tensor(data, self.device)
-        info = self.train_nets_cql_pytorch(**data, behavior_cloning=behavior_cloning)
+        info = self.train_nets_cql_pytorch(**data)
         self.update_target()
         self.logger.store(**info)
 
@@ -142,56 +122,68 @@ class CQLDiscreteAgent(Agent, nn.Module):
 
     def act_batch_test_pytorch(self, obs):
         with torch.no_grad():
-            batch_size = obs.shape[0]
-            obs_tile = torch.tile(obs, (self.num_samples, 1))
-            actions = self.policy_net.select_action((obs_tile, False))  # (num_samples * None, act_dim)
-            q_values = self.q_network((obs_tile, actions), training=False)  # (num_samples * None)
-            q_values = torch.reshape(q_values, shape=(self.num_samples, batch_size))
-            max_idx = torch.max(q_values, dim=0)[1]  # (None)
-            max_idx = torch.tile(max_idx, (self.act_dim,))  # (None * act_dim,)
-            actions = torch.reshape(actions, shape=(
-                self.num_samples, batch_size * self.act_dim))  # (num_samples, None * act_dim)
-            actions = actions.gather(0, max_idx.unsqueeze(0)).squeeze(0)  # (None * act_dim)
-            actions = torch.reshape(actions, shape=(batch_size, self.act_dim))
+            q_values = self.q_network(obs)
+            actions = torch.argmax(q_values, dim=-1).cpu().numpy()
             return actions
 
 
-class Tester(rl_infra.Tester):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.dummy_env = self.env_fn()
-
-    def test_agent(self, **kwargs):
-        ep_ret, ep_len = super().test_agent(**kwargs)
-        normalized_ep_ret = self.dummy_env.get_normalized_score(ep_ret) * 100
-        self.logger.store(NormalizedTestEpRet=normalized_ep_ret)
-
-    def log_tabular(self):
-        self.logger.log_tabular('NormalizedTestEpRet', with_min_and_max=True)
-        super().log_tabular()
+from gym.wrappers import LazyFrames
+from collections import deque
 
 
-def run_d4rl_cql(env_name: str,
-                 exp_name: str = None,
-                 asynchronous=False,
-                 # agent
-                 policy_mlp_hidden=256,
-                 policy_lr=3e-5,
-                 q_mlp_hidden=256,
-                 q_lr=3e-4,
-                 alpha=0.2,
-                 tau=5e-3,
-                 gamma=0.99,
-                 cql_threshold=-5.,
-                 # runner args
-                 epochs=250,
-                 steps_per_epoch=4000,
-                 num_test_episodes=30,
-                 batch_size=256,
-                 seed=1,
-                 behavior_cloning_steps=20000,
-                 logger_path: str = None
-                 ):
+def create_qlearning_dataset_atari(env, num_stack=4):
+    dataset = env.get_dataset()
+    obs_deque = deque(maxlen=num_stack)
+
+    for _ in range(num_stack):
+        obs_deque.append(dataset['observations'][0])
+
+    N = dataset['rewards'].shape[0]
+    output_dataset = {
+        'observations': np.zeros(shape=(N - 1,), dtype=np.object),
+        'actions': np.zeros(shape=(N - 1,), dtype=np.int64),
+        'next_observations': np.zeros(shape=(N - 1,), dtype=np.object),
+        'rewards': np.zeros(shape=(N - 1,), dtype=np.float32),
+        'terminals': np.zeros(shape=(N - 1,), dtype=np.float32),
+    }
+
+    for i in range(N - 1):
+        output_dataset['observations'][i] = LazyFrames(frames=list(obs_deque))
+        output_dataset['actions'][i] = dataset['actions'][i]
+        output_dataset['rewards'][i] = dataset['rewards'][i]
+        output_dataset['terminals'][i] = dataset['terminals'][i]
+
+        obs_deque.append(dataset['observations'][i + 1])
+
+        output_dataset['next_observations'][i] = LazyFrames(frames=list(obs_deque))
+
+        if dataset['terminals'][i]:
+            for _ in range(num_stack):
+                obs_deque.append(dataset['observations'][i + 1])
+
+        return output_dataset
+
+
+def run_atari_cql(env_name: str,
+                  exp_name: str = None,
+                  asynchronous=False,
+                  # agent
+                  policy_mlp_hidden=256,
+                  policy_lr=3e-5,
+                  q_mlp_hidden=256,
+                  q_lr=3e-4,
+                  alpha=0.2,
+                  tau=5e-3,
+                  gamma=0.99,
+                  cql_threshold=-5.,
+                  # runner args
+                  epochs=250,
+                  steps_per_epoch=4000,
+                  num_test_episodes=30,
+                  batch_size=64,
+                  seed=1,
+                  logger_path: str = None
+                  ):
     config = locals()
 
     # setup seed
@@ -213,10 +205,16 @@ def run_d4rl_cql(env_name: str,
     dataset['rew'] = dataset.pop('rewards').astype(np.float32)
     dataset['done'] = dataset.pop('terminals').astype(np.float32)
 
-    agent = CQLContinuousAgent(env=env, policy_lr=policy_lr, policy_mlp_hidden=policy_mlp_hidden,
-                               q_mlp_hidden=q_mlp_hidden, q_lr=q_lr, alpha=alpha,
-                               tau=tau, gamma=gamma, cql_threshold=cql_threshold,
-                               device=ptu.get_cuda_device())
+    def make_q_net(env):
+        net = rlu.nn.values.LazyAtariDuelQModule(action_dim=env.action_space.n)
+        dummy_inputs = torch.randn(1, *env.observation_space.shape)
+        net(dummy_inputs)
+        print(net)
+        return net
+
+    agent = CQLDiscreteAgent(env=env, make_q_net=make_q_net, q_lr=q_lr,
+                             tau=tau, gamma=gamma, cql_threshold=cql_threshold,
+                             device=ptu.get_cuda_device())
 
     # setup logger
     if exp_name is None:
@@ -232,8 +230,8 @@ def run_d4rl_cql(env_name: str,
     replay_buffer = UniformReplayBuffer.from_dataset(dataset=dataset, seed=seeder.generate_seed())
 
     # setup tester
-    tester = Tester(env_fn=env_fn, num_parallel_env=num_test_episodes,
-                    asynchronous=asynchronous, seed=seeder.generate_seed())
+    tester = rl_infra.Tester(env_fn=env_fn, num_parallel_env=num_test_episodes,
+                             asynchronous=asynchronous, seed=seeder.generate_seed())
 
     # register log_tabular args
     timer.set_logger(logger=logger)
@@ -247,7 +245,7 @@ def run_d4rl_cql(env_name: str,
         for t in trange(steps_per_epoch, desc=f'Epoch {epoch}/{epochs}'):
             # Update handling
             batch = replay_buffer.sample(batch_size)
-            agent.train_on_batch(data=batch, behavior_cloning=policy_updates < behavior_cloning_steps)
+            agent.train_on_batch(data=batch)
             policy_updates += 1
 
         tester.test_agent(get_action=lambda obs: agent.act_batch_test(obs),

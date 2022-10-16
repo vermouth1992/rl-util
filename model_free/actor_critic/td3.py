@@ -5,10 +5,11 @@ To obtain DDPG, set target smooth to zero and Q network ensembles to 1.
 
 import copy
 
-import rlutils.pytorch as rlu
-import rlutils.pytorch.utils as ptu
 import torch
 import torch.nn as nn
+
+import rlutils.pytorch as rlu
+import rlutils.pytorch.utils as ptu
 from rlutils.gym.utils import verify_continuous_action_space
 from rlutils.interface.agent import OffPolicyAgent
 
@@ -178,7 +179,7 @@ class TD3Agent(nn.Module, OffPolicyAgent):
 
 
 if __name__ == '__main__':
-    from rlutils.baselines.trainer import run_offpolicy
+    from model_free.trainer import run_offpolicy
     from rlutils.infra.runner import run_func_as_main
 
     make_agent_fn = lambda env: TD3Agent(env, device=ptu.get_cuda_device())

@@ -4,8 +4,8 @@ import rlutils.infra as rl_infra
 import rlutils.np as rln
 import rlutils.pytorch as rlu
 import rlutils.pytorch.utils as ptu
-from rlutils.baselines.pytorch.mf.q_learning.dqn import DQN
-from rlutils.baselines.trainer import run_offpolicy_atari
+from mf.q_learning.dqn import DQN
+from mf.trainer import run_offpolicy_atari
 
 if __name__ == '__main__':
     def make_q_net(env):

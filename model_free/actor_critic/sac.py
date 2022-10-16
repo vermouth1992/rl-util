@@ -9,8 +9,8 @@ from torch import nn
 
 import rlutils.pytorch as rlu
 import rlutils.pytorch.utils as ptu
-from rlutils.interface.agent import OffPolicyAgent
 from rlutils.gym.utils import verify_continuous_action_space
+from rlutils.interface.agent import OffPolicyAgent
 
 
 class SACAgent(OffPolicyAgent, nn.Module):
@@ -158,7 +158,7 @@ class SACAgent(OffPolicyAgent, nn.Module):
 
 
 if __name__ == '__main__':
-    from rlutils.baselines.trainer import run_offpolicy
+    from model_free.trainer import run_offpolicy
     from rlutils.infra.runner import run_func_as_main
 
     make_agent_fn = lambda env: SACAgent(env, device=ptu.get_cuda_device())

@@ -147,7 +147,7 @@ class DQN(OffPolicyAgent, nn.Module):
 
 
 if __name__ == '__main__':
-    from rlutils.baselines.trainer import run_offpolicy
+    from mf.trainer import run_offpolicy
     import rlutils.infra as rl_infra
 
     make_agent_fn = lambda env: DQN(env, device=ptu.get_cuda_device())

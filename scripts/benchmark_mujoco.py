@@ -10,7 +10,7 @@ import rlutils.infra as rl_infra
 
 def thunk(**kwargs):
     from rlutils.algos.tf.mf import sac
-    from rlutils.baselines.tf.mf import td3
+    from baselines.tf.mf import td3
     temp = [sac, td3]
     algo = kwargs.pop('algo')
     eval(f'{algo}.Runner.main')(**kwargs)
