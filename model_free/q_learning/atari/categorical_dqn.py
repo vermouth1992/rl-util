@@ -2,8 +2,8 @@ import rlutils.infra as rl_infra
 import rlutils.np as rln
 import rlutils.pytorch as rlu
 import rlutils.pytorch.utils as ptu
-from mf.q_learning.categorical_dqn import CategoricalDQN
-from mf.trainer import run_offpolicy_atari
+from model_free.q_learning.categorical_dqn import CategoricalDQN
+from model_free.trainer import run_offpolicy_atari
 
 if __name__ == '__main__':
     def make_q_net(env, num_atoms):
@@ -21,11 +21,9 @@ if __name__ == '__main__':
     make_agent_fn = lambda env: CategoricalDQN(env=env,
                                                make_q_net=make_q_net,
                                                epsilon_greedy_scheduler=epsilon_greedy_scheduler,
-                                               test_random_prob=0.01,
                                                device=ptu.get_cuda_device(),
                                                v_min=-10.,
-                                               v_max=10.,
-                                               n_steps=3)
+                                               v_max=10.)
     rl_infra.runner.run_func_as_main(run_offpolicy_atari, passed_args={
         'make_agent_fn': make_agent_fn,
         'backend': 'torch',

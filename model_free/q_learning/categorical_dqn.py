@@ -3,7 +3,7 @@ import torch.optim
 
 import rlutils.pytorch as rlu
 import rlutils.pytorch.utils as ptu
-from mf.q_learning.dqn import DQN
+from model_free.q_learning.dqn import DQN
 
 
 class CategoricalDQN(DQN):
@@ -31,7 +31,7 @@ class CategoricalDQN(DQN):
 
         self.to(self.device)
 
-    def compute_target_values(self, next_obs, rew, done):
+    def compute_target_values(self, next_obs, rew, done, gamma):
         # double q doesn't perform very well.
         with torch.no_grad():
             batch_size = next_obs.shape[0]
@@ -46,15 +46,15 @@ class CategoricalDQN(DQN):
             target_logits = target_logits[
                 torch.arange(batch_size, device=ptu.device), target_actions]  # (None, num_atoms)
             # atom values
-            target_q_atoms = rew[:, None] + self.gamma * (1. - done[:, None]) * self.support[None, :]
+            target_q_atoms = rew[:, None] + gamma[:, None] * (1. - done[:, None]) * self.support[None, :]
             target_q_atoms = torch.clamp(target_q_atoms, min=self.v_min, max=self.v_max)  # (None, num_atoms)
             atom_distribution = 1. - torch.abs(target_q_atoms[:, :, None] - self.support[None, None, :]) / self.delta_z
             atom_distribution = torch.clamp(atom_distribution, min=0., max=1.)  # (None, j, i)
             probability = torch.sum(atom_distribution * target_logits[:, :, None], dim=1)  # (None, num_atoms)
             return probability
 
-    def train_on_batch_torch(self, obs, act, next_obs, rew, done, weights=None):
-        target_q_values = self.compute_target_values(next_obs, rew, done)  # (None, num_atoms)
+    def train_on_batch_torch(self, obs, act, next_obs, rew, done, gamma, weights=None):
+        target_q_values = self.compute_target_values(next_obs, rew, done, gamma)  # (None, num_atoms)
         self.q_optimizer.zero_grad()
         q_values = self.q_network(obs, act, log_prob=True)  # (None, num_atoms)
         cross_entropy = -torch.sum(target_q_values * q_values, dim=-1)
@@ -78,7 +78,7 @@ class CategoricalDQN(DQN):
 
         return info
 
-    def act_batch_deterministic(self, obs):
+    def act_batch_test(self, obs):
         obs = torch.as_tensor(obs, device=self.device)
         with torch.no_grad():
             target_logits_action = self.q_network(obs)  # (None, act_dim, num_atoms)
@@ -88,7 +88,7 @@ class CategoricalDQN(DQN):
 
 
 if __name__ == '__main__':
-    from mf.trainer import run_offpolicy
+    from model_free.trainer import run_offpolicy
     import rlutils.infra as rl_infra
 
     make_agent_fn = lambda env: CategoricalDQN(env=env, device=ptu.get_cuda_device())

@@ -9,6 +9,7 @@ class BatchSampler(Sampler):
     def __init__(self, n_steps, gamma, **kwargs):
         super(BatchSampler, self).__init__(**kwargs)
         self.n_steps = n_steps
+        self.gamma = gamma
         self.gamma_vector = gamma ** np.arange(self.n_steps)
         self.gamma_vector = np.expand_dims(self.gamma_vector, axis=0)  # (1, n_steps)
         self.oa_queue = collections.deque(maxlen=n_steps)
@@ -66,7 +67,8 @@ class BatchSampler(Sampler):
                     act=last_a[valid],
                     rew=last_r[valid],
                     next_obs=next_obs[valid],
-                    done=true_d[valid]
+                    done=true_d[valid],
+                    gamma=np.ones_like(true_d[valid]).astype(np.float32) * (self.gamma ** self.n_steps)
                 ))
 
             # Super critical, easy to overlook step: make sure to update

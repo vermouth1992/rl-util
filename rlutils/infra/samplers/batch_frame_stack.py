@@ -91,7 +91,8 @@ class BatchFrameStackSampler(BatchSampler):
                     act=last_a[valid],
                     rew=last_r[valid],
                     next_obs=valid_next_o,
-                    done=true_d[valid]
+                    done=true_d[valid],
+                    gamma=np.ones_like(true_d[valid]).astype(np.float32) * (self.gamma ** self.n_steps)
                 ))
 
             # End of trajectory handling

@@ -22,28 +22,21 @@ class DQN(OffPolicyAgent, nn.Module):
                                                          mlp_hidden=256, num_layers=3),
                  double_q=True,
                  q_lr=1e-4,
-                 gamma=0.99,
-                 n_steps=1,
                  huber_delta=None,
                  grad_norm=None,
                  epsilon_greedy_scheduler=rln.schedulers.ConstantSchedule(value=0.1),
                  target_update_freq=500,
-                 test_random_prob=None,
                  device=None,
                  ):
         OffPolicyAgent.__init__(self, env=env)
         nn.Module.__init__(self)
         self.grad_norm = grad_norm
         self.target_update_freq = target_update_freq
-        self.gamma = gamma ** n_steps
         self.double_q = double_q
         self.q_lr = q_lr
         self.obs_spec = env.observation_space
         self.act_dim = env.action_space.n
         self.epsilon_greedy_scheduler = epsilon_greedy_scheduler
-        self.test_random_prob = test_random_prob
-        if self.test_random_prob is not None:
-            assert self.test_random_prob >= 0. and self.test_random_prob <= 1.
         self.q_network = make_q_net(env)
         self.target_q_network = copy.deepcopy(self.q_network)
         rlu.nn.functional.freeze(self.target_q_network)
@@ -71,7 +64,7 @@ class DQN(OffPolicyAgent, nn.Module):
     def update_target(self):
         rlu.functional.hard_update(self.target_q_network, self.q_network)
 
-    def compute_target_values(self, next_obs, rew, done):
+    def compute_target_values(self, next_obs, rew, done, gamma):
         with torch.no_grad():
             target_q_values = self.target_q_network(next_obs)  # (None, act_dim)
             if self.double_q:
@@ -79,11 +72,11 @@ class DQN(OffPolicyAgent, nn.Module):
                 target_q_values = gather_q_values(target_q_values, target_actions)
             else:
                 target_q_values = torch.max(target_q_values, dim=-1)[0]
-            target_q_values = rew + self.gamma * (1. - done) * target_q_values
+            target_q_values = rew + gamma * (1. - done) * target_q_values
             return target_q_values
 
-    def train_on_batch_torch(self, obs, act, next_obs, rew, done, weights=None):
-        target_q_values = self.compute_target_values(next_obs, rew, done)
+    def train_on_batch_torch(self, obs, act, next_obs, rew, done, gamma, weights=None):
+        target_q_values = self.compute_target_values(next_obs, rew, done, gamma)
         self.q_optimizer.zero_grad()
         q_values = self.q_network(obs)
         q_values = gather_q_values(q_values, act)
@@ -126,28 +119,19 @@ class DQN(OffPolicyAgent, nn.Module):
             if np.random.rand() < epsilon:
                 actions[i] = np.random.randint(low=0, high=self.act_dim)
             else:
-                actions[i:i + 1] = self.act_batch_deterministic(obs[i:i + 1])
+                actions[i:i + 1] = self.act_batch_test(obs[i:i + 1])
         return actions
 
-    def act_batch_deterministic(self, obs):
+    def act_batch_test(self, obs):
         obs = torch.as_tensor(obs, device=self.device)
         with torch.no_grad():
             q_values = self.q_network(obs)
             actions = torch.argmax(q_values, dim=-1).cpu().numpy()
         return actions
 
-    def act_batch_test(self, obs):
-        actions = self.act_batch_deterministic(obs)
-        if self.test_random_prob is not None:
-            mask = np.random.rand(obs.shape[0]) < self.test_random_prob
-            random_actions = np.random.randint(low=0, high=self.act_dim, size=obs.shape[0])
-            actions[mask] = random_actions[mask]
-
-        return actions
-
 
 if __name__ == '__main__':
-    from mf.trainer import run_offpolicy
+    from model_free.trainer import run_offpolicy
     import rlutils.infra as rl_infra
 
     make_agent_fn = lambda env: DQN(env, device=ptu.get_cuda_device())

@@ -33,6 +33,7 @@ def run_offpolicy_atari(env_name: str,
                         epochs=200,
                         steps_per_epoch=10000,
                         num_test_episodes=10,
+                        test_random_prob=0.01,
                         start_steps=10000,
                         update_after=5000,
                         update_every=4,
@@ -87,7 +88,8 @@ def run_offpolicy_atari(env_name: str,
                                                        num_stack=num_stack)
 
     # setup tester
-    test_env_fn = lambda: gym.wrappers.FrameStack(env=env_fn(), num_stack=num_stack)
+    test_env_fn = lambda: rlutils.gym.wrappers.RandomAction(
+        env=gym.wrappers.FrameStack(env=env_fn(), num_stack=num_stack), prob=test_random_prob)
     tester = rl_infra.Tester(env_fn=test_env_fn, num_parallel_env=num_test_episodes,
                              asynchronous=asynchronous, seed=seeder.generate_seed())
 

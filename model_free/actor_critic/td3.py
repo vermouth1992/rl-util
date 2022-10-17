@@ -32,8 +32,6 @@ class TD3Agent(nn.Module, OffPolicyAgent):
                                                                                     num_ensembles=num_q_ensembles),
                  q_lr=3e-4,
                  tau=5e-3,
-                 gamma=0.99,
-                 n_steps=1,
                  actor_noise=0.1,
                  target_noise=0.2,
                  noise_clip=0.5,
@@ -52,7 +50,6 @@ class TD3Agent(nn.Module, OffPolicyAgent):
         self.target_noise = target_noise
         self.noise_clip = noise_clip
         self.tau = tau
-        self.gamma = gamma ** n_steps
         self.policy_lr = policy_lr
         self.q_lr = q_lr
         self.num_q_ensembles = num_q_ensembles
@@ -101,11 +98,11 @@ class TD3Agent(nn.Module, OffPolicyAgent):
         next_q_value = self.target_q_network((next_obs, next_action), training=False)
         return next_q_value
 
-    def train_q_network_on_batch_torch(self, obs, act, next_obs, done, rew, weights=None):
+    def train_q_network_on_batch_torch(self, obs, act, next_obs, done, rew, gamma, weights=None):
         # compute target q
         with torch.no_grad():
             next_q_value = self.compute_next_obs_q_torch(next_obs)
-            q_target = rlu.functional.compute_target_value(rew / self.reward_scale, self.gamma, done, next_q_value)
+            q_target = rew * self.reward_scale + gamma * (1.0 - done) * next_q_value
         # q loss
         self.q_optimizer.zero_grad()
         q_values = self.q_network((obs, act), training=True)  # (num_ensembles, None)

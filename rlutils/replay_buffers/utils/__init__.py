@@ -44,6 +44,7 @@ def get_data_spec_from_env(env, memory_efficient=False):
         'act': act_spec,
         'next_obs': obs_spec,
         'rew': gym.spaces.Space(shape=None, dtype=np.float32),
-        'done': gym.spaces.Space(shape=None, dtype=np.float32)
+        'done': gym.spaces.Space(shape=None, dtype=np.float32),
+        'gamma': gym.spaces.Space(shape=None, dtype=np.float32)
     }
     return data_spec

@@ -1,10 +1,11 @@
+import torch
+
 import rlutils.infra as rl_infra
 import rlutils.np as rln
 import rlutils.pytorch as rlu
 import rlutils.pytorch.utils as ptu
-from mf.q_learning.qr_dqn import QRDQN
-from mf.trainer import run_offpolicy_atari
-import torch
+from model_free.q_learning.qr_dqn import QRDQN
+from model_free.trainer import run_offpolicy_atari
 
 if __name__ == '__main__':
     def make_q_net(env, num_quantiles):
@@ -23,7 +24,6 @@ if __name__ == '__main__':
     make_agent_fn = lambda env: QRDQN(env=env,
                                       make_q_net=make_q_net,
                                       epsilon_greedy_scheduler=epsilon_greedy_scheduler,
-                                      test_random_prob=0.01,
                                       device=ptu.get_cuda_device())
     rl_infra.runner.run_func_as_main(run_offpolicy_atari, passed_args={
         'make_agent_fn': make_agent_fn,

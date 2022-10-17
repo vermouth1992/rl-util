@@ -30,8 +30,8 @@ class SACAgent(OffPolicyAgent, nn.Module):
                  alpha=1.0,
                  alpha_lr=1e-3,
                  tau=5e-3,
-                 gamma=0.99,
                  target_entropy=None,
+                 reward_scale=1.0,
                  device=ptu.device
                  ):
         nn.Module.__init__(self)
@@ -45,6 +45,7 @@ class SACAgent(OffPolicyAgent, nn.Module):
         self.act_dim = self.act_spec.shape[0]
         self.policy_net = make_policy_net(env)
         self.num_q_ensembles = num_q_ensembles
+        self.reward_scale = reward_scale
         self.q_network = make_q_network(env, self.num_q_ensembles)
         self.target_q_network = copy.deepcopy(self.q_network)
         rlu.nn.functional.freeze(self.target_q_network)
@@ -54,7 +55,6 @@ class SACAgent(OffPolicyAgent, nn.Module):
         self.target_entropy = -self.act_dim if target_entropy is None else target_entropy
 
         self.tau = tau
-        self.gamma = gamma
 
         self.reset_optimizer()
 
@@ -79,7 +79,7 @@ class SACAgent(OffPolicyAgent, nn.Module):
     def update_target(self):
         rlu.functional.soft_update(self.target_q_network, self.q_network, self.tau)
 
-    def train_on_batch_torch(self, obs, act, next_obs, done, rew):
+    def train_on_batch_torch(self, obs, act, next_obs, done, rew, gamma):
         """ Sample a mini-batch from replay buffer and update the network
 
         Args:
@@ -97,7 +97,7 @@ class SACAgent(OffPolicyAgent, nn.Module):
             next_action, next_action_log_prob, _, _ = self.policy_net((next_obs, False))
             target_q_values = self.target_q_network((next_obs, next_action),
                                                     training=False) - alpha * next_action_log_prob
-            q_target = rew + self.gamma * (1.0 - done) * target_q_values
+            q_target = rew * self.reward_scale + gamma * (1.0 - done) * target_q_values
 
         # q loss
         q_values = self.q_network((obs, act), training=True)  # (num_ensembles, None)

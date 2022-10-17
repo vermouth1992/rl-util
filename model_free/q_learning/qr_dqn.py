@@ -9,7 +9,7 @@ import torch.optim
 
 import rlutils.pytorch as rlu
 import rlutils.pytorch.utils as ptu
-from mf.q_learning.dqn import DQN
+from model_free.q_learning.dqn import DQN
 
 
 class QRDQN(DQN):
@@ -32,7 +32,7 @@ class QRDQN(DQN):
 
         self.to(self.device)
 
-    def compute_target_values(self, next_obs, rew, done):
+    def compute_target_values(self, next_obs, rew, done, gamma):
         # double q doesn't perform very well.
         with torch.no_grad():
             batch_size = next_obs.shape[0]
@@ -46,12 +46,13 @@ class QRDQN(DQN):
                 target_logits = target_logits_action
             target_logits = target_logits[np.arange(batch_size), target_actions]  # (None, num_quantiles)
             # atom values
-            target_quantile = rew[:, None] + self.gamma * (1. - done[:, None]) * target_logits  # (None, num_quantiles)
+            target_quantile = rew[:, None] + gamma[:, None] * (1. - done[:, None]) * target_logits
+            # (None, num_quantiles)
             return target_quantile
 
-    def train_on_batch_torch(self, obs, act, next_obs, rew, done, weights=None):
+    def train_on_batch_torch(self, obs, act, next_obs, rew, done, gamma, weights=None):
         batch_size = obs.shape[0]
-        target_q_values = self.compute_target_values(next_obs, rew, done)  # (None, num_quantiles)
+        target_q_values = self.compute_target_values(next_obs, rew, done, gamma)  # (None, num_quantiles)
         self.q_optimizer.zero_grad()
         q_values = self.q_network(obs)  # (None, act_dim, num_quantiles)
         q_values = q_values[torch.arange(batch_size), act]  # (None, num_quantiles)
@@ -81,7 +82,7 @@ class QRDQN(DQN):
         )
         return info
 
-    def act_batch_deterministic(self, obs):
+    def act_batch_test(self, obs):
         obs = torch.as_tensor(obs, device=self.device)
         with torch.no_grad():
             target_logits_action = self.q_network(obs)  # (None, act_dim, num_atoms)
@@ -91,7 +92,7 @@ class QRDQN(DQN):
 
 
 if __name__ == '__main__':
-    from mf.trainer import run_offpolicy
+    from model_free.trainer import run_offpolicy
     import rlutils.infra as rl_infra
 
     make_agent_fn = lambda env: QRDQN(env=env, device=ptu.get_cuda_device())
