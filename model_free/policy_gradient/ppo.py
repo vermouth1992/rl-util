@@ -2,18 +2,18 @@
 Proximal Policy Optimization
 """
 
-import numpy as np
-import rlutils.pytorch as rlu
 import torch
 
+import rlutils.pytorch as rlu
+import rlutils.pytorch.utils as ptu
 from rlutils.interface.agent import Agent
 
 
 class PPOAgent(torch.nn.Module, Agent):
-    def __init__(self, env,
+    def __init__(self, env, actor_critic=lambda env: rlu.nn.MLPActorCriticSeparate(env=env),
                  lr=1e-3, clip_ratio=0.2,
-                 entropy_coef=0.001, target_kl=0.05,
-                 train_iters=80,
+                 entropy_coef=0.001, value_coef=1.0, target_kl=0.05,
+                 train_iters=80, device=None,
                  ):
         """
         Args:
@@ -30,20 +30,21 @@ class PPOAgent(torch.nn.Module, Agent):
             target_kl:
             max_grad_norm:
         """
-        super(PPOAgent, self).__init__()
-        self.policy_net = rlu.nn.MLPActorCriticSeparate(env=env)
-        self.optimizer = torch.optim.Adam(lr=lr, params=self.policy_net.parameters())
+        Agent.__init__(self, env)
+        torch.nn.Module.__init__(self)
+        self.actor_critic = actor_critic(env=env)
+        self.optimizer = torch.optim.Adam(lr=lr, params=self.actor_critic.parameters())
 
         self.target_kl = target_kl
         self.clip_ratio = clip_ratio
         self.entropy_coef = entropy_coef
-        self.train_pi_iters = train_pi_iters
-        self.train_vf_iters = train_vf_iters
+        self.value_coef = value_coef
+        self.train_iters = train_iters
 
         self.logger = None
+        self.device = device
 
-    def set_logger(self, logger):
-        self.logger = logger
+        self.to(self.device)
 
     def log_tabular(self):
         self.logger.log_tabular('PolicyLoss', average_only=True)
@@ -52,37 +53,29 @@ class PPOAgent(torch.nn.Module, Agent):
         self.logger.log_tabular('AvgKL', average_only=True)
         self.logger.log_tabular('StopIter', average_only=True)
 
-    def get_pi_distribution(self, obs, deterministic=tf.convert_to_tensor(False)):
-        return self.policy_net((obs, deterministic))[-1]
+    def get_value(self, obs):
+        obs = torch.as_tensor(obs, device=self.device)
+        return ptu.to_numpy(self.actor_critic.get_value(obs))
 
-    def call(self, inputs, training=None, mask=None):
-        pi_distribution = self.get_pi_distribution(inputs)
-        pi_action = pi_distribution.sample()
-        return pi_action
-
-    @tf.function
-    def act_batch_tf(self, obs):
-        pi_distribution = self.get_pi_distribution(obs)
+    def act_batch_explore(self, obs, global_steps=None):
+        obs = torch.as_tensor(obs, device=self.device)
+        pi_distribution, value = self.actor_critic(obs)
         pi_action = pi_distribution.sample()
         log_prob = pi_distribution.log_prob(pi_action)
-        v = self.value_net(obs)
-        return pi_action, log_prob, v
-
-    def act_batch(self, obs):
-        pi_action, log_prob, v = self.act_batch_tf(tf.convert_to_tensor(obs))
-        return pi_action.numpy(), log_prob.numpy(), v.numpy()
-
-    def act_batch_explore(self, obs, global_steps):
-        pass
+        return ptu.to_numpy(pi_action), ptu.to_numpy(log_prob), ptu.to_numpy(value)
 
     def act_batch_test(self, obs):
-        pass
+        obs = torch.as_tensor(obs, device=self.device)
+        pi_distribution = self.actor_critic.get_pi_distribution(obs)
+        return ptu.to_numpy(pi_distribution.sample())
 
-    def _update_policy_step(self, obs, act, adv, old_log_prob):
-        distribution = self.get_pi_distribution(obs)
-        entropy = torch.mean(distribution.entropy())
-        log_prob = distribution.log_prob(act)
-        negative_approx_kl = log_prob - old_log_prob
+    def _update_policy_step(self, obs, act, adv, logp, ret):
+        self.optimizer.zero_grad()
+
+        pi_distribution, value = self.actor_critic(obs)
+        entropy = torch.mean(pi_distribution.entropy())
+        log_prob = pi_distribution.log_prob(act)
+        negative_approx_kl = log_prob - logp
         approx_kl_mean = torch.mean(-negative_approx_kl)
 
         ratio = torch.exp(negative_approx_kl)
@@ -90,27 +83,40 @@ class PPOAgent(torch.nn.Module, Agent):
         surr2 = torch.clamp(ratio, min=1.0 - self.clip_ratio, max=1.0 + self.clip_ratio) * adv
         policy_loss = -torch.mean(torch.minimum(surr1, surr2))
 
-        loss = policy_loss - entropy * self.entropy_coef
+        value_loss = torch.nn.functional.mse_loss(value, ret)
+        loss = policy_loss - entropy * self.entropy_coef + value_loss * self.value_coef
+
+        loss.backward()
+        self.optimizer.step()
 
         info = dict(
             PolicyLoss=policy_loss,
             Entropy=entropy,
             AvgKL=approx_kl_mean,
+            ValueLoss=value_loss
         )
         return info
 
-    def train_on_batch(self, obs, act, ret, adv, logp):
-        for i in range(self.train_pi_iters):
-            info = self._update_policy_step(obs, act, adv, logp)
+    def train_on_batch(self, data):
+        i = 0
+        info = {}
+        data = ptu.convert_dict_to_tensor(data, device=self.device)
+        for i in range(self.train_iters):
+            info = self._update_policy_step(**data)
             if info['AvgKL'] > 1.5 * self.target_kl:
-                self.logger.log('Early stopping at step %d due to reaching max kl.' % i)
+                self.logger.log(f'Early stopping at step {i} due to reaching max kl.')
                 break
 
         self.logger.store(StopIter=i)
+        self.logger.store(**info)
 
-        for i in range(self.train_vf_iters):
-            loss = self.value_net.train_on_batch(x=obs, y=ret)
 
-        # only record the final result
-        info['ValueLoss'] = loss
-        self.logger.store(**rlu.functional.to_numpy_or_python_type(info))
+if __name__ == '__main__':
+    from model_free.trainer import run_onpolicy
+    from rlutils.infra.runner import run_func_as_main
+
+    make_agent_fn = lambda env: PPOAgent(env, device=ptu.get_cuda_device())
+    run_func_as_main(run_onpolicy, passed_args={
+        'make_agent_fn': make_agent_fn,
+        'backend': 'torch'
+    })

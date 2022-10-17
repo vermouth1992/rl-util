@@ -24,8 +24,8 @@ class GAEBuffer(object):
         act_dtype = act_spec.dtype
         assert obs_shape[0] == act_shape[0]
         num_envs = obs_shape[0]
-        self.obs_buf = np.zeros(shape=combined_shape(num_envs, (length, *obs_shape)), dtype=obs_dtype)
-        self.act_buf = np.zeros(shape=combined_shape(num_envs, (length, *act_shape)), dtype=act_dtype)
+        self.obs_buf = np.zeros(shape=combined_shape(num_envs, (length, *obs_shape[1:])), dtype=obs_dtype)
+        self.act_buf = np.zeros(shape=combined_shape(num_envs, (length, *act_shape[1:])), dtype=act_dtype)
         self.adv_buf = np.zeros(shape=(num_envs, length), dtype=np.float32)
         self.rew_buf = np.zeros(shape=(num_envs, length), dtype=np.float32)
         self.ret_buf = np.zeros(shape=(num_envs, length), dtype=np.float32)

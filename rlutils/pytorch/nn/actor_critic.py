@@ -9,7 +9,7 @@ class NormalActor(nn.Module):
     def __init__(self, make_net):
         super(NormalActor, self).__init__()
         self.net = make_net()
-        self.log_std = nn.Parameter(data=torch.randn(), requires_grad=True)
+        self.log_std = nn.Parameter(data=torch.randn(size=(), dtype=torch.float32), requires_grad=True)
 
     def forward(self, obs):
         mean = self.net(obs)
@@ -58,6 +58,14 @@ class MLPActorCriticSeparate(nn.Module):
 
     def get_value_parameters(self):
         return self.value_net.parameters()
+
+    def get_pi_distribution(self, obs):
+        return self.policy_net(obs)
+
+    def get_value(self, obs):
+        with torch.no_grad():
+            value = self.value_net(obs)
+            return value
 
 
 class MLPActorCriticShared(nn.Module):
