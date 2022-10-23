@@ -55,3 +55,29 @@ for i in range(torch.cuda.device_count()):
 
 def print_version():
     print(f'Pytorch version: {torch.__version__}, git version: {torch.version.git_version}')
+
+
+from torch.utils import data
+from typing import Dict
+
+
+class DictDataset(data.Dataset):
+    def __init__(self, tensors: Dict[str, torch.Tensor]):
+        self.tensors = tensors
+        self.batch_size = None
+        for key, tensor in tensors.items():
+            if self.batch_size is None:
+                self.batch_size = tensor.shape[0]
+            else:
+                assert self.batch_size == tensor.shape[0]
+
+    def __getitem__(self, item):
+        return {key: data[item] for key, data in self.tensors.items()}
+
+    def __len__(self):
+        return self.batch_size
+
+
+def create_dict_data_loader(tensors: Dict[str, torch.Tensor], batch_size):
+    dataset = DictDataset(tensors)
+    return data.DataLoader(dataset=dataset, batch_size=batch_size, shuffle=True, pin_memory=True)

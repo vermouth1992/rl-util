@@ -8,6 +8,8 @@ import rlutils.pytorch as rlu
 import rlutils.pytorch.utils as ptu
 from rlutils.interface.agent import Agent
 
+from rlutils.replay_buffers import UniformReplayBuffer
+
 
 class PPOAgent(torch.nn.Module, Agent):
     def __init__(self, env, actor_critic=lambda env: rlu.nn.MLPActorCriticSeparate(env=env),
@@ -100,8 +102,12 @@ class PPOAgent(torch.nn.Module, Agent):
     def train_on_batch(self, data):
         i = 0
         info = {}
-        data = ptu.convert_dict_to_tensor(data, device=self.device)
+
+        dataset = UniformReplayBuffer.from_dataset(data)
+        # create dataset
         for i in range(self.train_iters):
+            data = dataset.sample(batch_size=64)
+            data = ptu.convert_dict_to_tensor(data, device=self.device)
             info = self._update_policy_step(**data)
             if info['AvgKL'] > 1.5 * self.target_kl:
                 self.logger.log(f'Early stopping at step {i} due to reaching max kl.')
