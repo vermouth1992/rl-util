@@ -21,7 +21,7 @@ class ModelBasedStaticFn(object):
     @staticmethod
     def terminate_fn_torch_batch(states, actions, next_states):
         import torch
-        return torch.zeros(states.shape[0], dtype=torch.bool, device=self.device)
+        return torch.zeros(states.shape[0], dtype=torch.bool, device=states.device)
 
     @staticmethod
     def terminate_fn_tf_batch(states, actions, next_states):
