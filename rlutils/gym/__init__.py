@@ -63,3 +63,16 @@ register(
     entry_point='rlutils.gym.envs:PendulumResetObsEnv',
     max_episode_steps=200,
 )
+
+register(
+    id="HopperMB-v4",
+    entry_point="rlutils.gym.envs.model_based.mujoco.hopper_v4:HopperEnv",
+    max_episode_steps=1000,
+    reward_threshold=3800.0,
+)
+
+register(
+    id="PendulumMB-v1",
+    entry_point="rlutils.gym.envs.classic_control.pendulum:PendulumEnv",
+    max_episode_steps=200,
+)
