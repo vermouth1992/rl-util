@@ -5,6 +5,8 @@ Due to the high computation requirement, we employ the following process:
 - A process that samples data to perform rollouts
 """
 
+from typing import Callable
+
 import gym
 import numpy as np
 import torch.optim
@@ -31,7 +33,6 @@ class StandardScaler(nn.Module):
                                 requires_grad=False)
 
     def adapt(self, data):
-        data = torch.as_tensor(data)
         self.mean.data = torch.mean(data, dim=0, keepdim=True)
         self.std.data = torch.std(data, dim=0, keepdim=True)
 
@@ -44,7 +45,8 @@ class StandardScaler(nn.Module):
 
 class MLPDynamics(LogUser, nn.Module):
     def __init__(self, env, num_ensembles=5, device=None):
-        super(MLPDynamics, self).__init__()
+        LogUser.__init__(self)
+        nn.Module.__init__(self)
         obs_dim = env.observation_space.shape[0]
         act_dim = env.action_space.shape[0]
         out_activation = lambda params: rlu.distributions.make_independent_normal_from_params(params,
@@ -68,9 +70,9 @@ class MLPDynamics(LogUser, nn.Module):
         self.logger.log_tabular(key='ValLoss', average_only=True)
 
     def fit(self, data, num_epochs=10, batch_size=256, validation_split=0.1):
-        obs = data['obs']
-        act = data['act']
-        next_obs = data['next_obs']
+        obs = torch.as_tensor(data['obs'], device=self.device)
+        act = torch.as_tensor(data['act'], device=self.device)
+        next_obs = torch.as_tensor(data['next_obs'], device=self.device)
         # step 0: calculate statistics
         delta_obs = next_obs - obs
 
@@ -78,8 +80,8 @@ class MLPDynamics(LogUser, nn.Module):
         self.act_scalar.adapt(act)
         self.delta_obs_scalar.adapt(delta_obs)
 
-        obs_normalized = self.obs_scalar(torch.as_tensor(obs, device=self.device))
-        act_normalized = self.act_scalar(torch.as_tensor(act, device=self.device))
+        obs_normalized = self.obs_scalar(obs)
+        act_normalized = self.act_scalar(act)
         delta_obs_normalized = self.delta_obs_scalar(torch.as_tensor(delta_obs, device=self.device))
 
         # step 1: make a dataloader
@@ -89,12 +91,12 @@ class MLPDynamics(LogUser, nn.Module):
         lengths = [1. - validation_split, validation_split]
         train_dataset, val_dataset = torch.utils.data.random_split(dataset, lengths=lengths)
         train_dataloader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True,
-                                                       pin_memory=True, drop_last=False)
+                                                       drop_last=False)
         val_dataloader = torch.utils.data.DataLoader(dataset=val_dataset, batch_size=batch_size, shuffle=False,
-                                                     pin_memory=True, drop_last=False)
+                                                     drop_last=False)
 
         # step 2: training
-        for _ in trange(num_epochs):
+        for _ in trange(num_epochs, desc='Training dynamics'):
             for obs_batch, act_batch, delta_obs_batch in train_dataloader:
                 self.optimizer.zero_grad()
                 inputs = torch.cat([obs_batch, act_batch], dim=-1)
@@ -140,7 +142,7 @@ class MLPDynamics(LogUser, nn.Module):
 
             # randomly choose one from ensembles
             delta_obs_normalized = delta_obs_normalized[
-                torch.randint(self.num_ensembles, size=(batch_size), device=self.device),
+                torch.randint(self.num_ensembles, size=(batch_size,), device=self.device),
                 torch.arange(batch_size, device=self.device)]  # (None, obs_dim)
             delta_obs = self.delta_obs_scalar(delta_obs_normalized, inverse=True)
             next_obs = delta_obs + obs
@@ -174,8 +176,9 @@ class ModelRollout(object):
             done=[]
         )
 
+        obs = torch.as_tensor(obs, device=self.agent.device)
         for _ in range(self.rollout_length):
-            act = self.agent.act_batch_explore(obs, global_steps=None)
+            act = self.agent.act_batch_torch(obs, deterministic=False)
             next_obs = self.dynamics_model.predict(obs, act)
             terminate = self.env.terminate_fn_torch_batch(obs, act, next_obs)
             reward = self.env.reward_fn_torch_batch(obs, act, next_obs)
@@ -192,31 +195,34 @@ class ModelRollout(object):
         for key, val in data.items():
             data[key] = ptu.to_numpy(torch.cat(val, dim=0))
 
+        data['done'] = data['done'].astype(np.float32)
+        data['gamma'] = np.ones_like(data['rew']) * 0.99
+
         dataset = UniformReplayBuffer.from_dataset(dataset=data)
         assert len(dataset) == obs.shape[0] * self.rollout_length
         return dataset
 
 
 def main(env_name,
-         env_fn=None,
-         exp_name=None,
+         env_fn: Callable = None,
+         exp_name: str = None,
          gamma=0.99,
-         rollout_length=10,
+         rollout_length=5,
          model_rollout_batch_size=200,
          model_training_iterations=500,
          model_training_batch_size=256,
          agent_training_batch_size=256,
          agent_training_iterations=10,
          # runner args
-         epochs=100,
-         steps_per_epoch=1000,
+         epochs=200,
+         steps_per_epoch=500,
          num_test_episodes=30,
          train_model_after=1000,
-         update_after=5000,
          seed=1,
-         device='cuda',
-         logger_path=None,
+         logger_path: str = None,
          backend='torch'):
+    device = ptu.get_cuda_device()
+
     config = locals()
 
     # setup seed
@@ -234,7 +240,7 @@ def main(env_name,
     timer = rl_infra.StopWatch()
 
     if env_fn is None:
-        env_fn = gym.make(env_name)
+        env_fn = lambda: gym.make(env_name)
 
     env_fn = rlutils.gym.utils.wrap_env_fn(env_fn, truncate_obs_dtype=True, normalize_action_space=True)
 
@@ -251,8 +257,8 @@ def main(env_name,
                                                       memory_efficient=False)
 
     agent = SACAgent(env=env_fn(), target_entropy=-env.action_space.shape[0] // 2, device=device)
-    dynamics_model = MLPDynamics(env=env, device=device)
-    model_rollout = ModelRollout(env, agent, dynamics_model, rollout_length=rollout_length)
+    dynamics_model = MLPDynamics(env=env_fn(), device=device)
+    model_rollout = ModelRollout(env_fn(), agent, dynamics_model, rollout_length=rollout_length)
     sampler = rl_infra.samplers.BatchSampler(env=env, n_steps=1, gamma=gamma,
                                              seed=seeder.generate_seed())
 
@@ -260,7 +266,18 @@ def main(env_name,
     tester = rl_infra.Tester(env_fn=env_fn, num_parallel_env=num_test_episodes,
                              asynchronous=False, seed=seeder.generate_seed())
 
+    dynamics_model.set_logger(logger=logger)
+    timer.set_logger(logger=logger)
+    agent.set_logger(logger=logger)
+    sampler.set_logger(logger=logger)
+    tester.set_logger(logger=logger)
+
+    policy_updates = 0
     global_step = 0
+
+    timer.start()
+    sampler.reset()
+
     sampler.sample(num_steps=train_model_after,
                    collect_fn=lambda o: np.asarray(env.action_space.sample()),
                    replay_buffer=real_replay_buffer)
@@ -285,8 +302,17 @@ def main(env_name,
             for _ in range(agent_training_iterations):
                 data = synthetic_dataset.sample(agent_training_batch_size)
                 agent.train_on_batch(data)
+                policy_updates += 1
 
             global_step += 1
+
+        tester.test_agent(get_action=lambda obs: agent.act_batch_test(obs),
+                          name=agent.__class__.__name__,
+                          num_test_episodes=num_test_episodes)
+        # Log info about epoch
+        logger.log_tabular('Epoch', epoch)
+        logger.log_tabular('PolicyUpdates', policy_updates)
+        logger.dump_tabular()
 
 
 if __name__ == '__main__':

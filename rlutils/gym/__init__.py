@@ -73,6 +73,6 @@ register(
 
 register(
     id="PendulumMB-v1",
-    entry_point="rlutils.gym.envs.classic_control.pendulum:PendulumEnv",
+    entry_point="rlutils.gym.envs.model_based.classic_control.pendulum:PendulumEnv",
     max_episode_steps=200,
 )
