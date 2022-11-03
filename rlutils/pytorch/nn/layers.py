@@ -26,7 +26,7 @@ class EnsembleBatchNorm1d(nn.Module):
         """
         batch_size = input.shape[1]
         input = input.permute(1, 0, 2)  # (None, num_ensembles, num_features)
-        input = input.view(batch_size, self.num_ensemble * self.num_features)
+        input = input.reshape(batch_size, self.num_ensembles * self.num_features)
         output = self.batch_norm_layer(input)  # (None, num_ensembles, num_features)
         output = output.view(batch_size, self.num_ensembles, self.num_features)
         output = output.permute(1, 0, 2)  # (num_ensembles, None, num_features)

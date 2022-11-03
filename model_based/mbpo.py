@@ -48,19 +48,19 @@ class MLPDynamics(LogUser, nn.Module):
         LogUser.__init__(self)
         nn.Module.__init__(self)
         obs_dim = env.observation_space.shape[0]
-        act_dim = env.action_space.shape[0]
+        self.act_dim = env.action_space.shape[0]
         out_activation = lambda params: rlu.distributions.make_independent_normal_from_params(params,
                                                                                               min_log_scale=-2,
                                                                                               max_log_scale=1.0)
         self.num_ensembles = num_ensembles
-        self.model = rlu.nn.build_mlp(input_dim=obs_dim + act_dim, output_dim=obs_dim * 2,
+        self.model = rlu.nn.build_mlp(input_dim=obs_dim + self.act_dim, output_dim=obs_dim * 2,
                                       mlp_hidden=512, num_ensembles=self.num_ensembles, num_layers=4, batch_norm=True,
                                       out_activation=out_activation)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-4)
         self.device = device
 
         self.obs_scalar = StandardScaler(input_shape=(obs_dim,))
-        self.act_scalar = StandardScaler(input_shape=(act_dim,))
+        self.act_scalar = StandardScaler(input_shape=(self.act_dim,))
         self.delta_obs_scalar = StandardScaler(input_shape=(obs_dim,))
 
         self.to(device)
@@ -109,7 +109,7 @@ class MLPDynamics(LogUser, nn.Module):
                 loss.backward()
                 self.optimizer.step()
 
-                self.logger.store(TrainLoss=loss.detach())
+                self.logger.store(TrainLoss=loss.detach() / self.num_ensembles / self.act_dim)
 
         # step 3: validation
         self.model.eval()
@@ -123,7 +123,7 @@ class MLPDynamics(LogUser, nn.Module):
                 log_prob = torch.sum(log_prob, dim=0)
                 loss = -torch.mean(log_prob, dim=0)
 
-                self.logger.store(ValLoss=loss.detach())
+                self.logger.store(ValLoss=loss.detach() / self.num_ensembles / self.act_dim)
 
         self.model.train()
 
@@ -154,53 +154,42 @@ class MLPDynamics(LogUser, nn.Module):
             return next_obs
 
 
-class ModelRollout(object):
-    def __init__(self, env, agent, dynamics_model, rollout_length):
-        self.env = env
-        self.agent = agent
-        self.dynamics_model = dynamics_model
-        self.rollout_length = rollout_length
+def generate_model_rollouts(env, agent, dynamics_model, real_dataset, rollout_length, model_rollout_batch_size):
+    data = dict(
+        obs=[],
+        act=[],
+        next_obs=[],
+        rew=[],
+        done=[]
+    )
 
-    def generate_trajectory(self, obs):
-        """
+    obs = real_dataset.sample(model_rollout_batch_size)['obs']
+    obs = torch.as_tensor(obs, device=agent.device)
+    for _ in range(rollout_length):
+        act = agent.act_batch_torch(obs, deterministic=False)
+        next_obs = dynamics_model.predict(obs, act)
+        terminate = env.terminate_fn_torch_batch(obs, act, next_obs)
+        reward = env.reward_fn_torch_batch(obs, act, next_obs)
 
-        Args:
-            obs: real observation with shape (None, obs_dim)
+        data['obs'].append(obs)
+        data['act'].append(act)
+        data['next_obs'].append(next_obs)
+        data['rew'].append(reward)
+        data['done'].append(terminate)
 
-        Returns:
+        obs = next_obs
 
-        """
+        # if terminated, resample observations
+        if torch.any(terminate):
+            num_terminate = torch.sum(terminate).item()
+            new_obs = real_dataset.sample(num_terminate)['obs']
+            obs[terminate] = torch.as_tensor(new_obs, device=agent.device)
 
-        data = dict(
-            obs=[],
-            act=[],
-            next_obs=[],
-            rew=[],
-            done=[]
-        )
+    for key, val in data.items():
+        data[key] = ptu.to_numpy(torch.cat(val, dim=0))
 
-        obs = torch.as_tensor(obs, device=self.agent.device)
-        for _ in range(self.rollout_length):
-            act = self.agent.act_batch_torch(obs, deterministic=False)
-            next_obs = self.dynamics_model.predict(obs, act)
-            terminate = self.env.terminate_fn_torch_batch(obs, act, next_obs)
-            reward = self.env.reward_fn_torch_batch(obs, act, next_obs)
-
-            data['obs'].append(obs)
-            data['act'].append(act)
-            data['next_obs'].append(next_obs)
-            data['rew'].append(reward)
-            data['done'].append(terminate)
-
-            # add to synthetic dataset
-            obs = next_obs
-
-        for key, val in data.items():
-            data[key] = ptu.to_numpy(torch.cat(val, dim=0))
-
-        data['done'] = data['done'].astype(np.float32)
-        assert data['obs'].shape[0] == obs.shape[0] * self.rollout_length
-        return data
+    assert data['obs'].shape[0] == obs.shape[0] * rollout_length
+    return data
 
 
 def main(env_name,
@@ -264,7 +253,6 @@ def main(env_name,
 
     agent = SACAgent(env=dummy_env, target_entropy=-env.action_space.shape[0] // 2, device=device)
     dynamics_model = MLPDynamics(env=dummy_env, device=device)
-    model_rollout = ModelRollout(dummy_env, agent, dynamics_model, rollout_length=rollout_length)
     sampler = rl_infra.samplers.BatchSampler(env=env, n_steps=1, gamma=gamma,
                                              seed=seeder.generate_seed())
 
@@ -291,7 +279,7 @@ def main(env_name,
     for epoch in range(1, epochs + 1):
         # step 2: train dynamics model
         data = real_replay_buffer.storage.get()
-        num_epochs = max(model_training_iterations // (len(real_replay_buffer) // model_training_batch_size), 2)
+        num_epochs = max(model_training_iterations // (len(real_replay_buffer) // model_training_batch_size), 5)
         dynamics_model.fit(data=data, num_epochs=num_epochs, batch_size=model_training_batch_size)
 
         for t in trange(steps_per_epoch, desc=f'Epoch {epoch}/{epochs}'):
@@ -301,8 +289,8 @@ def main(env_name,
                            replay_buffer=real_replay_buffer)
 
             # step 3: perform model rollouts
-            obs = real_replay_buffer.sample(model_rollout_batch_size)['obs']
-            synthetic_data = model_rollout.generate_trajectory(obs)
+            synthetic_data = generate_model_rollouts(dummy_env, agent, dynamics_model, real_replay_buffer,
+                                                     rollout_length, model_rollout_batch_size)
             synthetic_data['gamma'] = np.ones_like(synthetic_data['rew']) * gamma
 
             synthetic_dataset.add(synthetic_data)
