@@ -167,7 +167,7 @@ def generate_model_rollouts(env, agent, dynamics_model, real_dataset, rollout_le
     obs = real_dataset.sample(model_rollout_batch_size)['obs']
     obs = torch.as_tensor(obs, device=agent.device)
     for _ in range(rollout_length):
-        act = agent.act_batch_torch(obs)
+        act = agent.act_batch_torch(obs, deterministic=False)
         next_obs = dynamics_model.predict(obs, act)
         terminate = env.terminate_fn_torch_batch(obs, act, next_obs)
         reward = env.reward_fn_torch_batch(obs, act, next_obs)

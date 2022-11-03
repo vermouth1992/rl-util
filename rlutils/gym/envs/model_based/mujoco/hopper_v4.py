@@ -45,8 +45,8 @@ class HopperEnv(ModelBasedEnv, hopper_v4.HopperEnv):
         min_angle, max_angle = self._healthy_angle_range
 
         healthy_state = np.all(np.logical_and(min_state < state, state < max_state), axis=-1)
-        healthy_z = min_z < z < max_z
-        healthy_angle = min_angle < angle < max_angle
+        healthy_z = np.logical_and(min_z < z, z < max_z)
+        healthy_angle = np.logical_and(min_angle < angle, angle < max_angle)
 
         is_healthy = np.all(np.stack([healthy_state, healthy_z, healthy_angle], axis=-1), axis=-1)
 
