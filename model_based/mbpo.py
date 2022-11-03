@@ -4,7 +4,7 @@ Due to the high computation requirement, we employ the following process:
 - A process that samples data and performs dynamics training
 - A process that samples data to perform rollouts
 """
-
+import os.path
 from typing import Callable
 
 import gym
@@ -49,8 +49,9 @@ class MLPDynamics(LogUser, nn.Module):
         nn.Module.__init__(self)
         obs_dim = env.observation_space.shape[0]
         self.act_dim = env.action_space.shape[0]
+        self.obs_dim = obs_dim
         out_activation = lambda params: rlu.distributions.make_independent_normal_from_params(params,
-                                                                                              min_log_scale=-2,
+                                                                                              min_log_scale=-5,
                                                                                               max_log_scale=1.0)
         self.num_ensembles = num_ensembles
         self.model = rlu.nn.build_mlp(input_dim=obs_dim + self.act_dim, output_dim=obs_dim * 2,
@@ -109,7 +110,7 @@ class MLPDynamics(LogUser, nn.Module):
                 loss.backward()
                 self.optimizer.step()
 
-                self.logger.store(TrainLoss=loss.detach() / self.num_ensembles / self.act_dim)
+                self.logger.store(TrainLoss=loss.detach() / self.num_ensembles / self.obs_dim)
 
         # step 3: validation
         self.model.eval()
@@ -123,7 +124,7 @@ class MLPDynamics(LogUser, nn.Module):
                 log_prob = torch.sum(log_prob, dim=0)
                 loss = -torch.mean(log_prob, dim=0)
 
-                self.logger.store(ValLoss=loss.detach() / self.num_ensembles / self.act_dim)
+                self.logger.store(ValLoss=loss.detach() / self.num_ensembles / self.obs_dim)
 
         self.model.train()
 
@@ -166,7 +167,7 @@ def generate_model_rollouts(env, agent, dynamics_model, real_dataset, rollout_le
     obs = real_dataset.sample(model_rollout_batch_size)['obs']
     obs = torch.as_tensor(obs, device=agent.device)
     for _ in range(rollout_length):
-        act = agent.act_batch_torch(obs, deterministic=False)
+        act = agent.act_batch_torch(obs)
         next_obs = dynamics_model.predict(obs, act)
         terminate = env.terminate_fn_torch_batch(obs, act, next_obs)
         reward = env.reward_fn_torch_batch(obs, act, next_obs)
@@ -212,6 +213,7 @@ def main(env_name,
          logger_path: str = None,
          backend='torch'):
     device = ptu.get_cuda_device()
+    logger_path = os.path.abspath(logger_path)
 
     config = locals()
 

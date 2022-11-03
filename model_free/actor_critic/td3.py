@@ -159,6 +159,14 @@ class TD3Agent(nn.Module, OffPolicyAgent):
 
         return info
 
+    def act_batch_torch(self, obs):
+        with torch.no_grad():
+            pi_final = self.policy_net(obs)
+            noise = torch.randn_like(pi_final) * self.actor_noise
+            pi_final = pi_final + noise
+            pi_final = torch.clip(pi_final, -self.act_lim, self.act_lim)
+            return pi_final
+
     def act_batch_test(self, obs):
         obs = torch.as_tensor(obs, dtype=torch.float32, device=self.device)
         with torch.no_grad():
