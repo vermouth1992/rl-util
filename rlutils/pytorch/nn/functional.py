@@ -1,6 +1,6 @@
 import torch.nn as nn
 
-from .layers import EnsembleDense, SqueezeLayer, LambdaLayer
+from .layers import EnsembleDense, SqueezeLayer, LambdaLayer, EnsembleBatchNorm1d
 
 str_to_activation = {
     'relu': nn.ReLU,
@@ -28,8 +28,6 @@ def decode_activation(activation):
 def build_mlp(input_dim, output_dim, mlp_hidden, num_ensembles=None, num_layers=3,
               activation='relu', out_activation=None, squeeze=False, dropout=None,
               batch_norm=False, layer_norm=False):
-    if num_ensembles is not None:
-        assert not batch_norm, 'BatchNorm is not supported for EnsembleDense yet.'
     assert not (batch_norm and layer_norm), "batch_norm and layer_norm can't be True simultaneously"
     if squeeze:
         assert output_dim == 1, "if squeeze, output_dim must have size 1"
@@ -52,6 +50,8 @@ def build_mlp(input_dim, output_dim, mlp_hidden, num_ensembles=None, num_layers=
         # first layer
         if num_ensembles is not None:
             layers.append(EnsembleDense(num_ensembles, input_dim, mlp_hidden[0]))
+            if batch_norm:
+                layers.append(EnsembleBatchNorm1d(num_ensembles=num_ensembles, num_features=mlp_hidden[0]))
         else:
             layers.append(nn.Linear(input_dim, mlp_hidden[0]))
             if batch_norm:
@@ -64,6 +64,8 @@ def build_mlp(input_dim, output_dim, mlp_hidden, num_ensembles=None, num_layers=
         for i in range(num_layers - 2):
             if num_ensembles is not None:
                 layers.append(EnsembleDense(num_ensembles, mlp_hidden[i], mlp_hidden[i + 1]))
+                if batch_norm:
+                    layers.append(EnsembleBatchNorm1d(num_ensembles=num_ensembles, num_features=mlp_hidden[i + 1]))
             else:
                 layers.append(nn.Linear(mlp_hidden[i], mlp_hidden[i + 1]))
                 if batch_norm:

@@ -19,7 +19,8 @@ class HopperEnv(ModelBasedEnv, hopper_v4.HopperEnv):
 
     def healthy_reward_torch_batch(self, obs):
         import torch
-        healthy_boolean = torch.logical_or(self.is_healthy_torch_batch(obs=obs), self._terminate_when_unhealthy)
+        terminate_when_unhealthy = torch.as_tensor(data=[self._terminate_when_unhealthy], device=obs.device)
+        healthy_boolean = torch.logical_or(self.is_healthy_torch_batch(obs=obs), terminate_when_unhealthy)
         return healthy_boolean.float() * self._healthy_reward
 
     def state_vector_np_batch(self, qpos, qvel):
@@ -65,8 +66,10 @@ class HopperEnv(ModelBasedEnv, hopper_v4.HopperEnv):
         min_angle, max_angle = self._healthy_angle_range
 
         healthy_state = torch.all(torch.logical_and(min_state < state, state < max_state), dim=-1)
-        healthy_z = min_z < z < max_z
-        healthy_angle = min_angle < angle < max_angle
+        # healthy_z = min_z < z < max_z
+        healthy_z = torch.logical_and(min_z < z, z < max_z)
+        # healthy_angle = min_angle < angle < max_angle
+        healthy_angle = torch.logical_and(min_angle < angle, angle < max_angle)
 
         is_healthy = torch.all(torch.stack([healthy_state, healthy_z, healthy_angle], dim=-1), dim=-1)
 

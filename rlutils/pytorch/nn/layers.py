@@ -3,8 +3,34 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 from rlutils.np.functional import inverse_softplus
 from rlutils.pytorch.functional import clip_by_value_preserve_gradient
+
+
+class EnsembleBatchNorm1d(nn.Module):
+    def __init__(self, num_ensembles, num_features, **kwargs):
+        super(EnsembleBatchNorm1d, self).__init__()
+        self.num_ensembles = num_ensembles
+        self.num_features = num_features
+        self.batch_norm_layer = nn.BatchNorm1d(num_features=num_features * num_ensembles, **kwargs)
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """
+
+        Args:
+            input: shape (num_ensembles, None, num_features)
+
+        Returns:
+
+        """
+        batch_size = input.shape[1]
+        input = input.permute(1, 0, 2)  # (None, num_ensembles, num_features)
+        input = input.view(batch_size, self.num_ensemble * self.num_features)
+        output = self.batch_norm_layer(input)  # (None, num_ensembles, num_features)
+        output = output.view(batch_size, self.num_ensembles, self.num_features)
+        output = output.permute(1, 0, 2)  # (num_ensembles, None, num_features)
+        return output
 
 
 class EnsembleDense(nn.Module):

@@ -50,11 +50,11 @@ class MLPDynamics(LogUser, nn.Module):
         obs_dim = env.observation_space.shape[0]
         act_dim = env.action_space.shape[0]
         out_activation = lambda params: rlu.distributions.make_independent_normal_from_params(params,
-                                                                                              min_log_scale=-5,
+                                                                                              min_log_scale=-2,
                                                                                               max_log_scale=1.0)
         self.num_ensembles = num_ensembles
         self.model = rlu.nn.build_mlp(input_dim=obs_dim + act_dim, output_dim=obs_dim * 2,
-                                      mlp_hidden=256, num_ensembles=self.num_ensembles, num_layers=3, dropout=0.1,
+                                      mlp_hidden=512, num_ensembles=self.num_ensembles, num_layers=4, batch_norm=True,
                                       out_activation=out_activation)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-4)
         self.device = device
@@ -112,6 +112,7 @@ class MLPDynamics(LogUser, nn.Module):
                 self.logger.store(TrainLoss=loss.detach())
 
         # step 3: validation
+        self.model.eval()
         with torch.no_grad():
             for obs_batch, act_batch, delta_obs_batch in val_dataloader:
                 inputs = torch.cat([obs_batch, act_batch], dim=-1)
@@ -123,6 +124,8 @@ class MLPDynamics(LogUser, nn.Module):
                 loss = -torch.mean(log_prob, dim=0)
 
                 self.logger.store(ValLoss=loss.detach())
+
+        self.model.train()
 
     def predict(self, obs, act):
         with torch.no_grad():
@@ -196,23 +199,21 @@ class ModelRollout(object):
             data[key] = ptu.to_numpy(torch.cat(val, dim=0))
 
         data['done'] = data['done'].astype(np.float32)
-        data['gamma'] = np.ones_like(data['rew']) * 0.99
-
-        dataset = UniformReplayBuffer.from_dataset(dataset=data)
-        assert len(dataset) == obs.shape[0] * self.rollout_length
-        return dataset
+        assert data['obs'].shape[0] == obs.shape[0] * self.rollout_length
+        return data
 
 
 def main(env_name,
          env_fn: Callable = None,
          exp_name: str = None,
          gamma=0.99,
-         rollout_length=5,
-         model_rollout_batch_size=200,
+         rollout_length=10,
+         model_rollout_batch_size=400,
          model_training_iterations=500,
          model_training_batch_size=256,
          agent_training_batch_size=256,
-         agent_training_iterations=10,
+         agent_training_iterations=20,
+         synthetic_replay_size=1000000,
          # runner args
          epochs=200,
          steps_per_epoch=500,
@@ -244,6 +245,8 @@ def main(env_name,
 
     env_fn = rlutils.gym.utils.wrap_env_fn(env_fn, truncate_obs_dtype=True, normalize_action_space=True)
 
+    dummy_env = env_fn()
+
     env = rlutils.gym.utils.create_vector_env(env_fn=env_fn,
                                               num_parallel_env=1,
                                               asynchronous=False)
@@ -252,13 +255,16 @@ def main(env_name,
 
     # replay buffer
     real_replay_size = epochs * steps_per_epoch + train_model_after
-    real_replay_buffer = UniformReplayBuffer.from_env(env=env_fn(), capacity=real_replay_size,
+    real_replay_buffer = UniformReplayBuffer.from_env(env=dummy_env, capacity=real_replay_size,
                                                       seed=seeder.generate_seed(),
                                                       memory_efficient=False)
+    synthetic_dataset = UniformReplayBuffer.from_env(env=dummy_env, capacity=synthetic_replay_size,
+                                                     seed=seeder.generate_seed(),
+                                                     memory_efficient=False)
 
-    agent = SACAgent(env=env_fn(), target_entropy=-env.action_space.shape[0] // 2, device=device)
-    dynamics_model = MLPDynamics(env=env_fn(), device=device)
-    model_rollout = ModelRollout(env_fn(), agent, dynamics_model, rollout_length=rollout_length)
+    agent = SACAgent(env=dummy_env, target_entropy=-env.action_space.shape[0] // 2, device=device)
+    dynamics_model = MLPDynamics(env=dummy_env, device=device)
+    model_rollout = ModelRollout(dummy_env, agent, dynamics_model, rollout_length=rollout_length)
     sampler = rl_infra.samplers.BatchSampler(env=env, n_steps=1, gamma=gamma,
                                              seed=seeder.generate_seed())
 
@@ -296,7 +302,10 @@ def main(env_name,
 
             # step 3: perform model rollouts
             obs = real_replay_buffer.sample(model_rollout_batch_size)['obs']
-            synthetic_dataset = model_rollout.generate_trajectory(obs)
+            synthetic_data = model_rollout.generate_trajectory(obs)
+            synthetic_data['gamma'] = np.ones_like(synthetic_data['rew']) * gamma
+
+            synthetic_dataset.add(synthetic_data)
 
             # step 4: perform policy training
             for _ in range(agent_training_iterations):
