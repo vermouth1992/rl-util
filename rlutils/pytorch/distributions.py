@@ -9,6 +9,10 @@ def _compute_rank(tensor):
     return len(tensor.shape)
 
 
+def uniform(size, low, high):
+    return (high - low) * torch.rand(*size) + low
+
+
 def apply_squash_log_prob(raw_log_prob, x):
     """ Compute the log probability after applying tanh on raw_actions
     Args:
