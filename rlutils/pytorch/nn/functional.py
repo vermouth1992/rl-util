@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 
 from .layers import EnsembleDense, SqueezeLayer, LambdaLayer, EnsembleBatchNorm1d
@@ -120,3 +121,21 @@ def get_state_dict(module: nn.Module):
     for k, v in state_dict.items():
         state_dict[k] = v.cpu()
     return state_dict
+
+
+def unsqueeze_and_repeat(tensor: torch.Tensor, dim: int, repeat: int):
+    """unsqueeze a tensor and
+
+    Args:
+        tensor: a Pytorch Tensor
+        dim:
+        repeat:
+
+    Returns:
+
+    """
+    tensor = torch.unsqueeze(tensor, dim=dim)
+    repeats = [1 for _ in range(len(tensor.shape))]
+    repeats[dim] = repeat
+    tensor = tensor.repeat(*repeats)
+    return tensor

@@ -3,6 +3,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import distributions as td
+from torch import nn
 
 
 def _compute_rank(tensor):
@@ -29,7 +30,8 @@ def apply_squash_log_prob(raw_log_prob, x):
 
 def make_independent_normal_from_params(params, min_log_scale=None, max_log_scale=None):
     loc_params, scale_params = torch.split(params, params.shape[-1] // 2, dim=-1)
-    scale_params = torch.clip(scale_params, min=min_log_scale, max=max_log_scale)
+    if min_log_scale is not None or max_log_scale is not None:
+        scale_params = torch.clip(scale_params, min=min_log_scale, max=max_log_scale)
     scale_params = F.softplus(scale_params)
     pi_distribution = make_independent_normal(loc_params, scale_params, ndims=1)
     return pi_distribution
@@ -43,3 +45,17 @@ def make_independent_normal(loc, scale, ndims=1):
 
 def make_independent_categorical_from_params(params, ndims=1):
     return td.Independent(td.Categorical(logits=params), reinterpreted_batch_ndims=ndims)
+
+
+class IndependentNormalWithFixedVar(nn.Module):
+    def __init__(self, var_shape, reinterpreted_batch_ndims):
+        super(IndependentNormalWithFixedVar, self).__init__()
+        self.var_shape = var_shape
+        self.scale = nn.Parameter(data=torch.ones(size=var_shape, dtype=torch.float32), requires_grad=True)
+        self.reinterpreted_batch_ndims = reinterpreted_batch_ndims
+
+    def forward(self, mean):
+        # check shape
+        assert mean.shape[1:] == self.var_shape
+        return make_independent_normal(loc=mean, scale=torch.unsqueeze(self.scale, dim=0),
+                                       ndims=self.reinterpreted_batch_ndims)
