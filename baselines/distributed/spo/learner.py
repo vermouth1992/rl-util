@@ -13,7 +13,6 @@ class Learner(object):
     def __init__(self,
                  make_agent_fn,
                  replay_manager,
-                 actor_critic,
                  receive_queue: queue.Queue,
                  push_queue: queue.Queue,
                  weight_push_freq=10,
@@ -34,7 +33,6 @@ class Learner(object):
         torch.set_num_threads(num_threads)
 
         self.agent = make_agent_fn()
-        self.actor_critic = actor_critic
         self.replay_manager = replay_manager
         self.batch_size = batch_size
         self.weight_push_freq = weight_push_freq

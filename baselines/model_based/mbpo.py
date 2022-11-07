@@ -18,7 +18,7 @@ import rlutils.infra as rl_infra
 import rlutils.np as rln
 import rlutils.pytorch as rlu
 import rlutils.pytorch.utils as ptu
-from model_free.actor_critic.sac import SACAgent
+from baselines.model_free.actor_critic.sac import SACAgent
 from rlutils.logx import setup_logger_kwargs, EpochLogger
 from rlutils.replay_buffers import UniformReplayBuffer
 

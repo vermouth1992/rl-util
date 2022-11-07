@@ -11,9 +11,23 @@ class Actor(object):
                  weight_server_lst,
                  replay_manager_lst,
                  set_thread_fn,
+                 set_weights_fn,
                  weight_update_freq=100,
                  num_threads=1,
                  ):
+        """
+
+        Args:
+            make_agent_fn: a function that returns a agent instances
+            make_sampler_fn: a function that returns a data sampler
+            make_local_buffer_fn: a function that returns a local buffer
+            weight_server_lst: a list of weight server to pull the current weights
+            replay_manager_lst: a list of replay manager to push the local data
+            set_thread_fn:
+            weight_update_freq:
+            num_threads:
+        """
+        # framework-agnostic function
         set_thread_fn(num_threads)
 
         self.agent = make_agent_fn()
@@ -21,6 +35,7 @@ class Actor(object):
         self.weight_server_lst = weight_server_lst
         self.replay_manager_lst = replay_manager_lst
         self.weight_update_freq = weight_update_freq
+        self.set_weights_fn = set_weights_fn
         self.sampler = make_sampler_fn()
         self.local_buffer = make_local_buffer_fn()
 
@@ -69,11 +84,11 @@ class Actor(object):
                 data = self.local_buffer.storage.get()
                 priority = self.agent.compute_priority(data)
                 self.add_local_to_global(data, priority)
-                self.local_buffer.reset()
+                self.local_buffer.storage.reset()
 
             if local_steps % self.weight_update_freq == 0:
                 self.update_weights()
 
     def update_weights(self):
         weights = self.get_weights()
-        self.agent.load_state_dict(weights)
+        self.set_weights_fn(self.agent, weights)

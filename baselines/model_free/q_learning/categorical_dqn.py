@@ -3,7 +3,7 @@ import torch.optim
 
 import rlutils.pytorch as rlu
 import rlutils.pytorch.utils as ptu
-from model_free.q_learning.dqn import DQN
+from baselines.model_free.q_learning.dqn import DQN
 
 
 class CategoricalDQN(DQN):
@@ -88,7 +88,7 @@ class CategoricalDQN(DQN):
 
 
 if __name__ == '__main__':
-    from model_free.trainer import run_offpolicy
+    from baselines.model_free.trainer import run_offpolicy
     import rlutils.infra as rl_infra
 
     make_agent_fn = lambda env: CategoricalDQN(env=env, device=ptu.get_cuda_device())

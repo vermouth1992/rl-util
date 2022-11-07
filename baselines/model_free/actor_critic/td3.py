@@ -98,6 +98,19 @@ class TD3Agent(nn.Module, OffPolicyAgent):
         next_q_value = self.target_q_network((next_obs, next_action), training=False)
         return next_q_value
 
+    def compute_priority(self, data):
+        data = ptu.convert_dict_to_tensor(data, device=self.device)
+        td_error = self.compute_priority_torch(**data)
+        return ptu.to_numpy(td_error)
+
+    def compute_priority_torch(self, obs, act, next_obs, done, rew, gamma):
+        with torch.no_grad():
+            next_q_value = self.compute_next_obs_q_torch(next_obs)
+            q_target = rew * self.reward_scale + gamma * (1.0 - done) * next_q_value
+            q_values = self.q_network((obs, act), training=False)  # (None,)
+            abs_td_error = torch.abs(q_values - q_target)
+            return abs_td_error
+
     def train_q_network_on_batch_torch(self, obs, act, next_obs, done, rew, gamma, weights=None):
         # compute target q
         with torch.no_grad():
@@ -121,7 +134,8 @@ class TD3Agent(nn.Module, OffPolicyAgent):
 
         info = dict(
             LossQ=q_values_loss.detach(),
-            TDError=abs_td_error.detach()
+            TDError=abs_td_error.detach(),
+            TDErrorNumpy=ptu.to_numpy(abs_td_error.detach())
         )
         for i in range(self.num_q_ensembles):
             info[f'Q{i + 1}Vals'] = q_values[i].detach()
@@ -184,7 +198,7 @@ class TD3Agent(nn.Module, OffPolicyAgent):
 
 
 if __name__ == '__main__':
-    from model_free.trainer import run_offpolicy
+    from baselines.model_free.trainer import run_offpolicy
     from rlutils.infra.runner import run_func_as_main
 
     make_agent_fn = lambda env: TD3Agent(env, device=ptu.get_cuda_device())

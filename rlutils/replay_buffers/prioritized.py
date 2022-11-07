@@ -1,5 +1,11 @@
 """
 Adapted from https://github.com/thu-ml/tianshou/
+
+Design methodology:
+- We do not want to return the sampled indices because it may be overriden by new data, and we shouldn't update the
+priorities of those data.
+- The priority update and sampled indices may not be in order when there are multiple learners. Thus, we maintain a
+transaction id for each sampled batch.
 """
 
 from typing import Dict
@@ -15,7 +21,7 @@ from . import utils, storage
 
 
 class PrioritizedReplayBuffer(object):
-    def __init__(self, data_spec, capacity, memory_efficient, alpha=0.6, beta=0.4, eviction=None, seed=None):
+    def __init__(self, data_spec, capacity, alpha=0.6, beta=0.4, eviction=None, seed=None):
         self.eviction = eviction
         if eviction is None:
             print('Using FIFO eviction policy')
@@ -24,10 +30,8 @@ class PrioritizedReplayBuffer(object):
             assert eviction < 0.
             print(f'Using prioritized eviction policy with alpha_evict={eviction}')
             self.eviction_tree = utils.segtree.SumTree(size=capacity)
-        if memory_efficient:
-            self.storage = storage.MemoryEfficientPyDictStorage(data_spec=data_spec, capacity=capacity)
-        else:
-            self.storage = storage.PyDictStorage(data_spec=data_spec, capacity=capacity)
+
+        self.storage = storage.PyDictStorage(data_spec=data_spec, capacity=capacity)
         self.storage.reset()
         self.alpha = alpha
         self.beta = beta
@@ -37,8 +41,23 @@ class PrioritizedReplayBuffer(object):
         self.lock = threading.Lock()
         self.set_seed(seed=seed)
 
-        self.sampled_idx = []
-        self.sampled_mask = []
+        self.sampled_idx_mask = {}  # map from transaction_id to (sampled_idx, sampled_mask)
+
+        self.transaction_id = 0
+        self.max_transaction_id = 1000
+
+    def get_available_transaction_id(self):
+        transaction_id = None
+        for _ in range(self.max_transaction_id):
+            if self.transaction_id not in self.sampled_idx_mask:
+                transaction_id = self.transaction_id
+                self.transaction_id = (self.transaction_id + 1) % self.max_transaction_id
+                break
+            else:
+                self.transaction_id += 1
+        assert transaction_id is not None, f'Fail to find valid transaction id. Slowdown sampling. ' \
+                                           f'Current size {len(self.sampled_idx_mask)}'
+        return transaction_id
 
     @property
     def capacity(self):
@@ -84,11 +103,10 @@ class PrioritizedReplayBuffer(object):
             if self.eviction_tree is not None:
                 self.eviction_tree[idx] = priority ** self.eviction
 
-            for i in range(len(self.sampled_idx)):
-                sampled_idx = self.sampled_idx[i]
+            for transaction_id in self.sampled_idx_mask:
+                sampled_idx, old_mask = self.sampled_idx_mask[transaction_id]
                 mask = np.in1d(sampled_idx, idx, invert=True)  # False if in the idx
-                old_mask = self.sampled_mask[i]
-                self.sampled_mask[i] = np.logical_and(mask, old_mask)
+                self.sampled_idx_mask[transaction_id] = (sampled_idx, np.logical_and(mask, old_mask))
 
             return idx
 
@@ -106,18 +124,18 @@ class PrioritizedReplayBuffer(object):
             weights = (self.sum_tree[idx] / self.min_tree.reduce()) ** (-beta)
             data['weights'] = weights
             # create mask
-            self.sampled_idx.append(idx)
-            self.sampled_mask.append(np.ones(shape=(batch_size,), dtype=bool))
+            transaction_id = self.get_available_transaction_id()
+            self.sampled_idx_mask[transaction_id] = (idx, np.ones(shape=(batch_size,), dtype=np.bool))
 
         for key, item in data.items():
             if not isinstance(item, np.ndarray):
                 data[key] = np.array(item)
-        return data
+        return transaction_id, data
 
-    def update_priorities(self, priorities, min_priority=None, max_priority=None):
+    def update_priorities(self, transaction_id, priorities, min_priority=None, max_priority=None):
         with self.lock:
-            idx = self.sampled_idx.pop(0)
-            mask = self.sampled_mask.pop(0)
+            assert transaction_id in self.sampled_idx_mask
+            idx, mask = self.sampled_idx_mask.pop(transaction_id)
             # assert len(self.sampled_idx) == 0
 
             # only update valid entries
@@ -136,6 +154,6 @@ class PrioritizedReplayBuffer(object):
                 self.eviction_tree[idx] = priorities ** self.eviction
 
     @classmethod
-    def from_env(cls, env, **kwargs):
-        data_spec = utils.get_data_spec_from_env(env)
+    def from_env(cls, env, memory_efficient, **kwargs):
+        data_spec = utils.get_data_spec_from_env(env, memory_efficient=memory_efficient)
         return cls(data_spec=data_spec, **kwargs)

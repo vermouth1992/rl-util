@@ -118,7 +118,7 @@ class PPOAgent(torch.nn.Module, Agent):
 
 
 if __name__ == '__main__':
-    from model_free.trainer import run_onpolicy
+    from baselines.model_free.trainer import run_onpolicy
     from rlutils.infra.runner import run_func_as_main
 
     make_agent_fn = lambda env: PPOAgent(env, device=ptu.get_cuda_device())
