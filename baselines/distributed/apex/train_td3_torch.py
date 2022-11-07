@@ -4,6 +4,7 @@ from torch import nn
 
 import rlutils.gym as rl_gym
 import rlutils.infra as rl_infra
+import rlutils.pytorch as rlu
 import rlutils.replay_buffers as rb
 from baselines.distributed.apex.trainer import run_apex
 from baselines.model_free.actor_critic.td3 import TD3Agent
@@ -64,11 +65,11 @@ def run_apex_td3_torch(env_name,
         agent.load_state_dict(weights)
 
     def get_weights_fn(agent: nn.Module):
-        return agent.state_dict()
+        return rlu.nn.functional.get_state_dict(agent)
 
     run_apex(
         make_actor_fn_lst=[actor_fn for _ in range(num_actors)],
-        make_learner_fn=actor_fn,
+        make_learner_fn=learner_fn,
         make_test_agent_fn=actor_fn,
         make_sampler_fn=make_sampler_fn,
         make_local_buffer_fn=make_local_buffer_fn,

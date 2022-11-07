@@ -134,8 +134,7 @@ class TD3Agent(nn.Module, OffPolicyAgent):
 
         info = dict(
             LossQ=q_values_loss.detach(),
-            TDError=abs_td_error.detach(),
-            TDErrorNumpy=ptu.to_numpy(abs_td_error.detach())
+            TDError=ptu.to_numpy(abs_td_error.detach())
         )
         for i in range(self.num_q_ensembles):
             info[f'Q{i + 1}Vals'] = q_values[i].detach()

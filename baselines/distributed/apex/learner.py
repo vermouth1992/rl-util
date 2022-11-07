@@ -110,7 +110,7 @@ class Learner(object):
             self.policy_updates += 1
             transaction_id, data = self.get_data()
             info = self.agent.train_on_batch(data)
-            self.replay_manager.update_priorities.remote(transaction_id, info['TDErrorNumpy'])
+            self.replay_manager.update_priorities.remote(transaction_id, info['TDError'])
 
             if self.policy_updates % self.weight_push_freq:
                 self.store_weights()
