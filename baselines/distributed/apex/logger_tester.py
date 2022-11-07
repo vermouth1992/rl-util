@@ -72,8 +72,6 @@ class Logger(object):
                 prefetch_rates_lst.append(stats.pop('PrefetchRate'))
                 self.logger.store(**stats)
 
-            # trick to use the agent log_tabular
-            self.test_agent.policy_updates = num_policy_updates
             prefetch_rates = np.mean(prefetch_rates_lst)
 
             total_env_interactions = 0
@@ -87,6 +85,7 @@ class Logger(object):
             self.logger.log_tabular('EpRet', with_min_and_max=True)
             self.logger.log_tabular('EpLen', average_only=True)
             self.logger.log_tabular('TotalEnvInteracts', total_env_interactions)
+            self.logger.log_tabular('PolicyUpdates', num_policy_updates)
             self.logger.log_tabular('GradientSteps/s', training_throughput)
             self.logger.log_tabular('Samples/s', sampling_throughput)
             self.logger.log_tabular('PrefetchRate', prefetch_rates)
