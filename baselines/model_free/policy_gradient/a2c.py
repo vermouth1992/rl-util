@@ -15,7 +15,7 @@ from rlutils.interface.agent import Agent
 
 class A2CAgent(torch.nn.Module, Agent):
     def __init__(self, env, actor_critic=lambda env: rlu.nn.MLPActorCriticSeparate(env=env),
-                 lr=1e-3, entropy_coef=0., value_coef=0.5, max_grad_norm=0.5, device=None,
+                 lr=1e-3, entropy_coef=0., value_coef=1.0, max_grad_norm=0.5, device=None,
                  ):
         """
         Args:
@@ -69,7 +69,7 @@ class A2CAgent(torch.nn.Module, Agent):
     def act_batch_test(self, obs):
         obs = torch.as_tensor(obs, device=self.device)
         pi_distribution = self.actor_critic.get_pi_distribution(obs)
-        return ptu.to_numpy(pi_distribution.sample())
+        return ptu.to_numpy(pi_distribution.mode)
 
     def _update_policy_step(self, obs, act, adv, logp, ret):
         self.value_normalizer.adapt(ret)

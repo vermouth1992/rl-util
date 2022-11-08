@@ -59,3 +59,26 @@ class IndependentNormalWithFixedVar(nn.Module):
         assert mean.shape[1:] == self.var_shape
         return make_independent_normal(loc=mean, scale=F.softplus(torch.unsqueeze(self.scale, dim=0)),
                                        ndims=self.reinterpreted_batch_ndims)
+
+
+class CenteredBetaDistribution(td.TransformedDistribution):
+    def __init__(self, concentration1, concentration0):
+        super(CenteredBetaDistribution, self).__init__(
+            base_distribution=td.Beta(concentration1=concentration1, concentration0=concentration0),
+            transforms=td.AffineTransform(loc=-1., scale=2.))
+
+    def entropy(self):
+        return self.base_dist.entropy() + np.log(2.)
+
+    @property
+    def mode(self):
+        return self.base_dist.mode * 2 - 1
+
+
+def make_independent_beta_from_params(params, ndims=1):
+    concentration1, concentration0 = torch.split(params, params.shape[-1] // 2, dim=-1)
+    concentration1 = F.softplus(concentration1) + 1.
+    concentration0 = F.softplus(concentration0) + 1.
+    base_dist = CenteredBetaDistribution(concentration1, concentration0)
+    distribution = td.Independent(base_dist, reinterpreted_batch_ndims=ndims)
+    return distribution

@@ -15,6 +15,7 @@ def run_onpolicy(env_name,
                  gamma=0.99,
                  lam=0.97,
                  num_parallel_env=5,
+                 num_test_episodes=20,
                  asynchronous=False,
                  make_agent_fn: Callable = None,
                  batch_size=5000,
@@ -58,9 +59,14 @@ def run_onpolicy(env_name,
 
     sampler = rl_infra.samplers.TrajectorySampler(env=env)
 
+    # setup tester
+    tester = rl_infra.Tester(env_fn=env_fn, num_parallel_env=num_test_episodes,
+                             asynchronous=asynchronous, seed=seeder.generate_seed())
+
     timer.set_logger(logger=logger)
     agent.set_logger(logger=logger)
     sampler.set_logger(logger=logger)
+    tester.set_logger(logger=logger)
 
     sampler.reset()
     timer.start()
@@ -72,6 +78,10 @@ def run_onpolicy(env_name,
                        replay_buffer=replay_buffer)
         data = replay_buffer.get()
         agent.train_on_batch(data=data)
+
+        tester.test_agent(get_action=lambda obs: agent.act_batch_test(obs),
+                          name=agent.__class__.__name__,
+                          num_test_episodes=num_test_episodes)
 
         logger.log_tabular('Epoch', epoch)
         logger.dump_tabular()

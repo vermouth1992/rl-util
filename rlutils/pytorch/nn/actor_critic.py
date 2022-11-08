@@ -5,27 +5,6 @@ from torch import nn
 import rlutils.pytorch as rlu
 
 
-class NormalActor(nn.Module):
-    def __init__(self, make_net, act_dim):
-        super(NormalActor, self).__init__()
-        self.net = make_net()
-        self.log_std = nn.Parameter(data=torch.randn(size=(1, act_dim), dtype=torch.float32), requires_grad=True)
-
-    def forward(self, obs):
-        mean = self.net(obs)
-        return rlu.distributions.make_independent_normal(loc=mean, scale=nn.functional.softplus(self.log_std), ndims=1)
-
-
-class CategoricalActor(nn.Module):
-    def __init__(self, make_net):
-        super(CategoricalActor, self).__init__()
-        self.net = make_net()
-
-    def forward(self, obs):
-        logits = self.net(obs)
-        return torch.distributions.Categorical(logits=logits)
-
-
 class ActorCritic(nn.Module):
     def __init__(self, env):
         super(ActorCritic, self).__init__()
@@ -47,8 +26,11 @@ class MLPActorCriticSeparate(ActorCritic):
 
         if isinstance(env.action_space, gym.spaces.Box):
             act_dim = env.action_space.shape[0]
-            self.output_net = rlu.distributions.IndependentNormalWithFixedVar(var_shape=(act_dim,),
-                                                                              reinterpreted_batch_ndims=1)
+            self.output_net = nn.Sequential(
+                nn.Tanh(),
+                rlu.distributions.IndependentNormalWithFixedVar(var_shape=(act_dim,),
+                                                                reinterpreted_batch_ndims=1)
+            )
         elif isinstance(env.action_space, gym.spaces.Discrete):
             act_dim = env.action_space.n
             self.output_net = rlu.nn.LambdaLayer(function=lambda logits: torch.distributions.Categorical(logits=logits))
@@ -84,8 +66,11 @@ class MLPActorCriticShared(ActorCritic):
         super(MLPActorCriticShared, self).__init__(env=env)
         if isinstance(env.action_space, gym.spaces.Box):
             act_dim = env.action_space.shape[0]
-            self.output_net = rlu.distributions.IndependentNormalWithFixedVar(var_shape=(act_dim,),
-                                                                              reinterpreted_batch_ndims=1)
+            self.output_net = nn.Sequential(
+                nn.Tanh(),
+                rlu.distributions.IndependentNormalWithFixedVar(var_shape=(act_dim,),
+                                                                reinterpreted_batch_ndims=1)
+            )
         elif isinstance(env.action_space, gym.spaces.Discrete):
             act_dim = env.action_space.n
             self.output_net = rlu.nn.LambdaLayer(function=lambda logits: torch.distributions.Categorical(logits=logits))
