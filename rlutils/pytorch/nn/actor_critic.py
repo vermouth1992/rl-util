@@ -6,10 +6,10 @@ import rlutils.pytorch as rlu
 
 
 class NormalActor(nn.Module):
-    def __init__(self, make_net):
+    def __init__(self, make_net, act_dim):
         super(NormalActor, self).__init__()
         self.net = make_net()
-        self.log_std = nn.Parameter(data=torch.randn(size=(), dtype=torch.float32), requires_grad=True)
+        self.log_std = nn.Parameter(data=torch.randn(size=(1, act_dim), dtype=torch.float32), requires_grad=True)
 
     def forward(self, obs):
         mean = self.net(obs)
@@ -43,20 +43,21 @@ class ActorCritic(nn.Module):
 
 class MLPActorCriticSeparate(ActorCritic):
     def __init__(self, env, policy_mlp_hidden=64, value_mlp_hidden=256):
-        super(MLPActorCriticSeparate, self).__init__()
-
-        make_make_net = lambda act_dim: lambda: rlu.nn.build_mlp(input_dim=env.observation_space.shape[0],
-                                                                 output_dim=act_dim,
-                                                                 mlp_hidden=policy_mlp_hidden)
+        super(MLPActorCriticSeparate, self).__init__(env=env)
 
         if isinstance(env.action_space, gym.spaces.Box):
             act_dim = env.action_space.shape[0]
-            self.policy_net = NormalActor(make_net=make_make_net(act_dim))
+            self.output_net = rlu.distributions.IndependentNormalWithFixedVar(var_shape=(act_dim,),
+                                                                              reinterpreted_batch_ndims=1)
         elif isinstance(env.action_space, gym.spaces.Discrete):
             act_dim = env.action_space.n
-            self.policy_net = CategoricalActor(make_net=make_make_net(act_dim))
+            self.output_net = rlu.nn.LambdaLayer(function=lambda logits: torch.distributions.Categorical(logits=logits))
         else:
             raise NotImplementedError
+
+        self.policy_net = rlu.nn.build_mlp(input_dim=env.observation_space.shape[0],
+                                           output_dim=act_dim,
+                                           mlp_hidden=policy_mlp_hidden)
 
         self.value_net = rlu.nn.build_mlp(input_dim=env.observation_space.shape[0],
                                           output_dim=1,
@@ -64,21 +65,61 @@ class MLPActorCriticSeparate(ActorCritic):
                                           mlp_hidden=value_mlp_hidden)
 
     def forward(self, obs):
-        pi_distribution = self.policy_net(obs)
+        pi_distribution_params = self.policy_net(obs)
+        pi_distribution = self.output_net(pi_distribution_params)
         value = self.value_net(obs)
         return pi_distribution, value
 
     def get_pi_distribution(self, obs):
-        return self.policy_net(obs)
+        pi_distribution_params = self.policy_net(obs)
+        return self.output_net(pi_distribution_params)
 
     def get_value(self, obs):
-        with torch.no_grad():
-            value = self.value_net(obs)
-            return value
+        value = self.value_net(obs)
+        return value
 
 
-class MLPActorCriticShared(nn.Module):
-    pass
+class MLPActorCriticShared(ActorCritic):
+    def __init__(self, env, mlp_hidden=128):
+        super(MLPActorCriticShared, self).__init__(env=env)
+        if isinstance(env.action_space, gym.spaces.Box):
+            act_dim = env.action_space.shape[0]
+            self.output_net = rlu.distributions.IndependentNormalWithFixedVar(var_shape=(act_dim,),
+                                                                              reinterpreted_batch_ndims=1)
+        elif isinstance(env.action_space, gym.spaces.Discrete):
+            act_dim = env.action_space.n
+            self.output_net = rlu.nn.LambdaLayer(function=lambda logits: torch.distributions.Categorical(logits=logits))
+        else:
+            raise NotImplementedError
+
+        self.features = rlu.nn.functional.build_mlp(input_dim=env.observation_space.shape[0],
+                                                    output_dim=mlp_hidden,
+                                                    mlp_hidden=mlp_hidden,
+                                                    num_layers=2,
+                                                    out_activation='relu')
+        self.policy_header = nn.Linear(in_features=mlp_hidden, out_features=act_dim)
+        self.value_header = nn.Sequential(
+            nn.Linear(in_features=mlp_hidden, out_features=1),
+            rlu.nn.SqueezeLayer(dim=-1)
+        )
+
+    def forward(self, obs):
+        feature = self.features(obs)
+        pi_distribution_params = self.policy_header(feature)
+        pi_distribution = self.output_net(pi_distribution_params)
+        value = self.value_header(feature)
+        return pi_distribution, value
+
+    def get_pi_distribution(self, obs):
+        feature = self.features(obs)
+        pi_distribution_params = self.policy_header(feature)
+        pi_distribution = self.output_net(pi_distribution_params)
+        return pi_distribution
+
+    def get_value(self, obs):
+        feature = self.features(obs)
+        value = self.value_header(feature)
+        return value
 
 
 class AtariActorCriticShared(ActorCritic):

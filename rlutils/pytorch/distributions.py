@@ -51,11 +51,11 @@ class IndependentNormalWithFixedVar(nn.Module):
     def __init__(self, var_shape, reinterpreted_batch_ndims):
         super(IndependentNormalWithFixedVar, self).__init__()
         self.var_shape = var_shape
-        self.scale = nn.Parameter(data=torch.ones(size=var_shape, dtype=torch.float32), requires_grad=True)
+        self.scale = nn.Parameter(data=torch.zeros(size=var_shape, dtype=torch.float32), requires_grad=True)
         self.reinterpreted_batch_ndims = reinterpreted_batch_ndims
 
     def forward(self, mean):
         # check shape
         assert mean.shape[1:] == self.var_shape
-        return make_independent_normal(loc=mean, scale=torch.unsqueeze(self.scale, dim=0),
+        return make_independent_normal(loc=mean, scale=F.softplus(torch.unsqueeze(self.scale, dim=0)),
                                        ndims=self.reinterpreted_batch_ndims)

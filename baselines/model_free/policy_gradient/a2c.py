@@ -1,4 +1,8 @@
 """
+Synchronous advantage actor critic
+"""
+
+"""
 Proximal Policy Optimization
 """
 
@@ -8,14 +12,10 @@ import rlutils.pytorch as rlu
 import rlutils.pytorch.utils as ptu
 from rlutils.interface.agent import Agent
 
-from rlutils.replay_buffers import UniformReplayBuffer
 
-
-class PPOAgent(torch.nn.Module, Agent):
+class A2CAgent(torch.nn.Module, Agent):
     def __init__(self, env, actor_critic=lambda env: rlu.nn.MLPActorCriticSeparate(env=env),
-                 lr=1e-3, clip_ratio=0.2,
-                 entropy_coef=0.001, value_coef=1.0, target_kl=0.05,
-                 train_iters=80, device=None,
+                 lr=1e-3, entropy_coef=0., value_coef=0.5, max_grad_norm=0.5, device=None,
                  ):
         """
         Args:
@@ -36,14 +36,12 @@ class PPOAgent(torch.nn.Module, Agent):
         torch.nn.Module.__init__(self)
         self.actor_critic = actor_critic(env=env)
         self.optimizer = torch.optim.Adam(lr=lr, params=self.actor_critic.parameters())
+        self.value_normalizer = rlu.preprocessing.StandardScaler(input_shape=())
 
-        self.target_kl = target_kl
-        self.clip_ratio = clip_ratio
         self.entropy_coef = entropy_coef
         self.value_coef = value_coef
-        self.train_iters = train_iters
+        self.max_grad_norm = max_grad_norm
 
-        self.logger = None
         self.device = device
 
         self.to(self.device)
@@ -52,17 +50,18 @@ class PPOAgent(torch.nn.Module, Agent):
         self.logger.log_tabular('PolicyLoss', average_only=True)
         self.logger.log_tabular('ValueLoss', average_only=True)
         self.logger.log_tabular('Entropy', average_only=True)
-        self.logger.log_tabular('AvgKL', average_only=True)
-        self.logger.log_tabular('StopIter', average_only=True)
 
     def get_value(self, obs):
+        obs = torch.as_tensor(obs, device=self.device)
         with torch.no_grad():
-            obs = torch.as_tensor(obs, device=self.device)
-            return ptu.to_numpy(self.actor_critic.get_value(obs))
+            value = self.actor_critic.get_value(obs)
+            value = self.value_normalizer(value, inverse=True)
+            return ptu.to_numpy(value)
 
     def act_batch_explore(self, obs, global_steps=None):
         obs = torch.as_tensor(obs, device=self.device)
         pi_distribution, value = self.actor_critic(obs)
+        value = self.value_normalizer(value, inverse=True)
         pi_action = pi_distribution.sample()
         log_prob = pi_distribution.log_prob(pi_action)
         return ptu.to_numpy(pi_action), ptu.to_numpy(log_prob), ptu.to_numpy(value)
@@ -73,48 +72,36 @@ class PPOAgent(torch.nn.Module, Agent):
         return ptu.to_numpy(pi_distribution.sample())
 
     def _update_policy_step(self, obs, act, adv, logp, ret):
+        self.value_normalizer.adapt(ret)
+        with torch.no_grad():
+            ret_normalized = self.value_normalizer(ret)
+
         self.optimizer.zero_grad()
 
         pi_distribution, value = self.actor_critic(obs)
         entropy = torch.mean(pi_distribution.entropy())
         log_prob = pi_distribution.log_prob(act)
-        negative_approx_kl = log_prob - logp
-        approx_kl_mean = torch.mean(-negative_approx_kl)
+        policy_loss = -torch.mean(adv * log_prob)
 
-        ratio = torch.exp(negative_approx_kl)
-        surr1 = ratio * adv
-        surr2 = torch.clamp(ratio, min=1.0 - self.clip_ratio, max=1.0 + self.clip_ratio) * adv
-        policy_loss = -torch.mean(torch.minimum(surr1, surr2))
-
-        value_loss = torch.nn.functional.mse_loss(value, ret)
+        value_loss = torch.nn.functional.mse_loss(value, ret_normalized)
         loss = policy_loss - entropy * self.entropy_coef + value_loss * self.value_coef
 
         loss.backward()
+
+        torch.nn.utils.clip_grad_norm_(self.actor_critic.parameters(), self.max_grad_norm)
+
         self.optimizer.step()
 
         info = dict(
             PolicyLoss=policy_loss,
             Entropy=entropy,
-            AvgKL=approx_kl_mean,
             ValueLoss=value_loss
         )
         return info
 
     def train_on_batch(self, data):
-        i = 0
-        info = {}
-
-        dataset = UniformReplayBuffer.from_dataset(data)
-        # create dataset
-        for i in range(self.train_iters):
-            data = dataset.sample(batch_size=64)
-            data = ptu.convert_dict_to_tensor(data, device=self.device)
-            info = self._update_policy_step(**data)
-            if info['AvgKL'] > 1.5 * self.target_kl:
-                self.logger.log(f'Early stopping at step {i} due to reaching max kl.')
-                break
-
-        self.logger.store(StopIter=i)
+        data = ptu.convert_dict_to_tensor(data, device=self.device)
+        info = self._update_policy_step(**data)
         self.logger.store(**info)
 
 
@@ -122,7 +109,7 @@ if __name__ == '__main__':
     from baselines.model_free.trainer import run_onpolicy
     from rlutils.infra.runner import run_func_as_main
 
-    make_agent_fn = lambda env: PPOAgent(env, device=ptu.get_cuda_device())
+    make_agent_fn = lambda env: A2CAgent(env, device=ptu.get_cuda_device())
     run_func_as_main(run_onpolicy, passed_args={
         'make_agent_fn': make_agent_fn,
         'backend': 'torch'
