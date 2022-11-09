@@ -60,15 +60,17 @@ class A2CAgent(torch.nn.Module, Agent):
 
     def act_batch_explore(self, obs, global_steps=None):
         obs = torch.as_tensor(obs, device=self.device)
-        pi_distribution, value = self.actor_critic(obs)
-        value = self.value_normalizer(value, inverse=True)
-        pi_action = pi_distribution.sample()
-        log_prob = pi_distribution.log_prob(pi_action)
+        with torch.no_grad():
+            pi_distribution, value = self.actor_critic(obs)
+            value = self.value_normalizer(value, inverse=True)
+            pi_action = pi_distribution.sample()
+            log_prob = pi_distribution.log_prob(pi_action)
         return ptu.to_numpy(pi_action), ptu.to_numpy(log_prob), ptu.to_numpy(value)
 
     def act_batch_test(self, obs):
         obs = torch.as_tensor(obs, device=self.device)
-        pi_distribution = self.actor_critic.get_pi_distribution(obs)
+        with torch.no_grad():
+            pi_distribution = self.actor_critic.get_pi_distribution(obs)
         return ptu.to_numpy(pi_distribution.mode)
 
     def _update_policy_step(self, obs, act, adv, logp, ret):
