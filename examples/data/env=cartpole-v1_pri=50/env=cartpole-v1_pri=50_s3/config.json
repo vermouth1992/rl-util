@@ -1,0 +1,23 @@
+{
+    "asynchronous":	false,
+    "backend":	"torch",
+    "batch_size":	256,
+    "env_fn":	null,
+    "env_name":	"CartPole-v1",
+    "epochs":	100,
+    "exp_name":	"env=cartpole-v1_pri=50",
+    "gamma":	0.99,
+    "logger_path":	"data",
+    "make_agent_fn":	"<function Benchmark.run_cartpole.<locals>.<lambda> at 0x7f8e0d923c10>",
+    "n_steps":	1,
+    "num_parallel_env":	1,
+    "num_test_episodes":	30,
+    "priority_update_delay":	50,
+    "replay_size":	1000000,
+    "seed":	3,
+    "start_steps":	2000,
+    "steps_per_epoch":	2000,
+    "update_after":	1000,
+    "update_every":	1,
+    "update_per_step":	1
+}
