@@ -35,7 +35,10 @@ def get_cuda_device(id=None):
 
 
 def to_numpy(tensor):
-    return tensor.detach().cpu().numpy()
+    if isinstance(tensor, torch.Tensor):
+        return tensor.detach().cpu().numpy()
+    else:
+        return tensor
 
 
 def convert_dict_to_tensor(data, device=None):
