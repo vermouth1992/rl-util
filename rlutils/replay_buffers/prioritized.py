@@ -79,7 +79,7 @@ class PrioritizedReplayBuffer(object):
             return len(self.storage)
 
     def add(self, data: Dict[str, np.ndarray], priority: np.ndarray = None):
-        batch_size = data[list(data.keys())[0]].shape[0]
+        batch_size = len(data[list(data.keys())[0]])
         if priority is None:
             if len(self) == 0:
                 max_priority = 1.0
