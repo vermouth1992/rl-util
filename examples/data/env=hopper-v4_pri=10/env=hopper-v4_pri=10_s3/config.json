@@ -1,0 +1,23 @@
+{
+    "asynchronous":	false,
+    "backend":	"torch",
+    "batch_size":	256,
+    "env_fn":	null,
+    "env_name":	"Hopper-v4",
+    "epochs":	100,
+    "exp_name":	"env=hopper-v4_pri=10",
+    "gamma":	0.99,
+    "logger_path":	"data",
+    "make_agent_fn":	"<function Benchmark.run_hopper.<locals>.<lambda> at 0x7fe2de4e0c10>",
+    "n_steps":	1,
+    "num_parallel_env":	1,
+    "num_test_episodes":	30,
+    "priority_update_delay":	10,
+    "replay_size":	1000000,
+    "seed":	3,
+    "start_steps":	10000,
+    "steps_per_epoch":	10000,
+    "update_after":	5000,
+    "update_every":	1,
+    "update_per_step":	1
+}
